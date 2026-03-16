@@ -1,0 +1,493 @@
+Você é um engenheiro de software sênior especializado em SaaS de saúde.
+
+Crie uma plataforma web completa de gestão clínica para fisioterapia, estética e pilates.
+
+O sistema deve incluir:
+
+agenda online
+
+agendamento pelo cliente
+
+cadastro de pacientes
+
+prontuário fisioterapêutico
+
+gestão de procedimentos
+
+controle financeiro
+
+relatórios
+
+A aplicação deve ser funcional e pronta para rodar no Replit.
+
+STACK TECNOLÓGICA
+
+Utilize:
+
+Frontend
+
+React
+
+TailwindCSS
+
+Vite
+
+Backend
+
+Node.js
+
+Express
+
+Banco de dados
+
+PostgreSQL
+
+Autenticação
+
+JWT
+
+bcrypt
+
+ORM
+
+Prisma
+
+Estrutura de API
+
+REST
+
+ARQUITETURA DO PROJETO
+
+Estrutura de pastas:
+
+/backend
+  server.js
+  prisma
+  routes
+  controllers
+  middleware
+  services
+
+/frontend
+  src
+    pages
+    components
+    services
+    hooks
+    layouts
+    styles
+
+/database
+  schema.sql
+
+FUNCIONALIDADES PRINCIPAIS
+1 Gestão de Pacientes
+
+Tela de cadastro de pacientes com:
+
+nome
+
+CPF
+
+telefone
+
+email
+
+data de nascimento
+
+endereço
+
+observações clínicas
+
+Funcionalidades:
+
+criar paciente
+
+editar paciente
+
+listar pacientes
+
+visualizar histórico
+
+2 Agenda Clínica
+
+Calendário profissional com:
+
+visualização
+
+dia
+
+semana
+
+mês
+
+ações
+
+criar agendamento
+
+reagendar
+
+cancelar
+
+bloquear horários
+
+regras
+
+evitar conflito de horários
+
+respeitar duração do procedimento
+
+3 Agendamento pelo Cliente
+
+Criar portal do paciente.
+
+Fluxo:
+
+cliente cria conta
+↓
+escolhe procedimento
+↓
+vê horários disponíveis
+↓
+agenda consulta
+
+4 Cadastro de Procedimentos
+
+Procedimentos devem ter:
+
+nome
+
+categoria (fisioterapia / estética / pilates)
+
+duração
+
+preço
+
+custo interno
+
+descrição
+
+5 Prontuário Fisioterapêutico
+
+Cada paciente deve possuir prontuário clínico com:
+
+ANAMNESE
+
+queixa principal
+
+histórico da doença
+
+histórico médico
+
+medicamentos
+
+alergias
+
+hábitos de vida
+
+escala de dor
+
+AVALIAÇÃO
+
+postura
+
+amplitude de movimento
+
+força muscular
+
+testes ortopédicos
+
+diagnóstico funcional
+
+PLANO DE TRATAMENTO
+
+objetivos terapêuticos
+
+técnicas
+
+frequência
+
+número estimado de sessões
+
+EVOLUÇÃO
+
+registro por sessão com:
+
+procedimento realizado
+
+resposta do paciente
+
+observações clínicas
+
+ALTA
+
+motivo
+
+resultados
+
+6 Gestão Financeira
+
+Sistema deve registrar automaticamente receita ao concluir atendimento.
+
+Campos:
+
+valor do procedimento
+
+custo interno
+
+lucro
+
+Permitir também registrar despesas:
+
+aluguel
+
+produtos
+
+marketing
+
+salários
+
+Dashboard financeiro com:
+
+receita mensal
+
+lucro
+
+ticket médio
+
+procedimento mais lucrativo
+
+7 Relatórios
+
+Criar relatórios de:
+
+faturamento mensal
+
+receita por procedimento
+
+ocupação da agenda
+
+pacientes ativos
+
+MODELAGEM DO BANCO
+
+Criar as seguintes tabelas.
+
+users
+
+id
+name
+email
+password_hash
+role
+created_at
+
+
+patients
+
+id
+name
+cpf
+birth_date
+phone
+email
+address
+notes
+created_at
+
+
+procedures
+
+id
+name
+category
+price
+cost
+duration_minutes
+description
+
+
+appointments
+
+id
+patient_id
+procedure_id
+date
+start_time
+end_time
+status
+created_at
+
+
+anamnesis
+
+id
+patient_id
+main_complaint
+medical_history
+medications
+allergies
+lifestyle
+pain_scale
+created_at
+
+
+evaluations
+
+id
+patient_id
+posture
+range_of_motion
+muscle_strength
+orthopedic_tests
+functional_diagnosis
+created_at
+
+
+treatment_plans
+
+id
+patient_id
+objectives
+techniques
+frequency
+estimated_sessions
+
+
+evolutions
+
+id
+appointment_id
+description
+patient_response
+clinical_notes
+created_at
+
+
+financial_records
+
+id
+type
+amount
+description
+appointment_id
+created_at
+
+API ENDPOINTS
+
+Criar endpoints REST.
+
+Exemplos:
+
+Auth
+
+POST /auth/register
+POST /auth/login
+
+
+Patients
+
+GET /patients
+POST /patients
+PUT /patients/:id
+DELETE /patients/:id
+
+
+Appointments
+
+GET /appointments
+POST /appointments
+PUT /appointments/:id
+DELETE /appointments/:id
+
+
+Procedures
+
+GET /procedures
+POST /procedures
+
+
+Financial
+
+GET /financial/dashboard
+POST /financial/expense
+
+INTERFACE
+
+Criar interface moderna usando Tailwind.
+
+Telas necessárias:
+
+Login
+Dashboard
+Agenda
+Pacientes
+Procedimentos
+Prontuário
+Financeiro
+Relatórios
+
+DASHBOARD
+
+Mostrar:
+
+atendimentos do dia
+
+receita do mês
+
+próximos atendimentos
+
+ocupação da agenda
+
+SEGURANÇA
+
+Implementar:
+
+autenticação JWT
+
+criptografia de senha
+
+proteção de rotas
+
+validação de dados
+
+RESULTADO ESPERADO
+
+Ao final gerar:
+
+backend funcional
+
+frontend funcional
+
+banco de dados configurado
+
+rotas de API
+
+páginas principais
+
+A aplicação deve rodar com:
+
+npm install
+npm run dev
+
+QUALIDADE DE CÓDIGO
+
+Utilizar:
+
+boas práticas de arquitetura
+
+separação de responsabilidades
+
+código limpo
+
+comentários explicativos
+
+EXTRA (SE POSSÍVEL)
+
+Adicionar:
+
+calendário visual
+
+filtros de agenda
+
+gráficos financeiros simples

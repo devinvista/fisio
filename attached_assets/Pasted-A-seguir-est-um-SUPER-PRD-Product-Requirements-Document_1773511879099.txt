@@ -1,0 +1,620 @@
+A seguir está um **SUPER PRD (Product Requirements Document)** estruturado em nível **startup SaaS profissional**, adequado para desenvolvimento no **Replit**, mas já preparado para evoluir para **plataforma escalável de clínicas**.
+
+Ele inclui:
+
+* requisitos clínicos exigidos por conselhos
+* prontuário fisioterapêutico completo
+* agenda inteligente
+* financeiro com margem por procedimento
+* estrutura SaaS futura
+* arquitetura técnica
+* modelagem de banco
+* fluxos de usuário
+* compliance (LGPD)
+
+---
+
+# PRD — Plataforma SaaS de Gestão Clínica para Fisioterapia, Estética e Pilates
+
+## 1. Visão Geral do Produto
+
+### Nome do Produto
+
+**FisioGest Pro**
+
+### Tipo
+
+SaaS (Software as a Service)
+
+### Categoria
+
+HealthTech / Clinic Management
+
+### Público-alvo
+
+* fisioterapeutas
+* clínicas de fisioterapia
+* profissionais de estética
+* estúdios de pilates
+
+### Problema
+
+Profissionais utilizam:
+
+* agenda em papel
+* WhatsApp para agendamentos
+* planilhas para controle financeiro
+* prontuário físico
+
+Isso gera:
+
+* perda de pacientes
+* falta de controle financeiro
+* risco jurídico
+* baixa produtividade
+
+### Solução
+
+Plataforma web que centraliza:
+
+* agendamentos
+* prontuário clínico
+* gestão financeira
+* cadastro de pacientes
+* relatórios de performance
+
+---
+
+# 2. Objetivos do Produto
+
+### Objetivos primários
+
+1. Centralizar gestão clínica
+2. Reduzir faltas em consultas
+3. Melhorar controle financeiro
+4. Digitalizar prontuário fisioterapêutico
+5. Facilitar agendamento online
+
+### Objetivos secundários
+
+* permitir crescimento da clínica
+* criar base para SaaS escalável
+
+---
+
+# 3. Escopo do MVP
+
+### Inclusões
+
+* cadastro de pacientes
+* agenda online
+* agendamento pelo cliente
+* prontuário fisioterapêutico
+* evolução clínica
+* cadastro de procedimentos
+* controle financeiro
+* relatórios
+
+### Fora do MVP
+
+* app mobile
+* pagamento online
+* teleconsulta
+* integração convênios
+
+---
+
+# 4. Personas
+
+## Persona 1 — Fisioterapeuta Autônoma
+
+Idade: 28–45
+Perfil:
+
+* atende 10–30 pacientes por dia
+* usa WhatsApp para agendar
+* quer mais organização
+
+Dores:
+
+* pacientes faltam
+* controle financeiro ruim
+* prontuário em papel
+
+---
+
+## Persona 2 — Clínica pequena
+
+Equipe:
+
+* 2–6 profissionais
+
+Dores:
+
+* agenda descentralizada
+* controle financeiro impreciso
+
+---
+
+# 5. Módulos do Sistema
+
+---
+
+# Módulo 1 — Gestão de Pacientes
+
+Cadastro completo do paciente.
+
+### Campos obrigatórios
+
+* nome
+* CPF
+* telefone
+* email
+* data de nascimento
+
+### Campos adicionais
+
+* endereço
+* profissão
+* contato emergência
+* observações clínicas
+
+### Funcionalidades
+
+* busca rápida
+* histórico clínico
+* histórico financeiro
+* histórico de atendimentos
+
+---
+
+# Módulo 2 — Prontuário Clínico (Obrigatório)
+
+Atende às normas do conselho profissional.
+
+Estrutura:
+
+### 1. Anamnese
+
+Campos:
+
+* queixa principal
+* histórico da doença
+* histórico médico
+* medicamentos
+* alergias
+* histórico familiar
+* hábitos de vida
+* escala de dor
+
+---
+
+### 2. Avaliação fisioterapêutica
+
+Campos:
+
+* inspeção
+* postura
+* amplitude de movimento
+* força muscular
+* testes ortopédicos
+* diagnóstico funcional
+
+---
+
+### 3. Plano de tratamento
+
+Campos:
+
+* objetivos terapêuticos
+* técnicas utilizadas
+* frequência
+* previsão de sessões
+
+---
+
+### 4. Evolução do paciente
+
+Registro por sessão.
+
+Campos:
+
+* data
+* procedimento realizado
+* resposta do paciente
+* observações
+* intercorrências
+
+---
+
+### 5. Alta fisioterapêutica
+
+Campos:
+
+* motivo
+* resultado alcançado
+* recomendações
+
+---
+
+# Módulo 3 — Agenda Inteligente
+
+Calendário clínico.
+
+### Visualizações
+
+* dia
+* semana
+* mês
+
+### Funcionalidades
+
+* agendar sessão
+* reagendar
+* cancelar
+* bloquear horários
+
+### Regras
+
+* evitar conflito de horário
+* respeitar duração do procedimento
+
+---
+
+# Módulo 4 — Agendamento Online pelo Cliente
+
+Portal do paciente.
+
+Fluxo:
+
+1 criar conta
+2 escolher procedimento
+3 selecionar data
+4 escolher horário disponível
+5 confirmar agendamento
+
+---
+
+# Módulo 5 — Gestão de Procedimentos
+
+Cadastro de serviços.
+
+Campos:
+
+* nome
+* categoria
+* duração
+* preço
+* custo interno
+
+Categorias:
+
+* fisioterapia
+* pilates
+* estética
+
+---
+
+# Módulo 6 — Gestão Financeira
+
+Controle de receitas e custos.
+
+### Receita automática
+
+Gerada quando atendimento é concluído.
+
+### Despesas
+
+Registro manual:
+
+* aluguel
+* produtos
+* marketing
+* salários
+
+---
+
+# Dashboard financeiro
+
+Indicadores:
+
+* receita mensal
+* lucro
+* ticket médio
+* procedimento mais vendido
+
+---
+
+# Módulo 7 — Relatórios
+
+### Relatórios disponíveis
+
+* receita mensal
+* lucro por procedimento
+* ocupação da agenda
+* faturamento por categoria
+* pacientes ativos
+
+---
+
+# Módulo 8 — Gestão de Documentos
+
+Armazenamento digital.
+
+Documentos:
+
+* consentimento
+* exames
+* contratos
+
+---
+
+# Módulo 9 — Registro Fotográfico (Estética)
+
+Antes/depois.
+
+Funcionalidades:
+
+* upload de foto
+* comparação visual
+* histórico por procedimento
+
+---
+
+# 6. Fluxos de Usuário
+
+## Fluxo de Agendamento
+
+Paciente:
+
+login
+↓
+escolher procedimento
+↓
+ver horários disponíveis
+↓
+confirmar
+
+---
+
+## Fluxo de Atendimento
+
+agenda
+↓
+iniciar sessão
+↓
+registrar evolução
+↓
+marcar sessão concluída
+↓
+gerar receita
+
+---
+
+# 7. Arquitetura Técnica
+
+### Frontend
+
+React
+TailwindCSS
+
+---
+
+### Backend
+
+Node.js
+Express
+
+---
+
+### Banco de dados
+
+PostgreSQL
+
+---
+
+### Autenticação
+
+JWT
+bcrypt
+
+---
+
+### Hospedagem
+
+Replit Deployments
+
+---
+
+# 8. Modelagem de Banco
+
+## users
+
+```
+id
+name
+email
+password_hash
+role
+created_at
+```
+
+---
+
+## patients
+
+```
+id
+name
+cpf
+birth_date
+phone
+email
+address
+notes
+created_at
+```
+
+---
+
+## procedures
+
+```
+id
+name
+category
+price
+cost
+duration
+```
+
+---
+
+## appointments
+
+```
+id
+patient_id
+procedure_id
+date
+start_time
+end_time
+status
+```
+
+---
+
+## evolutions
+
+```
+id
+appointment_id
+description
+response
+notes
+created_at
+```
+
+---
+
+## financial_records
+
+```
+id
+type
+amount
+description
+appointment_id
+created_at
+```
+
+---
+
+# 9. Segurança
+
+* criptografia de senha
+* autenticação JWT
+* controle de acesso
+* logs de atividade
+
+---
+
+# 10. Compliance LGPD
+
+O sistema deve permitir:
+
+* consentimento de dados
+* anonimização
+* exportação de dados
+* exclusão de dados
+
+---
+
+# 11. Requisitos Não Funcionais
+
+Performance:
+
+* tempo de resposta < 2 segundos
+
+Escalabilidade:
+
+* suportar múltiplas clínicas
+
+Segurança:
+
+* backup automático
+
+---
+
+# 12. Roadmap
+
+### V2
+
+* lembretes por WhatsApp
+* pagamentos online
+* teleconsulta
+
+### V3
+
+* aplicativo mobile
+* multi-clínica
+* marketplace de profissionais
+
+---
+
+# 13. Estrutura do Projeto (Replit)
+
+```
+/backend
+  server.js
+  routes
+  controllers
+  models
+  middleware
+
+/frontend
+  pages
+  components
+  services
+
+/database
+  migrations
+```
+
+---
+
+# 14. KPIs do Produto
+
+* taxa de ocupação da agenda
+* faturamento mensal
+* taxa de faltas
+* ticket médio
+* número de pacientes ativos
+
+---
+
+# 15. Diferenciais Competitivos
+
+* prontuário clínico integrado
+* financeiro por procedimento
+* agenda inteligente
+* foco em fisioterapia e estética
+
+---
+
+💡 **Sugestão estratégica:**
+Esse produto tem potencial real de virar **SaaS nacional para fisioterapia**, semelhante ao que **ZenFisio / SimplesFisio tentam fazer**, mas com:
+
+* financeiro mais forte
+* BI clínico
+* automação de agenda
+
+---
+
+Se quiser, posso também montar **3 coisas extremamente valiosas para esse projeto**:
+
+1️⃣ **Arquitetura SaaS multi-clínica (nível empresa bilionária)**
+2️⃣ **Modelo de banco completo com +40 tabelas**
+3️⃣ **Prompt perfeito para o Replit AI gerar 80% do sistema automaticamente**
+
+Essas três coisas aceleram o desenvolvimento **10x**.
