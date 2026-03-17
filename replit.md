@@ -4,6 +4,8 @@
 
 FisioGest Pro is a complete clinical management SaaS platform for physiotherapy, aesthetics, and pilates clinics. Flat Vite + Express layout — one `package.json` at root, deployable to any Node.js host (Hostinger, Railway, Render).
 
+> **Hostinger compatibility**: `pnpm-workspace.yaml` was removed so Hostinger's framework detector correctly identifies this as a standard Vite + Express project. All pnpm settings (onlyBuiltDependencies, overrides) are now under the `"pnpm"` field in `package.json`. Node version is specified in `.nvmrc`.
+
 ## Stack
 
 - **Node.js**: 24
