@@ -1,3 +1,5 @@
+// FLAT LAYOUT — for external hosting (Hostinger/Railway/Render) only.
+// In Replit, use artifacts/fisiogest instead (port 20408 via pnpm --filter @workspace/fisiogest run dev).
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";

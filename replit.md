@@ -2,117 +2,164 @@
 
 ## Overview
 
-FisioGest Pro is a complete clinical management SaaS platform for physiotherapy, aesthetics, and pilates clinics. Flat Vite + Express layout — one `package.json` at root, deployable to any Node.js host (Hostinger, Railway, Render).
+FisioGest Pro is a complete clinical management SaaS platform for physiotherapy, aesthetics, and pilates clinics.
 
-> **Hostinger compatibility**: `pnpm-workspace.yaml` was removed so Hostinger's framework detector correctly identifies this as a standard Vite + Express project. All pnpm settings (onlyBuiltDependencies, overrides) are now under the `"pnpm"` field in `package.json`. Node version is specified in `.nvmrc`.
+The project is a **pnpm workspace monorepo** hosted on Replit. It is split into two artifacts (frontend + API) that are served through Replit's shared reverse proxy on port 80.
+
+---
 
 ## Stack
 
 - **Node.js**: 24
-- **Package manager**: pnpm
+- **Package manager**: pnpm (workspace)
 - **TypeScript**: 5.9
-- **Frontend**: React 19 + Vite 7 + TailwindCSS v4 + shadcn/ui (new-york)
-- **Backend**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod v3, drizzle-zod
-- **API client**: Orval-generated React Query hooks (`src/lib/api/generated/`)
+- **Frontend** (`artifacts/fisiogest`): React 19 + Vite 7 + TailwindCSS v4 + shadcn/ui (new-york)
+- **Backend** (`artifacts/api-server`): Express 5
+- **Database**: PostgreSQL + Drizzle ORM (`lib/db`)
+- **Validation**: Zod v3, drizzle-zod (`lib/api-zod`)
+- **API client**: Orval-generated React Query hooks (`lib/api-client-react`)
 - **Auth**: JWT (jsonwebtoken) + bcryptjs
 - **Charts**: Recharts
 - **Icons**: Lucide React
 
-## Demo Credentials
+---
 
-- **Email**: demo@fisiogest.com
-- **Password**: demo123
+## Replit Architecture — IMPORTANT
 
-## Flat Structure
+Replit uses a **shared reverse proxy on port 80** to route traffic between services. Each artifact declares its port and path prefix in `.replit-artifact/artifact.toml`.
+
+| Service | Package filter | Local port | Proxy path |
+|---|---|---|---|
+| Frontend | `@workspace/fisiogest` | **20408** | `/` |
+| API Server | `@workspace/api-server` | **8080** | `/api` |
+
+> **Never run the root-level `src/` + `server/` flat layout in Replit.** Those files exist for external hosting (e.g., Hostinger/Railway/Render) only. In Replit, always run the artifacts.
+
+### Workflow command (`.replit`)
+
+```
+PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev
+```
+
+- `waitForPort = 20408` — Replit waits for the frontend to be ready
+- `outputType = "webview"` — routes preview to the frontend
+
+### How requests flow in development
+
+```
+Browser → https://<repl>.replit.dev/
+  ├── /api/*  → Replit proxy → localhost:8080  (api-server)
+  └── /*      → Replit proxy → localhost:20408 (fisiogest Vite dev server)
+                  └── /api/* (proxied by Vite) → localhost:8080
+```
+
+---
+
+## Project Structure
 
 ```text
 /
-├── src/                        # React frontend
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── index.css
-│   ├── pages/
-│   │   ├── login.tsx
-│   │   ├── register.tsx
-│   │   ├── dashboard.tsx
-│   │   ├── agenda.tsx
-│   │   ├── patients/index.tsx
-│   │   ├── patients/[id].tsx
-│   │   ├── procedimentos.tsx
-│   │   ├── financial/index.tsx
-│   │   └── relatorios.tsx
-│   ├── components/
-│   │   ├── layout/app-layout.tsx
-│   │   └── ui/                 # shadcn/ui components
-│   └── lib/
-│       ├── auth-context.tsx
-│       ├── utils.ts
-│       └── api/
-│           ├── index.ts
-│           ├── custom-fetch.ts
-│           └── generated/      # Orval-generated hooks & schemas
-├── server/                     # Express backend
-│   ├── index.ts                # Entry point (PORT env var)
-│   ├── app.ts                  # Express app + static serving
-│   ├── build.ts                # esbuild bundler → dist/server.cjs
-│   ├── middleware/auth.ts      # JWT middleware
-│   └── routes/
-│       ├── index.ts
-│       ├── health.ts           # GET /api/healthz
-│       ├── auth.ts             # /api/auth/*
-│       ├── patients.ts         # /api/patients/*
-│       ├── procedures.ts       # /api/procedures/*
-│       ├── appointments.ts     # /api/appointments/*
-│       ├── medical-records.ts  # /api/patients/:id/...
-│       ├── financial.ts        # /api/financial/*
-│       ├── reports.ts          # /api/reports/*
-│       └── dashboard.ts        # /api/dashboard
-├── db/                         # Drizzle ORM
-│   ├── index.ts                # pg Pool + drizzle client
-│   └── schema/
-│       ├── index.ts
-│       ├── users.ts
-│       ├── patients.ts
-│       ├── procedures.ts
-│       ├── appointments.ts
-│       ├── medical-records.ts
-│       └── financial.ts
-├── package.json                # Single root package
-├── vite.config.ts              # Vite: out=dist/public, proxy /api → :3001
-├── tsconfig.json               # Frontend TS config (jsx: react-jsx, @/* → src/*)
-├── tsconfig.server.json        # Server TS config
-├── drizzle.config.ts           # Points to db/schema/index.ts
-└── index.html                  # Vite entry point
+├── artifacts/
+│   ├── fisiogest/                      # React frontend (@workspace/fisiogest)
+│   │   ├── src/
+│   │   │   ├── main.tsx
+│   │   │   ├── App.tsx
+│   │   │   ├── index.css
+│   │   │   ├── pages/
+│   │   │   │   ├── login.tsx
+│   │   │   │   ├── register.tsx
+│   │   │   │   ├── dashboard.tsx
+│   │   │   │   ├── agenda.tsx
+│   │   │   │   ├── patients/
+│   │   │   │   ├── procedimentos.tsx
+│   │   │   │   ├── financial/
+│   │   │   │   └── relatorios.tsx
+│   │   │   ├── components/
+│   │   │   │   ├── layout/app-layout.tsx
+│   │   │   │   └── ui/                 # shadcn/ui components
+│   │   │   └── lib/
+│   │   │       └── auth-context.tsx
+│   │   ├── vite.config.ts              # PORT=20408, proxy /api → :8080
+│   │   └── .replit-artifact/artifact.toml
+│   │
+│   ├── api-server/                     # Express API (@workspace/api-server)
+│   │   ├── src/
+│   │   │   ├── index.ts                # Requires PORT env var
+│   │   │   ├── app.ts
+│   │   │   ├── middleware/auth.ts
+│   │   │   └── routes/
+│   │   │       ├── index.ts
+│   │   │       ├── health.ts           # GET /api/healthz
+│   │   │       ├── auth.ts             # /api/auth/*
+│   │   │       ├── patients.ts
+│   │   │       ├── procedures.ts
+│   │   │       ├── appointments.ts
+│   │   │       ├── medical-records.ts
+│   │   │       ├── financial.ts
+│   │   │       ├── reports.ts
+│   │   │       └── dashboard.ts
+│   │   ├── build.ts
+│   │   └── .replit-artifact/artifact.toml
+│   │
+│   └── mockup-sandbox/                 # UI prototyping sandbox
+│
+├── lib/
+│   ├── db/                             # @workspace/db — Drizzle ORM + schema
+│   │   ├── index.ts                    # pg Pool + drizzle client
+│   │   ├── schema/
+│   │   └── drizzle.config.ts
+│   ├── api-zod/                        # @workspace/api-zod — Zod validation schemas
+│   ├── api-client-react/               # @workspace/api-client-react — React Query hooks
+│   └── api-spec/                       # OpenAPI spec source
+│
+├── src/                                # [EXTERNAL HOSTING ONLY] Flat frontend layout
+├── server/                             # [EXTERNAL HOSTING ONLY] Flat server layout
+├── db/                                 # [EXTERNAL HOSTING ONLY] Flat DB layout
+│
+├── scripts/
+│   ├── post-merge.sh                   # Runs after task agent merges
+│   └── seed.ts
+│
+├── pnpm-workspace.yaml
+├── package.json                        # Root scripts + shared dev tooling
+├── drizzle.config.ts                   # Points to db/schema (for root-level flat layout)
+└── .replit                             # Workflow + artifact config
 ```
 
-## Dev Workflows
-
-| Workflow | Command | Port |
-|---|---|---|
-| FisioGest: API Server | `PORT=3001 tsx server/index.ts` | 3001 |
-| FisioGest: Web | `API_PORT=3001 PORT=3000 vite ...` | 3000 |
+---
 
 ## Scripts
 
-```bash
-pnpm run build        # vite build → dist/public + esbuild → dist/server.cjs
-pnpm run start        # node dist/server.cjs  (production)
-pnpm run db:push      # drizzle-kit push (dev schema sync)
-pnpm run typecheck    # tsc --noEmit
-```
-
-## Production Deployment
+### Root level
 
 ```bash
-# Build
-pnpm install && pnpm run build
-# Start
-PORT=8080 NODE_ENV=production node dist/server.cjs
+pnpm install                          # Install all workspace deps
+pnpm dev                              # Start both services (correct ports for Replit)
+pnpm run db:push                      # Sync schema (flat layout, dev only)
+pnpm --filter @workspace/db run push  # Sync schema via lib/db (workspace)
+pnpm run typecheck                    # tsc --noEmit
 ```
 
-The server serves the built frontend from `dist/public` and all `/api/*` routes from `dist/server.cjs`.
+### Per artifact
+
+```bash
+# Frontend
+PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev
+
+# API Server
+PORT=8080 pnpm --filter @workspace/api-server run dev
+```
+
+---
+
+## Demo / Test Credentials
+
+A test user is created on first run via the register endpoint:
+
+- **Email**: `admin@test.com`
+- **Password**: `admin123`
+
+---
 
 ## Features
 
@@ -123,3 +170,16 @@ The server serves the built frontend from `dist/public` and all `/api/*` routes 
 5. **Procedimentos** — CRUD for physiotherapy/aesthetics/pilates services
 6. **Financeiro** — Revenue dashboard, expense tracking, financial records
 7. **Relatórios** — Monthly revenue charts, procedure revenue, schedule occupation
+
+---
+
+## External Deployment (non-Replit)
+
+For Hostinger / Railway / Render, use the **flat layout** at the root:
+
+```bash
+pnpm install && pnpm run build
+PORT=8080 NODE_ENV=production node dist/server.cjs
+```
+
+The root `src/` + `server/` + `db/` directories contain a self-contained version of the app. The root `vite.config.ts` proxies `/api` to `API_PORT` (default 3001).
