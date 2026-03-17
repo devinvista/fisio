@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db/index.js";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "../../db/index.js";
-import { eq, ilike, or, sql, desc } from "drizzle-orm";
+import { eq, ilike, or, and, sql, desc } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
 const router = Router();
@@ -84,8 +84,16 @@ router.get("/:id", async (req, res) => {
         .orderBy(desc(appointmentsTable.date)),
       db.select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
         .from(financialRecordsTable)
-        .innerJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
-        .where(eq(appointmentsTable.patientId, id))
+        .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
+        .where(
+          and(
+            eq(financialRecordsTable.type, "receita"),
+            or(
+              eq(financialRecordsTable.patientId, id),
+              eq(appointmentsTable.patientId, id)
+            )
+          )
+        )
     ]);
 
     res.json({
