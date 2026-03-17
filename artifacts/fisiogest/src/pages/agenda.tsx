@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useListAppointments,
@@ -9,6 +9,7 @@ import {
   useDeleteAppointment,
   useCompleteAppointment,
 } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { format, addDays, startOfWeek, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
@@ -440,7 +441,7 @@ function CreateAppointmentForm({
     patientId: "",
     procedureId: "",
     date: initialDate || format(new Date(), "yyyy-MM-dd"),
-    startTime: initialTime || "08:00",
+    startTime: initialTime || "",
     notes: "",
   });
 
@@ -449,8 +450,43 @@ function CreateAppointmentForm({
   const mutation = useCreateAppointment();
   const { toast } = useToast();
 
+  const selectedProcedure = useMemo(
+    () => procedures?.find((p) => p.id === Number(formData.procedureId)),
+    [procedures, formData.procedureId]
+  );
+
+  const canFetchSlots = !!(formData.date && formData.procedureId);
+  const { data: slotsData, isFetching: slotsFetching } = useQuery({
+    queryKey: ["available-slots", formData.date, formData.procedureId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/appointments/available-slots?date=${formData.date}&procedureId=${formData.procedureId}&clinicStart=08:00&clinicEnd=18:00`
+      );
+      return res.json();
+    },
+    enabled: canFetchSlots,
+    staleTime: 30_000,
+  });
+
+  const availableSlots = (slotsData?.slots ?? []) as {
+    time: string;
+    available: boolean;
+    spotsLeft: number;
+  }[];
+
+  const computedEndTime = useMemo(() => {
+    if (!formData.startTime || !selectedProcedure) return null;
+    const [h, m] = formData.startTime.split(":").map(Number);
+    const total = h * 60 + m + selectedProcedure.durationMinutes;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }, [formData.startTime, selectedProcedure]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.startTime) {
+      toast({ variant: "destructive", title: "Selecione um horário." });
+      return;
+    }
     mutation.mutate(
       {
         data: {
@@ -466,8 +502,9 @@ function CreateAppointmentForm({
           toast({ title: "Agendado!", description: "Consulta marcada com sucesso." });
           onSuccess();
         },
-        onError: (err) => {
-          toast({ variant: "destructive", title: "Erro", description: (err as any).message || "Conflito de horário." });
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Conflito de horário.";
+          toast({ variant: "destructive", title: "Erro ao agendar", description: msg });
         },
       }
     );
@@ -491,48 +528,103 @@ function CreateAppointmentForm({
 
       <div className="space-y-2">
         <Label>Procedimento *</Label>
-        <Select value={formData.procedureId} onValueChange={(v) => setFormData({ ...formData, procedureId: v })}>
+        <Select
+          value={formData.procedureId}
+          onValueChange={(v) => setFormData({ ...formData, procedureId: v, startTime: "" })}
+        >
           <SelectTrigger className="h-12 rounded-xl">
             <SelectValue placeholder="Selecione o procedimento..." />
           </SelectTrigger>
           <SelectContent>
             {procedures?.map((p) => (
               <SelectItem key={p.id} value={p.id.toString()}>
-                {p.name} ({p.durationMinutes} min)
+                {p.name} · {p.durationMinutes} min
+                {(p as any).maxCapacity > 1 ? ` · ${(p as any).maxCapacity} vagas` : ""}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {selectedProcedure && (
+          <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
+            <Clock className="w-3 h-3" />
+            Duração: {selectedProcedure.durationMinutes} min
+            {(selectedProcedure as any).maxCapacity > 1
+              ? ` · Capacidade: ${(selectedProcedure as any).maxCapacity} vagas`
+              : ""}
+          </p>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Data *</Label>
-          <Input type="date" required value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-            className="h-12 rounded-xl" />
-        </div>
-        <div className="space-y-2">
-          <Label>Horário *</Label>
-          <Input type="time" required value={formData.startTime}
+      <div className="space-y-2">
+        <Label>Data *</Label>
+        <Input
+          type="date"
+          required
+          value={formData.date}
+          onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: "" })}
+          className="h-12 rounded-xl"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>
+          Horário *
+          {slotsFetching && <span className="ml-2 text-xs text-slate-400">Verificando disponibilidade...</span>}
+        </Label>
+        {canFetchSlots && availableSlots.length > 0 ? (
+          <Select
+            value={formData.startTime}
+            onValueChange={(v) => setFormData({ ...formData, startTime: v })}
+          >
+            <SelectTrigger className="h-12 rounded-xl">
+              <SelectValue placeholder="Selecione um horário disponível..." />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {availableSlots.map((slot) => (
+                <SelectItem key={slot.time} value={slot.time} disabled={!slot.available}>
+                  {slot.time}
+                  {!slot.available
+                    ? " — lotado"
+                    : (slotsData?.procedure?.maxCapacity ?? 1) > 1
+                    ? ` — ${slot.spotsLeft} vaga${slot.spotsLeft !== 1 ? "s" : ""} livre${slot.spotsLeft !== 1 ? "s" : ""}`
+                    : " — disponível"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            type="time"
+            required
+            value={formData.startTime}
             onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-            className="h-12 rounded-xl" />
-        </div>
+            className="h-12 rounded-xl"
+          />
+        )}
+        {formData.startTime && computedEndTime && (
+          <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
+            <Clock className="w-3 h-3" />
+            Término calculado: <span className="font-semibold text-slate-700">{computedEndTime}</span>
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
         <Label>Observações</Label>
-        <Textarea value={formData.notes}
+        <Textarea
+          value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           placeholder="Informações adicionais sobre a consulta..."
-          className="rounded-xl resize-none" rows={2} />
+          className="rounded-xl resize-none"
+          rows={2}
+        />
       </div>
 
       <div className="pt-2">
         <Button
           type="submit"
           className="w-full h-12 rounded-xl text-base shadow-lg shadow-primary/20"
-          disabled={mutation.isPending || !formData.patientId || !formData.procedureId}
+          disabled={mutation.isPending || !formData.patientId || !formData.procedureId || !formData.startTime}
         >
           {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirmar Agendamento"}
         </Button>

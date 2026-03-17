@@ -10,6 +10,7 @@ export const proceduresTable = pgTable("procedures", {
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   cost: numeric("cost", { precision: 10, scale: 2 }).default("0"),
   description: text("description"),
+  maxCapacity: integer("max_capacity").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

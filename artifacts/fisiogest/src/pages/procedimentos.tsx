@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Clock, DollarSign } from "lucide-react";
+import { Plus, Pencil, Trash2, Clock, DollarSign, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Procedure {
@@ -32,6 +32,7 @@ interface Procedure {
   price: string | number;
   cost: string | number;
   description?: string;
+  maxCapacity: number;
   createdAt: string;
 }
 
@@ -61,6 +62,7 @@ export default function Procedimentos() {
     price: "",
     cost: "",
     description: "",
+    maxCapacity: 1,
   });
 
   const url = selectedCategory === "all"
@@ -77,7 +79,7 @@ export default function Procedimentos() {
       fetch("/api/procedures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
+        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost), maxCapacity: data.maxCapacity }),
       }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
@@ -92,7 +94,7 @@ export default function Procedimentos() {
       fetch(`/api/procedures/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
+        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost), maxCapacity: data.maxCapacity }),
       }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
@@ -113,7 +115,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "" });
+    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1 });
   }
 
   function openEdit(proc: Procedure) {
@@ -125,6 +127,7 @@ export default function Procedimentos() {
       price: String(proc.price),
       cost: String(proc.cost ?? "0"),
       description: proc.description ?? "",
+      maxCapacity: proc.maxCapacity ?? 1,
     });
     setIsModalOpen(true);
   }
@@ -216,6 +219,12 @@ export default function Procedimentos() {
                   <div className="text-xs text-green-600 font-medium">
                     Margem: {getMargin(proc.price, proc.cost ?? 0).toFixed(0)}%
                   </div>
+                  {(proc.maxCapacity ?? 1) > 1 && (
+                    <div className="col-span-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
+                      <Users className="h-3.5 w-3.5" />
+                      Capacidade: {proc.maxCapacity} vagas simultâneas
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -244,11 +253,17 @@ export default function Procedimentos() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Duração (min) *</Label>
                 <Input type="number" value={form.durationMinutes} onChange={e => setForm(f => ({ ...f, durationMinutes: parseInt(e.target.value) || 60 }))} />
               </div>
+              <div className="space-y-1">
+                <Label>Vagas simultâneas</Label>
+                <Input type="number" min="1" value={form.maxCapacity} onChange={e => setForm(f => ({ ...f, maxCapacity: parseInt(e.target.value) || 1 }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Preço (R$) *</Label>
                 <Input type="number" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0,00" />

@@ -24,13 +24,19 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, category, durationMinutes, price, cost, description } = req.body;
+    const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
     if (!name || !category || !durationMinutes || !price) {
-      res.status(400).json({ error: "Bad Request", message: "Name, category, durationMinutes and price are required" });
+      res.status(400).json({ error: "Bad Request", message: "name, category, durationMinutes e price são obrigatórios" });
       return;
     }
     const [procedure] = await db.insert(proceduresTable).values({
-      name, category, durationMinutes, price: String(price), cost: cost ? String(cost) : "0", description
+      name,
+      category,
+      durationMinutes: parseInt(durationMinutes),
+      price: String(price),
+      cost: cost ? String(cost) : "0",
+      description,
+      maxCapacity: maxCapacity ? parseInt(maxCapacity) : 1,
     }).returning();
     res.status(201).json(procedure);
   } catch (err) {
@@ -42,9 +48,17 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, category, durationMinutes, price, cost, description } = req.body;
+    const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
     const [procedure] = await db.update(proceduresTable)
-      .set({ name, category, durationMinutes, price: price ? String(price) : undefined, cost: cost !== undefined ? String(cost) : undefined, description })
+      .set({
+        name,
+        category,
+        durationMinutes: durationMinutes ? parseInt(durationMinutes) : undefined,
+        price: price ? String(price) : undefined,
+        cost: cost !== undefined ? String(cost) : undefined,
+        description,
+        maxCapacity: maxCapacity !== undefined ? parseInt(maxCapacity) : undefined,
+      })
       .where(eq(proceduresTable.id, id))
       .returning();
     if (!procedure) {
