@@ -134,14 +134,20 @@ router.get("/records", async (req, res) => {
 
 router.post("/records", async (req, res) => {
   try {
-    const { type = "despesa", amount, description, category } = req.body;
+    const { type = "despesa", amount, description, category, patientId } = req.body;
     if (!amount || !description) {
       res.status(400).json({ error: "Bad Request", message: "Amount and description are required" });
       return;
     }
 
     const [record] = await db.insert(financialRecordsTable)
-      .values({ type, amount: String(amount), description, category })
+      .values({
+        type,
+        amount: String(amount),
+        description,
+        category,
+        patientId: patientId ? parseInt(String(patientId)) : undefined,
+      })
       .returning();
     res.status(201).json(record);
   } catch (err) {

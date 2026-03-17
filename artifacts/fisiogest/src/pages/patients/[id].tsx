@@ -118,8 +118,18 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
   return (
     <Card className="border-none shadow-md">
       <CardHeader className="border-b border-slate-100 pb-4">
-        <CardTitle className="text-xl">Ficha de Anamnese</CardTitle>
-        <CardDescription>Histórico completo de saúde do paciente</CardDescription>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-xl">Ficha de Anamnese</CardTitle>
+            <CardDescription>Histórico completo de saúde do paciente</CardDescription>
+          </div>
+          {data?.updatedAt && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 shrink-0">
+              <Clock className="w-3 h-3" />
+              Atualizado em {formatDateTime(data.updatedAt)}
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-6 space-y-5">
         <div className="space-y-2">
@@ -400,6 +410,16 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const { data: appointments = [] } = useQuery<any[]>({
+    queryKey: [`/api/patients/${patientId}/appointments`],
+    queryFn: () => fetch(`/api/patients/${patientId}/appointments`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` }
+    }).then(r => r.json()),
+    enabled: !!patientId,
+  });
+
+  const completedSessions = appointments.filter((a: any) => a.status === "concluido").length;
+
   const [form, setForm] = useState({
     objectives: "", techniques: "", frequency: "",
     estimatedSessions: "" as string | number,
@@ -496,6 +516,46 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Session progress */}
+        {(form.estimatedSessions || completedSessions > 0) && (
+          <div className="pt-2 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-primary" /> Progresso de Sessões
+              </Label>
+              <span className={`text-sm font-bold ${
+                form.estimatedSessions && completedSessions >= Number(form.estimatedSessions)
+                  ? "text-green-600"
+                  : "text-primary"
+              }`}>
+                {completedSessions} / {form.estimatedSessions || "—"}
+              </span>
+            </div>
+            {form.estimatedSessions ? (
+              <>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-500 ${
+                      completedSessions >= Number(form.estimatedSessions)
+                        ? "bg-green-500"
+                        : "bg-primary"
+                    }`}
+                    style={{ width: `${Math.min(100, (completedSessions / Number(form.estimatedSessions)) * 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-400">
+                  {completedSessions >= Number(form.estimatedSessions)
+                    ? "Meta atingida! Considere registrar a alta."
+                    : `${Math.max(0, Number(form.estimatedSessions) - completedSessions)} sessão(ões) restante(s)`}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-slate-400">{completedSessions} sessão(ões) concluída(s). Defina o total estimado para ver o progresso.</p>
+            )}
+          </div>
+        )}
+
         <div className="pt-3 flex justify-end">
           <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
@@ -531,6 +591,19 @@ function EvolutionsTab({ patientId }: { patientId: number }) {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/evolutions`] });
+
+  const sortedApptsByDate = [...appointments].sort((a: any, b: any) =>
+    new Date(a.date + "T" + (a.startTime || "00:00")).getTime() -
+    new Date(b.date + "T" + (b.startTime || "00:00")).getTime()
+  );
+
+  const getSessionNumber = (ev: any, fallbackIdx: number): number => {
+    if (ev.appointmentId) {
+      const pos = sortedApptsByDate.findIndex((a: any) => a.id === ev.appointmentId);
+      if (pos !== -1) return pos + 1;
+    }
+    return evolutions.length - fallbackIdx;
+  };
 
   const buildPayload = () => ({
     ...form,
@@ -680,15 +753,16 @@ function EvolutionsTab({ patientId }: { patientId: number }) {
           <div className="space-y-4">
             {evolutions.map((ev, idx) => {
               const linkedAppt = appointments.find((a: any) => a.id === ev.appointmentId);
+              const sessionNum = getSessionNumber(ev, idx);
               return (
                 <div key={ev.id} className="relative flex gap-4 pl-10">
                   <div className="absolute left-0 w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shadow-md z-10">
-                    {evolutions.length - idx}
+                    {sessionNum}
                   </div>
                   {editingId === ev.id ? (
                     <div className="flex-1">
                       <EvoForm
-                        title={`Editar Evolução #${evolutions.length - idx}`}
+                        title={`Editar Sessão #${sessionNum}`}
                         onSave={() => handleUpdate(ev.id)}
                         onCancel={() => { setEditingId(null); setForm(emptyEvoForm); }}
                         saving={updateMutation.isPending}
@@ -796,7 +870,11 @@ function HistoryTab({ patientId }: { patientId: number }) {
 
 // ─── Financial Tab ──────────────────────────────────────────────────────────────
 
+const emptyPayForm = { type: "receita" as "receita" | "despesa", amount: "", description: "", category: "" };
+
 function FinancialTab({ patientId }: { patientId: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: records = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/financial`],
     queryFn: () => fetch(`/api/patients/${patientId}/financial`, {
@@ -805,6 +883,38 @@ function FinancialTab({ patientId }: { patientId: number }) {
     enabled: !!patientId,
   });
 
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [payForm, setPayForm] = useState(emptyPayForm);
+  const [saving, setSaving] = useState(false);
+
+  const handleRegisterPayment = async () => {
+    if (!payForm.amount || !payForm.description) {
+      toast({ title: "Preencha valor e descrição", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/financial/records", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}`,
+        },
+        body: JSON.stringify({ ...payForm, amount: Number(payForm.amount), patientId }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Registro salvo", description: "Transação registrada com sucesso." });
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/financial`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}`] });
+      setPayForm(emptyPayForm);
+      setShowPayForm(false);
+    } catch {
+      toast({ title: "Erro ao salvar", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
   const totalReceitas = records.filter((r: any) => r.type === "receita").reduce((s: number, r: any) => s + Number(r.amount), 0);
@@ -812,10 +922,83 @@ function FinancialTab({ patientId }: { patientId: number }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-800">Histórico Financeiro</h3>
-        <p className="text-sm text-slate-500">{records.length} transação(ões) registrada(s)</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Histórico Financeiro</h3>
+          <p className="text-sm text-slate-500">{records.length} transação(ões) registrada(s)</p>
+        </div>
+        <Button
+          onClick={() => { setShowPayForm(!showPayForm); setPayForm(emptyPayForm); }}
+          className="h-10 px-4 rounded-xl text-sm"
+          variant={showPayForm ? "outline" : "default"}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          {showPayForm ? "Cancelar" : "Registrar Transação"}
+        </Button>
       </div>
+
+      {showPayForm && (
+        <Card className="border-2 border-primary/20 shadow-md">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <CardTitle className="text-base flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-primary" /> Nova Transação Financeira
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tipo</Label>
+                <Select value={payForm.type} onValueChange={(v: "receita" | "despesa") => setPayForm({ ...payForm, type: v })}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="receita">Receita (pagamento recebido)</SelectItem>
+                    <SelectItem value="despesa">Despesa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Valor (R$) <span className="text-red-500">*</span></Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="bg-slate-50 border-slate-200 focus:bg-white"
+                  value={payForm.amount}
+                  onChange={e => setPayForm({ ...payForm, amount: e.target.value })}
+                  placeholder="Ex: 150.00"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Descrição <span className="text-red-500">*</span></Label>
+              <Input
+                className="bg-slate-50 border-slate-200 focus:bg-white"
+                value={payForm.description}
+                onChange={e => setPayForm({ ...payForm, description: e.target.value })}
+                placeholder="Ex: Pagamento de sessão, Avaliação inicial…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Categoria <span className="text-slate-400 font-normal">(opcional)</span></Label>
+              <Input
+                className="bg-slate-50 border-slate-200 focus:bg-white"
+                value={payForm.category}
+                onChange={e => setPayForm({ ...payForm, category: e.target.value })}
+                placeholder="Ex: Fisioterapia, Pilates…"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-1">
+              <Button variant="outline" onClick={() => setShowPayForm(false)} className="rounded-xl">Cancelar</Button>
+              <Button onClick={handleRegisterPayment} disabled={saving} className="rounded-xl">
+                {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Salvar Transação
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="border-none bg-gradient-to-br from-green-50 to-emerald-50 shadow-sm">
@@ -1155,29 +1338,37 @@ export default function PatientDetail() {
         {/* Main Content */}
         <div className="lg:col-span-2">
           <Tabs defaultValue="anamnesis" className="w-full">
-            <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-slate-200 mb-5 h-auto grid grid-cols-3 gap-1">
-              <TabsTrigger value="anamnesis" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <ClipboardList className="w-3.5 h-3.5" /> Anamnese
-              </TabsTrigger>
-              <TabsTrigger value="evaluations" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <Activity className="w-3.5 h-3.5" /> Avaliações
-              </TabsTrigger>
-              <TabsTrigger value="treatment" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <Target className="w-3.5 h-3.5" /> Plano Trat.
-              </TabsTrigger>
-              <TabsTrigger value="evolutions" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5" /> Evoluções
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <History className="w-3.5 h-3.5" /> Histórico
-              </TabsTrigger>
-              <TabsTrigger value="financial" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5" /> Financeiro
-              </TabsTrigger>
-              <TabsTrigger value="discharge" className="col-span-3 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5 border border-dashed border-slate-300 data-[state=inactive]:text-slate-500">
-                <LogOut className="w-3.5 h-3.5" /> Alta Fisioterapêutica
-              </TabsTrigger>
-            </TabsList>
+            <div className="mb-5 space-y-1">
+              {/* Main 6 tabs — scrollable on mobile, 3-col grid on md+ */}
+              <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-slate-200 h-auto flex flex-wrap gap-1">
+                {[
+                  { value: "anamnesis",   icon: <ClipboardList className="w-3.5 h-3.5 shrink-0" />, label: "Anamnese" },
+                  { value: "evaluations", icon: <Activity className="w-3.5 h-3.5 shrink-0" />,      label: "Avaliações" },
+                  { value: "treatment",   icon: <Target className="w-3.5 h-3.5 shrink-0" />,         label: "Plano Trat." },
+                  { value: "evolutions",  icon: <TrendingUp className="w-3.5 h-3.5 shrink-0" />,     label: "Evoluções" },
+                  { value: "history",     icon: <History className="w-3.5 h-3.5 shrink-0" />,        label: "Histórico" },
+                  { value: "financial",   icon: <DollarSign className="w-3.5 h-3.5 shrink-0" />,     label: "Financeiro" },
+                ].map(tab => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="flex-1 basis-[calc(33.33%-4px)] min-w-[90px] rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5"
+                  >
+                    {tab.icon}
+                    <span className="truncate">{tab.label}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {/* Alta tab — always full width, visually distinct */}
+              <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-dashed border-slate-300 h-auto">
+                <TabsTrigger
+                  value="discharge"
+                  className="w-full rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                >
+                  <LogOut className="w-3.5 h-3.5 shrink-0" /> Alta Fisioterapêutica (COFFITO)
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="anamnesis"><AnamnesisTab patientId={patientId} /></TabsContent>
             <TabsContent value="evaluations"><EvaluationsTab patientId={patientId} /></TabsContent>
