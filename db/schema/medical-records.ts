@@ -33,9 +33,10 @@ export const evaluationsTable = pgTable("evaluations", {
   orthopedicTests: text("orthopedic_tests"),
   functionalDiagnosis: text("functional_diagnosis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertEvaluationSchema = createInsertSchema(evaluationsTable).omit({ id: true, createdAt: true });
+export const insertEvaluationSchema = createInsertSchema(evaluationsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEvaluation = z.infer<typeof insertEvaluationSchema>;
 export type Evaluation = typeof evaluationsTable.$inferSelect;
 

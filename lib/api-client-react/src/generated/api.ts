@@ -2053,6 +2053,208 @@ export const useCreateEvaluation = <
 };
 
 /**
+ * @summary Update a patient evaluation
+ */
+export const getUpdateEvaluationUrl = (
+  patientId: number,
+  evaluationId: number,
+) => {
+  return `/api/patients/${patientId}/evaluations/${evaluationId}`;
+};
+
+export const updateEvaluation = async (
+  patientId: number,
+  evaluationId: number,
+  createEvaluationRequest: CreateEvaluationRequest,
+  options?: RequestInit,
+): Promise<Evaluation> => {
+  return customFetch<Evaluation>(
+    getUpdateEvaluationUrl(patientId, evaluationId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createEvaluationRequest),
+    },
+  );
+};
+
+export const getUpdateEvaluationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEvaluation>>,
+    TError,
+    {
+      patientId: number;
+      evaluationId: number;
+      data: BodyType<CreateEvaluationRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateEvaluation>>,
+  TError,
+  {
+    patientId: number;
+    evaluationId: number;
+    data: BodyType<CreateEvaluationRequest>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateEvaluation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateEvaluation>>,
+    {
+      patientId: number;
+      evaluationId: number;
+      data: BodyType<CreateEvaluationRequest>;
+    }
+  > = (props) => {
+    const { patientId, evaluationId, data } = props ?? {};
+
+    return updateEvaluation(patientId, evaluationId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateEvaluationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateEvaluation>>
+>;
+export type UpdateEvaluationMutationBody = BodyType<CreateEvaluationRequest>;
+export type UpdateEvaluationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a patient evaluation
+ */
+export const useUpdateEvaluation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEvaluation>>,
+    TError,
+    {
+      patientId: number;
+      evaluationId: number;
+      data: BodyType<CreateEvaluationRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateEvaluation>>,
+  TError,
+  {
+    patientId: number;
+    evaluationId: number;
+    data: BodyType<CreateEvaluationRequest>;
+  },
+  TContext
+> => {
+  return useMutation(getUpdateEvaluationMutationOptions(options));
+};
+
+/**
+ * @summary Delete a patient evaluation
+ */
+export const getDeleteEvaluationUrl = (
+  patientId: number,
+  evaluationId: number,
+) => {
+  return `/api/patients/${patientId}/evaluations/${evaluationId}`;
+};
+
+export const deleteEvaluation = async (
+  patientId: number,
+  evaluationId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteEvaluationUrl(patientId, evaluationId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEvaluationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEvaluation>>,
+    TError,
+    { patientId: number; evaluationId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEvaluation>>,
+  TError,
+  { patientId: number; evaluationId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEvaluation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEvaluation>>,
+    { patientId: number; evaluationId: number }
+  > = (props) => {
+    const { patientId, evaluationId } = props ?? {};
+
+    return deleteEvaluation(patientId, evaluationId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEvaluationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEvaluation>>
+>;
+
+export type DeleteEvaluationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a patient evaluation
+ */
+export const useDeleteEvaluation = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEvaluation>>,
+    TError,
+    { patientId: number; evaluationId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEvaluation>>,
+  TError,
+  { patientId: number; evaluationId: number },
+  TContext
+> => {
+  return useMutation(getDeleteEvaluationMutationOptions(options));
+};
+
+/**
  * @summary Get patient treatment plan
  */
 export const getGetTreatmentPlanUrl = (patientId: number) => {
@@ -2402,6 +2604,205 @@ export const useCreateEvolution = <
   TContext
 > => {
   return useMutation(getCreateEvolutionMutationOptions(options));
+};
+
+/**
+ * @summary Update a session evolution note
+ */
+export const getUpdateEvolutionUrl = (
+  patientId: number,
+  evolutionId: number,
+) => {
+  return `/api/patients/${patientId}/evolutions/${evolutionId}`;
+};
+
+export const updateEvolution = async (
+  patientId: number,
+  evolutionId: number,
+  createEvolutionRequest: CreateEvolutionRequest,
+  options?: RequestInit,
+): Promise<Evolution> => {
+  return customFetch<Evolution>(getUpdateEvolutionUrl(patientId, evolutionId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createEvolutionRequest),
+  });
+};
+
+export const getUpdateEvolutionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEvolution>>,
+    TError,
+    {
+      patientId: number;
+      evolutionId: number;
+      data: BodyType<CreateEvolutionRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateEvolution>>,
+  TError,
+  {
+    patientId: number;
+    evolutionId: number;
+    data: BodyType<CreateEvolutionRequest>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateEvolution"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateEvolution>>,
+    {
+      patientId: number;
+      evolutionId: number;
+      data: BodyType<CreateEvolutionRequest>;
+    }
+  > = (props) => {
+    const { patientId, evolutionId, data } = props ?? {};
+
+    return updateEvolution(patientId, evolutionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateEvolutionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateEvolution>>
+>;
+export type UpdateEvolutionMutationBody = BodyType<CreateEvolutionRequest>;
+export type UpdateEvolutionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a session evolution note
+ */
+export const useUpdateEvolution = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEvolution>>,
+    TError,
+    {
+      patientId: number;
+      evolutionId: number;
+      data: BodyType<CreateEvolutionRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateEvolution>>,
+  TError,
+  {
+    patientId: number;
+    evolutionId: number;
+    data: BodyType<CreateEvolutionRequest>;
+  },
+  TContext
+> => {
+  return useMutation(getUpdateEvolutionMutationOptions(options));
+};
+
+/**
+ * @summary Delete a session evolution note
+ */
+export const getDeleteEvolutionUrl = (
+  patientId: number,
+  evolutionId: number,
+) => {
+  return `/api/patients/${patientId}/evolutions/${evolutionId}`;
+};
+
+export const deleteEvolution = async (
+  patientId: number,
+  evolutionId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteEvolutionUrl(patientId, evolutionId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEvolutionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEvolution>>,
+    TError,
+    { patientId: number; evolutionId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEvolution>>,
+  TError,
+  { patientId: number; evolutionId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEvolution"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEvolution>>,
+    { patientId: number; evolutionId: number }
+  > = (props) => {
+    const { patientId, evolutionId } = props ?? {};
+
+    return deleteEvolution(patientId, evolutionId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEvolutionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEvolution>>
+>;
+
+export type DeleteEvolutionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a session evolution note
+ */
+export const useDeleteEvolution = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEvolution>>,
+    TError,
+    { patientId: number; evolutionId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEvolution>>,
+  TError,
+  { patientId: number; evolutionId: number },
+  TContext
+> => {
+  return useMutation(getDeleteEvolutionMutationOptions(options));
 };
 
 /**

@@ -552,6 +552,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/Evaluation"
 
+  /patients/{patientId}/evaluations/{evaluationId}:
+    put:
+      operationId: updateEvaluation
+      tags: [medical-records]
+      summary: Update a patient evaluation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: evaluationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvaluationRequest"
+      responses:
+        "200":
+          description: Evaluation updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evaluation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteEvaluation
+      tags: [medical-records]
+      summary: Delete a patient evaluation
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: evaluationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /patients/{patientId}/treatment-plan:
     get:
       operationId: getTreatmentPlan
@@ -651,6 +715,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Evolution"
+
+  /patients/{patientId}/evolutions/{evolutionId}:
+    put:
+      operationId: updateEvolution
+      tags: [medical-records]
+      summary: Update a session evolution note
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: evolutionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvolutionRequest"
+      responses:
+        "200":
+          description: Evolution updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evolution"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteEvolution
+      tags: [medical-records]
+      summary: Delete a session evolution note
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: evolutionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /patients/{patientId}/discharge-summary:
     get:
@@ -1280,10 +1408,14 @@ components:
         createdAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       required:
         - id
         - patientId
         - createdAt
+        - updatedAt
 
     CreateEvaluationRequest:
       type: object
