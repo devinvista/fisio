@@ -16,4 +16,5 @@ export interface Evaluation {
   orthopedicTests?: string;
   functionalDiagnosis?: string;
   createdAt: Date;
+  updatedAt: Date;
 }

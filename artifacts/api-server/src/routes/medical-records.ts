@@ -10,7 +10,7 @@ import {
   appointmentsTable,
   proceduresTable
 } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
 const router = Router({ mergeParams: true });
@@ -84,6 +84,50 @@ router.post("/evaluations", async (req, res) => {
   }
 });
 
+router.put("/evaluations/:evaluationId", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const evaluationId = parseInt(req.params.evaluationId);
+    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
+
+    const [existing] = await db.select().from(evaluationsTable)
+      .where(eq(evaluationsTable.id, evaluationId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const [updated] = await db.update(evaluationsTable)
+      .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
+      .where(eq(evaluationsTable.id, evaluationId))
+      .returning();
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/evaluations/:evaluationId", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const evaluationId = parseInt(req.params.evaluationId);
+
+    const [existing] = await db.select().from(evaluationsTable)
+      .where(eq(evaluationsTable.id, evaluationId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    await db.delete(evaluationsTable).where(eq(evaluationsTable.id, evaluationId));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.get("/treatment-plan", async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
@@ -146,6 +190,50 @@ router.post("/evolutions", async (req, res) => {
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications })
       .returning();
     res.status(201).json(evolution);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.put("/evolutions/:evolutionId", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const evolutionId = parseInt(req.params.evolutionId);
+    const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
+
+    const [existing] = await db.select().from(evolutionsTable)
+      .where(eq(evolutionsTable.id, evolutionId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const [updated] = await db.update(evolutionsTable)
+      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications })
+      .where(eq(evolutionsTable.id, evolutionId))
+      .returning();
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/evolutions/:evolutionId", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const evolutionId = parseInt(req.params.evolutionId);
+
+    const [existing] = await db.select().from(evolutionsTable)
+      .where(eq(evolutionsTable.id, evolutionId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    await db.delete(evolutionsTable).where(eq(evolutionsTable.id, evolutionId));
+    res.status(204).send();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -222,9 +310,14 @@ router.get("/financial", async (req, res) => {
         procedure: proceduresTable,
       })
       .from(financialRecordsTable)
-      .innerJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
+      .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
-      .where(eq(appointmentsTable.patientId, patientId))
+      .where(
+        or(
+          eq(financialRecordsTable.patientId, patientId),
+          eq(appointmentsTable.patientId, patientId)
+        )
+      )
       .orderBy(desc(financialRecordsTable.createdAt));
 
     res.json(rows.map(r => ({ ...r.record, appointment: r.appointment, procedure: r.procedure })));

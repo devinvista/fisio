@@ -599,6 +599,7 @@ export const ListEvaluationsResponseItem = zod.object({
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
   createdAt: zod.date(),
+  updatedAt: zod.date(),
 });
 export const ListEvaluationsResponse = zod.array(ListEvaluationsResponseItem);
 
@@ -616,6 +617,44 @@ export const CreateEvaluationBody = zod.object({
   muscleStrength: zod.string().optional(),
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
+});
+
+/**
+ * @summary Update a patient evaluation
+ */
+export const UpdateEvaluationParams = zod.object({
+  patientId: zod.coerce.number(),
+  evaluationId: zod.coerce.number(),
+});
+
+export const UpdateEvaluationBody = zod.object({
+  inspection: zod.string().optional(),
+  posture: zod.string().optional(),
+  rangeOfMotion: zod.string().optional(),
+  muscleStrength: zod.string().optional(),
+  orthopedicTests: zod.string().optional(),
+  functionalDiagnosis: zod.string().optional(),
+});
+
+export const UpdateEvaluationResponse = zod.object({
+  id: zod.number(),
+  patientId: zod.number(),
+  inspection: zod.string().optional(),
+  posture: zod.string().optional(),
+  rangeOfMotion: zod.string().optional(),
+  muscleStrength: zod.string().optional(),
+  orthopedicTests: zod.string().optional(),
+  functionalDiagnosis: zod.string().optional(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
+ * @summary Delete a patient evaluation
+ */
+export const DeleteEvaluationParams = zod.object({
+  patientId: zod.coerce.number(),
+  evaluationId: zod.coerce.number(),
 });
 
 /**
@@ -696,6 +735,41 @@ export const CreateEvolutionBody = zod.object({
   patientResponse: zod.string().optional(),
   clinicalNotes: zod.string().optional(),
   complications: zod.string().optional(),
+});
+
+/**
+ * @summary Update a session evolution note
+ */
+export const UpdateEvolutionParams = zod.object({
+  patientId: zod.coerce.number(),
+  evolutionId: zod.coerce.number(),
+});
+
+export const UpdateEvolutionBody = zod.object({
+  appointmentId: zod.number().optional(),
+  description: zod.string().optional(),
+  patientResponse: zod.string().optional(),
+  clinicalNotes: zod.string().optional(),
+  complications: zod.string().optional(),
+});
+
+export const UpdateEvolutionResponse = zod.object({
+  id: zod.number(),
+  patientId: zod.number(),
+  appointmentId: zod.number().optional(),
+  description: zod.string().optional(),
+  patientResponse: zod.string().optional(),
+  clinicalNotes: zod.string().optional(),
+  complications: zod.string().optional(),
+  createdAt: zod.date(),
+});
+
+/**
+ * @summary Delete a session evolution note
+ */
+export const DeleteEvolutionParams = zod.object({
+  patientId: zod.coerce.number(),
+  evolutionId: zod.coerce.number(),
 });
 
 /**
