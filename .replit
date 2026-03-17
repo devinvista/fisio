@@ -15,6 +15,44 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "FisioGest: API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "FisioGest: Web"
+
+[[workflows.workflow]]
+name = "FisioGest: API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3001 tsx server/index.ts"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "FisioGest: Web"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "API_PORT=3001 PORT=3000 vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "PNPM_WORKSPACE"
