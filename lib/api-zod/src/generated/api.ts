@@ -699,6 +699,49 @@ export const CreateEvolutionBody = zod.object({
 });
 
 /**
+ * @summary Get patient discharge summary
+ */
+export const GetDischargeParams = zod.object({
+  patientId: zod.coerce.number(),
+});
+
+export const GetDischargeResponse = zod.object({
+  id: zod.number(),
+  patientId: zod.number(),
+  dischargeDate: zod.date(),
+  dischargeReason: zod.string(),
+  achievedResults: zod.string().optional(),
+  recommendations: zod.string().optional(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
+ * @summary Create or update patient discharge summary
+ */
+export const SaveDischargeParams = zod.object({
+  patientId: zod.coerce.number(),
+});
+
+export const SaveDischargeBody = zod.object({
+  dischargeDate: zod.date(),
+  dischargeReason: zod.string(),
+  achievedResults: zod.string().optional(),
+  recommendations: zod.string().optional(),
+});
+
+export const SaveDischargeResponse = zod.object({
+  id: zod.number(),
+  patientId: zod.number(),
+  dischargeDate: zod.date(),
+  dischargeReason: zod.string(),
+  achievedResults: zod.string().optional(),
+  recommendations: zod.string().optional(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
  * @summary Get financial dashboard data
  */
 export const GetFinancialDashboardQueryParams = zod.object({

@@ -306,6 +306,24 @@ export interface CreateEvolutionRequest {
   complications?: string;
 }
 
+export interface DischargeSummary {
+  id: number;
+  patientId: number;
+  dischargeDate: string;
+  dischargeReason: string;
+  achievedResults?: string;
+  recommendations?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveDischargeRequest {
+  dischargeDate: string;
+  dischargeReason: string;
+  achievedResults?: string;
+  recommendations?: string;
+}
+
 export type FinancialRecordType =
   (typeof FinancialRecordType)[keyof typeof FinancialRecordType];
 

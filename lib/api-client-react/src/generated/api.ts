@@ -29,6 +29,7 @@ import type {
   CreateProcedureRequest,
   CreateTreatmentPlanRequest,
   DashboardData,
+  DischargeSummary,
   ErrorResponse,
   Evaluation,
   Evolution,
@@ -51,6 +52,7 @@ import type {
   Procedure,
   ProcedureRevenue,
   RegisterRequest,
+  SaveDischargeRequest,
   ScheduleOccupation,
   TreatmentPlan,
   UpdateAppointmentRequest,
@@ -2400,6 +2402,180 @@ export const useCreateEvolution = <
   TContext
 > => {
   return useMutation(getCreateEvolutionMutationOptions(options));
+};
+
+/**
+ * @summary Get patient discharge summary
+ */
+export const getGetDischargeUrl = (patientId: number) => {
+  return `/api/patients/${patientId}/discharge-summary`;
+};
+
+export const getDischarge = async (
+  patientId: number,
+  options?: RequestInit,
+): Promise<DischargeSummary> => {
+  return customFetch<DischargeSummary>(getGetDischargeUrl(patientId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDischargeQueryKey = (patientId: number) => {
+  return [`/api/patients/${patientId}/discharge-summary`] as const;
+};
+
+export const getGetDischargeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDischarge>>,
+  TError = ErrorType<void>,
+>(
+  patientId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDischarge>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDischargeQueryKey(patientId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDischarge>>> = ({
+    signal,
+  }) => getDischarge(patientId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!patientId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDischarge>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDischargeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDischarge>>
+>;
+export type GetDischargeQueryError = ErrorType<void>;
+
+/**
+ * @summary Get patient discharge summary
+ */
+
+export function useGetDischarge<
+  TData = Awaited<ReturnType<typeof getDischarge>>,
+  TError = ErrorType<void>,
+>(
+  patientId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDischarge>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDischargeQueryOptions(patientId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create or update patient discharge summary
+ */
+export const getSaveDischargeUrl = (patientId: number) => {
+  return `/api/patients/${patientId}/discharge-summary`;
+};
+
+export const saveDischarge = async (
+  patientId: number,
+  saveDischargeRequest: SaveDischargeRequest,
+  options?: RequestInit,
+): Promise<DischargeSummary> => {
+  return customFetch<DischargeSummary>(getSaveDischargeUrl(patientId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(saveDischargeRequest),
+  });
+};
+
+export const getSaveDischargeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveDischarge>>,
+    TError,
+    { patientId: number; data: BodyType<SaveDischargeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveDischarge>>,
+  TError,
+  { patientId: number; data: BodyType<SaveDischargeRequest> },
+  TContext
+> => {
+  const mutationKey = ["saveDischarge"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveDischarge>>,
+    { patientId: number; data: BodyType<SaveDischargeRequest> }
+  > = (props) => {
+    const { patientId, data } = props ?? {};
+
+    return saveDischarge(patientId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveDischargeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveDischarge>>
+>;
+export type SaveDischargeMutationBody = BodyType<SaveDischargeRequest>;
+export type SaveDischargeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create or update patient discharge summary
+ */
+export const useSaveDischarge = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveDischarge>>,
+    TError,
+    { patientId: number; data: BodyType<SaveDischargeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveDischarge>>,
+  TError,
+  { patientId: number; data: BodyType<SaveDischargeRequest> },
+  TContext
+> => {
+  return useMutation(getSaveDischargeMutationOptions(options));
 };
 
 /**

@@ -10,6 +10,8 @@ import {
   useSaveTreatmentPlan,
   useListEvolutions,
   useCreateEvolution,
+  useGetDischarge,
+  useSaveDischarge,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,7 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Phone, Mail, Calendar, Activity, ClipboardList, TrendingUp,
   FileText, DollarSign, History, Plus, ChevronDown, ChevronUp, User,
-  MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle
+  MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle,
+  LogOut
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -687,6 +690,170 @@ function FinancialTab({ patientId }: { patientId: number }) {
   );
 }
 
+// ─── Discharge Tab ──────────────────────────────────────────────────────────────
+
+const DISCHARGE_REASONS = [
+  "Objetivo alcançado",
+  "Alta a pedido do paciente",
+  "Encaminhamento para outro serviço",
+  "Abandono de tratamento",
+  "Sem resposta ao tratamento",
+  "Outro",
+];
+
+function DischargeTab({ patientId }: { patientId: number }) {
+  const { data, isLoading } = useGetDischarge(patientId);
+  const mutation = useSaveDischarge();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const today = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ dischargeDate: today, dischargeReason: "", achievedResults: "", recommendations: "" });
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (data) {
+      setForm({
+        dischargeDate: data.dischargeDate || today,
+        dischargeReason: data.dischargeReason || "",
+        achievedResults: data.achievedResults || "",
+        recommendations: data.recommendations || "",
+      });
+    }
+  }, [data]);
+
+  const showForm = (!data && !isLoading) || editing;
+
+  const handleSave = () => {
+    if (!form.dischargeReason || !form.dischargeDate) return;
+    mutation.mutate({ patientId, data: form }, {
+      onSuccess: () => {
+        toast({ title: "Alta registrada", description: "Documento de alta fisioterapêutica salvo com sucesso." });
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/discharge-summary`] });
+        setEditing(false);
+      },
+      onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
+    });
+  };
+
+  if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Alta Fisioterapêutica</h3>
+          <p className="text-sm text-slate-500">Exigência regulatória COFFITO — finalização formal do tratamento</p>
+        </div>
+        {data && !editing && (
+          <Button variant="outline" onClick={() => setEditing(true)} className="h-9 px-4 rounded-xl text-sm">
+            Editar Alta
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-700">
+          <span className="font-semibold">Requisito COFFITO:</span> Todo prontuário deve conter o documento de alta com motivo, resultados e recomendações para o paciente.
+        </p>
+      </div>
+
+      {showForm ? (
+        <Card className="border-2 border-primary/20 shadow-md">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <CardTitle className="text-base flex items-center gap-2">
+              <LogOut className="w-4 h-4 text-primary" />
+              {data ? "Editar Alta Fisioterapêutica" : "Registrar Alta Fisioterapêutica"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Data da Alta <span className="text-red-500">*</span></Label>
+              <Input type="date" className="bg-slate-50 border-slate-200 focus:bg-white max-w-xs"
+                value={form.dischargeDate} onChange={e => setForm({ ...form, dischargeDate: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Motivo da Alta <span className="text-red-500">*</span></Label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {DISCHARGE_REASONS.map(r => (
+                  <button key={r} type="button"
+                    onClick={() => setForm({ ...form, dischargeReason: r })}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      form.dischargeReason === r
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary"
+                    }`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none text-sm"
+                value={form.dischargeReason}
+                onChange={e => setForm({ ...form, dischargeReason: e.target.value })}
+                placeholder="Selecione uma opção acima ou descreva o motivo da alta..." />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Resultados Alcançados</Label>
+              <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                value={form.achievedResults} onChange={e => setForm({ ...form, achievedResults: e.target.value })}
+                placeholder="Descreva a evolução funcional, redução de dor, ganhos de amplitude e força muscular..." />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Recomendações ao Paciente</Label>
+              <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                value={form.recommendations} onChange={e => setForm({ ...form, recommendations: e.target.value })}
+                placeholder="Orientações pós-alta: exercícios domiciliares, cuidados posturais, retorno se necessário..." />
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              {editing && (
+                <Button variant="outline" onClick={() => setEditing(false)} className="rounded-xl">Cancelar</Button>
+              )}
+              <Button onClick={handleSave}
+                disabled={mutation.isPending || !form.dischargeReason || !form.dischargeDate}
+                className="h-11 px-8 rounded-xl shadow-md shadow-primary/20">
+                {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogOut className="w-4 h-4 mr-2" />}
+                Registrar Alta
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : data ? (
+        <Card className="border-none shadow-md overflow-hidden">
+          <div className="h-2 bg-gradient-to-r from-green-400 to-emerald-500" />
+          <CardHeader className="pb-4 border-b border-slate-100">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                  <LogOut className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-base text-slate-800">Alta Concedida</CardTitle>
+                  <p className="text-xs text-slate-500">
+                    {formatDate(data.dischargeDate)} &bull; Registrado em {formatDateTime(data.updatedAt)}
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                <CheckCircle className="w-3.5 h-3.5" /> Alta Concedida
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <InfoBlock label="Motivo da Alta" value={data.dischargeReason} />
+            {data.achievedResults && <InfoBlock label="Resultados Alcançados" value={data.achievedResults} />}
+            {data.recommendations && <InfoBlock label="Recomendações ao Paciente" value={data.recommendations} />}
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function PatientDetail() {
@@ -803,6 +970,9 @@ export default function PatientDetail() {
               <TabsTrigger value="financial" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" /> Financeiro
               </TabsTrigger>
+              <TabsTrigger value="discharge" className="col-span-3 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2.5 flex items-center justify-center gap-1.5 border border-dashed border-slate-300 data-[state=inactive]:text-slate-500">
+                <LogOut className="w-3.5 h-3.5" /> Alta Fisioterapêutica
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="anamnesis"><AnamnesisTab patientId={patientId} /></TabsContent>
@@ -811,6 +981,7 @@ export default function PatientDetail() {
             <TabsContent value="evolutions"><EvolutionsTab patientId={patientId} /></TabsContent>
             <TabsContent value="history"><HistoryTab patientId={patientId} /></TabsContent>
             <TabsContent value="financial"><FinancialTab patientId={patientId} /></TabsContent>
+            <TabsContent value="discharge"><DischargeTab patientId={patientId} /></TabsContent>
           </Tabs>
         </div>
       </div>

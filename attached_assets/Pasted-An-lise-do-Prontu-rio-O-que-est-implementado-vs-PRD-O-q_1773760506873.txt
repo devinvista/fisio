@@ -1,0 +1,44 @@
+Análise do Prontuário — O que está implementado vs. PRD
+✅ O que está correto e funcionando
+Funcionalidade	Status
+Anamnese (queixa, HDA, HMP, medicamentos, alergias, histórico familiar, hábitos, EVA)	Completo
+Avaliação fisioterapêutica (inspeção, postura, ADM, força, testes, diagnóstico funcional)	Completo
+Plano de tratamento (objetivos, técnicas, frequência, sessões estimadas, status)	Completo
+Evoluções por sessão (descrição, resposta do paciente, notas clínicas, intercorrências)	Completo
+Histórico de consultas	Completo
+Financeiro do paciente	Completo
+________________________________________
+❌ O que falta do PRD
+1. Alta Fisioterapêutica (Módulo 2, item 5)
+O PRD exige: motivo da alta, resultado alcançado, recomendações. Isso não existe no banco de dados nem na interface. É um requisito regulatório do COFFITO — clínicas precisam disso para finalizar tratamentos.
+2. Editar/Excluir Avaliações e Evoluções
+Só existe criar. Não há botão de edição ou exclusão. Em prontuários clínicos, erros de digitação precisam ser corrigíveis. Avaliações também não têm updatedAt no schema.
+3. Evolução não vincula consulta
+O schema tem campo appointmentId nas evoluções, mas o formulário na UI não exibe essa seleção. O fisioterapeuta deveria poder selecionar "Qual consulta deu origem a essa evolução?".
+4. Cabeçalho do paciente incompleto
+Os campos profissão e contato de emergência existem no banco mas não aparecem no header da página. A idade do paciente também não é calculada a partir da data de nascimento.
+5. Financeiro do paciente — join limitado
+A query atual usa INNER JOIN com consultas — então registros financeiros avulsos (despesas sem consulta vinculada) não aparecem no financeiro do paciente. Pode sumir dados.
+________________________________________
+⚠️ O que pode ser otimizado
+1. Anamnese sem data de última atualização visível
+O campo updatedAt existe no banco mas não é exibido na UI. O fisioterapeuta precisa saber quando a anamnese foi editada pela última vez para fins de auditoria.
+2. Plano de tratamento sem progresso de sessões
+O plano tem "sessões estimadas" mas não calcula nem exibe quantas sessões do paciente já foram realizadas vs. o estimado. Seria fácil cruzar com o histórico de consultas.
+3. Tabs em 3x2 grid — risco de overflow em telas pequenas
+Com 6 tabs em grid 3x2, telas menores (<768px) podem ficar apertadas. Vale rever para scroll horizontal ou ícones menores.
+4. Evoluções sem numeração de sessão real
+Cada evolução exibe um número sequencial simples, mas não vincula à sessão/consulta real. O número deveria refletir o número da sessão no histórico clínico.
+5. Financeiro do paciente sem botão de registrar pagamento
+A aba mostra o histórico mas não permite registrar um pagamento avulso diretamente do prontuário.
+________________________________________
+Resumo de prioridade
+Prioridade	Item
+🔴 Alta (regulatório)	Alta Fisioterapêutica — falta no schema e na UI
+🔴 Alta (usabilidade)	Editar avaliações e evoluções
+🟡 Média	Vincular evolução à consulta no formulário
+🟡 Média	Exibir profissão, contato emergência e idade no header
+🟡 Média	Mostrar updatedAt da anamnese
+🟢 Baixa	Progresso de sessões no plano de tratamento
+🟢 Baixa	Responsividade das 6 tabs
+Quer que eu comece pela Alta Fisioterapêutica (que é o item mais crítico do ponto de vista regulatório) 

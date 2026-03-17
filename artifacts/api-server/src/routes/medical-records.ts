@@ -5,6 +5,7 @@ import {
   evaluationsTable,
   treatmentPlansTable,
   evolutionsTable,
+  dischargeSummariesTable,
   financialRecordsTable,
   appointmentsTable,
   proceduresTable
@@ -165,6 +166,46 @@ router.get("/appointments", async (req, res) => {
       .orderBy(desc(appointmentsTable.date));
 
     res.json(rows.map(r => ({ ...r.appointment, procedure: r.procedure })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/discharge-summary", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const [summary] = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
+    if (!summary) {
+      res.status(404).json({ error: "Not Found", message: "Discharge summary not found" });
+      return;
+    }
+    res.json(summary);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/discharge-summary", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const { dischargeDate, dischargeReason, achievedResults, recommendations } = req.body;
+
+    const existing = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
+
+    let summary;
+    if (existing.length > 0) {
+      [summary] = await db.update(dischargeSummariesTable)
+        .set({ dischargeDate, dischargeReason, achievedResults, recommendations, updatedAt: new Date() })
+        .where(eq(dischargeSummariesTable.patientId, patientId))
+        .returning();
+    } else {
+      [summary] = await db.insert(dischargeSummariesTable)
+        .values({ patientId, dischargeDate, dischargeReason, achievedResults, recommendations })
+        .returning();
+    }
+    res.json(summary);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

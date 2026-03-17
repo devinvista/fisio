@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { patientsTable } from "./patients";
@@ -69,3 +69,18 @@ export const evolutionsTable = pgTable("evolutions", {
 export const insertEvolutionSchema = createInsertSchema(evolutionsTable).omit({ id: true, createdAt: true });
 export type InsertEvolution = z.infer<typeof insertEvolutionSchema>;
 export type Evolution = typeof evolutionsTable.$inferSelect;
+
+export const dischargeSummariesTable = pgTable("discharge_summaries", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().unique().references(() => patientsTable.id),
+  dischargeDate: date("discharge_date").notNull(),
+  dischargeReason: text("discharge_reason").notNull(),
+  achievedResults: text("achieved_results"),
+  recommendations: text("recommendations"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDischargeSummarySchema = createInsertSchema(dischargeSummariesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDischargeSummary = z.infer<typeof insertDischargeSummarySchema>;
+export type DischargeSummary = typeof dischargeSummariesTable.$inferSelect;
