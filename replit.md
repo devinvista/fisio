@@ -10,7 +10,7 @@ The project is a **pnpm workspace monorepo** hosted on Replit. It is split into 
 
 ## Stack
 
-- **Node.js**: 24
+- **Node.js**: 22 (requires 20+ for Vite 7 — upgraded from 18)
 - **Package manager**: pnpm 10.26 (workspace)
 - **TypeScript**: 5.9
 - **Frontend** (`artifacts/fisiogest`): React 19 + Vite 7 + TailwindCSS v4 + shadcn/ui (new-york)
@@ -168,11 +168,14 @@ All tables live in the PostgreSQL database provisioned by Replit. The canonical 
 ### Schema push commands
 
 ```bash
+# Push schema (prompts for confirmation on destructive changes)
+pnpm run db:push
+
+# Force push schema without confirmation (safe for dev resets)
+pnpm run db:push-force
+
 # Via lib/db (workspace — used in Replit)
 pnpm --filter @workspace/db run push
-
-# Via root drizzle.config.ts (flat layout)
-pnpm run db:push
 
 # Seed with demo data
 pnpm run db:seed
@@ -251,10 +254,11 @@ Displays: name, phone, email, **age (calculated from birthDate)**, address, **pr
 ```bash
 pnpm install                          # Install all workspace deps
 pnpm dev                              # Start both services (correct ports for Replit)
-pnpm run db:push                      # Sync schema (flat layout, dev only)
+pnpm run db:push                      # Sync schema (with confirmation)
+pnpm run db:push-force                # Sync schema (force, no confirmation)
 pnpm --filter @workspace/db run push  # Sync schema via lib/db (workspace)
 pnpm run typecheck                    # tsc --noEmit (zero errors expected)
-pnpm run db:seed                      # Seed demo data
+pnpm run db:seed                      # Seed demo: demo@fisiogest.com / demo123
 ```
 
 ### Per artifact
@@ -271,17 +275,19 @@ PORT=8080 pnpm --filter @workspace/api-server run dev
 
 ## Demo / Test Credentials
 
-A test user is created on first run via the register endpoint:
+Created automatically by `pnpm run db:seed`:
 
-- **Email**: `admin@test.com`
-- **Password**: `admin123`
+- **Email**: `demo@fisiogest.com`
+- **Password**: `demo123`
+
+The seed creates 10 patients, 8 procedures, 73 appointments and 50 financial records.
 
 ---
 
 ## Features
 
 1. **Dashboard** — Today's appointments, monthly revenue, total patients, upcoming schedule
-2. **Agenda** — Calendar with day/week/month views, appointment CRUD
+2. **Agenda** — Weekly calendar view with time slots (08:00–18:00, Mon–Sat); create appointments by clicking empty slots; click existing appointments to open detail modal (view info, change status, edit date/time/notes, mark as complete, delete)
 3. **Pacientes** — Patient list with search/pagination, full prontuário with:
    - Anamnese (chief complaint, EVA pain scale)
    - Avaliações Físicas (CRUD with edit/delete)
@@ -313,7 +319,31 @@ The root `src/` + `server/` + `db/` directories contain a self-contained version
 
 ## Known Design Decisions
 
-- **Evolutions do not have `updatedAt`** — evolution notes are append-only by clinical convention; edits are tracked by record replacement.
+- **Evolutions do not have `updatedAt`** — evolution notes are append-only by clinical convention; edits are tracked by record replacement via the PUT endpoint.
 - **Financial `totalSpent` counts only `receita`** — the patient sidebar shows total revenue from that patient, not net of clinic expenses.
-- **Discharge summary is unique per patient** — one discharge per patient (upsert), editable at any time.
+- **Discharge summary is unique per patient** — one discharge per patient (upsert via POST), editable at any time via the same endpoint.
 - **`appointmentId` in evolutions is optional** — the physiotherapist may link an evolution to a scheduled appointment or leave it unlinked.
+- **Patient financial endpoint uses LEFT JOIN** — `GET /api/patients/:id/financial` uses a LEFT JOIN so avulso records (no `appointmentId`) are always included alongside appointment-linked records.
+- **Appointment "complete" auto-creates financial record** — `POST /api/appointments/:id/complete` sets status to `concluido` and automatically generates a `receita` financial record for the procedure price.
+
+---
+
+## PRD Implementation Status
+
+| Feature | Status |
+|---------|--------|
+| Cadastro de pacientes | ✅ Completo |
+| Prontuário — Anamnese | ✅ Completo |
+| Prontuário — Avaliações (CRUD) | ✅ Completo |
+| Prontuário — Plano de Tratamento + progresso | ✅ Completo |
+| Prontuário — Evoluções (CRUD + vínculo consulta) | ✅ Completo |
+| Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
+| Agenda semanal + criar agendamentos | ✅ Completo |
+| Agenda — detalhe/edição/cancelamento de consulta | ✅ Completo |
+| Procedimentos (CRUD) | ✅ Completo |
+| Financeiro global (receitas, despesas, dashboard) | ✅ Completo |
+| Relatórios (mensal, por procedimento, ocupação) | ✅ Completo |
+| Dashboard com KPIs | ✅ Completo |
+| Autenticação JWT | ✅ Completo |
+| Notificações de consultas (WhatsApp/e-mail) | 🔲 Pendente (fora do MVP) |
+| Agendamento self-service pelo cliente | 🔲 Pendente (fora do MVP) |
