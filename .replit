@@ -35,8 +35,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=3001 tsx server/index.ts & PORT=3000 API_PORT=3001 vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3000
+args = "PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev"
+waitForPort = 20408
 
 [agent]
 stack = "PNPM_WORKSPACE"
