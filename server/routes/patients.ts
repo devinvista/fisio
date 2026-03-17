@@ -77,26 +77,22 @@ router.get("/:id", async (req, res) => {
       return;
     }
 
-    const [appointments, spentResult] = await Promise.all([
+    const [appointments, totalSpentResult] = await Promise.all([
       db.select({ id: appointmentsTable.id, createdAt: appointmentsTable.createdAt })
         .from(appointmentsTable)
         .where(eq(appointmentsTable.patientId, id))
         .orderBy(desc(appointmentsTable.date)),
-      db.select({ total: sql<number>`COALESCE(SUM(amount), 0)` })
+      db.select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
         .from(financialRecordsTable)
-        .where(eq(financialRecordsTable.appointmentId, sql`(SELECT id FROM appointments WHERE patient_id = ${id} LIMIT 1)`))
+        .innerJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
+        .where(eq(appointmentsTable.patientId, id))
     ]);
-
-    const totalSpent = await db.select({ total: sql<number>`COALESCE(SUM(fr.amount), 0)` })
-      .from(financialRecordsTable)
-      .innerJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
-      .where(eq(appointmentsTable.patientId, id));
 
     res.json({
       ...patient,
       totalAppointments: appointments.length,
       lastAppointment: appointments[0]?.createdAt ?? null,
-      totalSpent: Number(totalSpent[0]?.total ?? 0)
+      totalSpent: Number(totalSpentResult[0]?.total ?? 0)
     });
   } catch (err) {
     console.error(err);

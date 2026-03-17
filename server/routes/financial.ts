@@ -55,7 +55,7 @@ router.get("/dashboard", async (req, res) => {
 
     const categoryRevenue = await db.select({
       category: proceduresTable.category,
-      revenue: sql<number>`COALESCE(SUM(fr.amount), 0)`
+      revenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`
     })
       .from(financialRecordsTable)
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
@@ -71,7 +71,7 @@ router.get("/dashboard", async (req, res) => {
 
     const topProc = await db.select({
       name: proceduresTable.name,
-      total: sql<number>`COALESCE(SUM(fr.amount), 0) AS total`
+      total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`
     })
       .from(financialRecordsTable)
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
@@ -84,7 +84,7 @@ router.get("/dashboard", async (req, res) => {
         )
       )
       .groupBy(proceduresTable.name)
-      .orderBy(sql`total DESC`)
+      .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
       .limit(1);
 
     res.json({
