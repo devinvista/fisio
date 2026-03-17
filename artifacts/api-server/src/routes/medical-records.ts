@@ -4,7 +4,10 @@ import {
   anamnesisTable,
   evaluationsTable,
   treatmentPlansTable,
-  evolutionsTable
+  evolutionsTable,
+  financialRecordsTable,
+  appointmentsTable,
+  proceduresTable
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
@@ -142,6 +145,48 @@ router.post("/evolutions", async (req, res) => {
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications })
       .returning();
     res.status(201).json(evolution);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/appointments", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const rows = await db
+      .select({
+        appointment: appointmentsTable,
+        procedure: proceduresTable,
+      })
+      .from(appointmentsTable)
+      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
+      .where(eq(appointmentsTable.patientId, patientId))
+      .orderBy(desc(appointmentsTable.date));
+
+    res.json(rows.map(r => ({ ...r.appointment, procedure: r.procedure })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/financial", async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const rows = await db
+      .select({
+        record: financialRecordsTable,
+        appointment: appointmentsTable,
+        procedure: proceduresTable,
+      })
+      .from(financialRecordsTable)
+      .innerJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
+      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
+      .where(eq(appointmentsTable.patientId, patientId))
+      .orderBy(desc(financialRecordsTable.createdAt));
+
+    res.json(rows.map(r => ({ ...r.record, appointment: r.appointment, procedure: r.procedure })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
