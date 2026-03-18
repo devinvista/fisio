@@ -1,19 +1,19 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
-import { 
-  LayoutDashboard, 
-  CalendarDays, 
-  Users, 
-  Activity, 
-  Wallet, 
+import {
+  LayoutDashboard,
+  CalendarDays,
+  Users,
+  Dumbbell,
+  Wallet,
   BarChart3,
   LogOut,
   Menu,
-  Stethoscope
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { LogoMark } from "@/components/logo-mark";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/pacientes", label: "Pacientes", icon: Users },
-  { href: "/procedimentos", label: "Procedimentos", icon: Activity },
+  { href: "/procedimentos", label: "Procedimentos", icon: Dumbbell },
   { href: "/financeiro", label: "Financeiro", icon: Wallet },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
 ];
@@ -36,25 +36,28 @@ export function AppLayout({ children, title }: AppLayoutProps) {
   const SidebarContent = () => (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-3 px-6 bg-black/10">
-        <div className="bg-primary/20 p-2 rounded-lg">
-          <Stethoscope className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <span className="font-display font-bold text-xl tracking-tight">FisioGest <span className="text-primary-foreground/70">Pro</span></span>
+        <LogoMark size={34} className="text-primary-foreground shrink-0" />
+        <span className="font-display font-bold text-xl tracking-tight">
+          FisioGest <span className="text-primary-foreground/70">Pro</span>
+        </span>
       </div>
-      
+
       <div className="flex-1 overflow-auto py-6 px-4">
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+            const isActive =
+              location === item.href ||
+              (item.href !== "/" && location.startsWith(item.href));
             return (
-              <Link 
-                key={item.href} 
+              <Link
+                key={item.href}
                 href={item.href}
                 className={`
                   flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
-                  ${isActive 
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20" 
-                    : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
+                  ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                      : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
                   }
                 `}
               >
@@ -73,11 +76,13 @@ export function AppLayout({ children, title }: AppLayoutProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-white">{user?.name}</span>
-            <span className="text-xs text-sidebar-foreground/60 capitalize">{user?.role}</span>
+            <span className="text-xs text-sidebar-foreground/60 capitalize">
+              {user?.role}
+            </span>
           </div>
         </div>
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           className="w-full justify-start text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
           onClick={logout}
         >
@@ -109,13 +114,19 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                 <SidebarContent />
               </SheetContent>
             </Sheet>
-            <h1 className="font-display text-2xl font-bold text-foreground">{title}</h1>
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              {title}
+            </h1>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground bg-secondary/50 px-4 py-2 rounded-full">
               <CalendarDays className="h-4 w-4" />
-              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {new Date().toLocaleDateString("pt-BR", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
             </div>
           </div>
         </header>

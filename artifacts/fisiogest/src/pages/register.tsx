@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
+import { LogoMark } from "@/components/logo-mark";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Register() {
@@ -48,9 +49,7 @@ export default function Register() {
           
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-6">
-              <div className="bg-primary p-2 rounded-lg">
-                <Stethoscope className="h-6 w-6 text-white" />
-              </div>
+              <LogoMark size={34} className="text-primary" />
               <span className="font-display font-bold text-2xl">FisioGest Pro</span>
             </div>
             <h2 className="font-display text-3xl font-bold text-foreground mb-2">Criar Conta</h2>
