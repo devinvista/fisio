@@ -1,349 +1,336 @@
 # FisioGest Pro
 
-## Overview
+## Visão Geral
 
-FisioGest Pro is a complete clinical management SaaS platform for physiotherapy, aesthetics, and pilates clinics. It handles patient records, clinical documentation, scheduling, financial tracking, and regulatory compliance (COFFITO).
+FisioGest Pro é uma plataforma SaaS de gestão clínica completa para fisioterapeutas, estetas e instrutores de pilates. Abrange prontuário eletrônico, agenda, financeiro, relatórios e conformidade com normas do COFFITO.
 
-The project is a **pnpm workspace monorepo** hosted on Replit. It is split into two artifacts (frontend + API) that are served through Replit's shared reverse proxy on port 80.
+O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefatos (frontend + API) servidos pelo proxy reverso compartilhado do Replit na porta 80.
+
+**Idioma padrão**: Português do Brasil (pt-BR)
+**Moeda**: Real Brasileiro (BRL — R$)
+**Medidas**: Sistema Internacional (SI) — kg, cm, °C
+**Formato de data**: dd/MM/yyyy (ex.: 18/03/2026)
+**Formato de hora**: HH:mm — 24 horas (ex.: 14:30)
+**Separador decimal**: vírgula (ex.: R$ 1.250,00)
+**Separador de milhar**: ponto (ex.: 1.250)
+**Fuso horário padrão**: America/Sao_Paulo (UTC-3 / UTC-2 no horário de verão)
 
 ---
 
-## Stack
+## Stack Técnica
 
-- **Node.js**: 22 (requires 20+ for Vite 7 — upgraded from 18)
-- **Package manager**: pnpm 10.26 (workspace)
+- **Node.js**: 22 (requer 20+ para o Vite 7)
+- **Gerenciador de pacotes**: pnpm 10.26 (workspace)
 - **TypeScript**: 5.9
 - **Frontend** (`artifacts/fisiogest`): React 19 + Vite 7 + TailwindCSS v4 + shadcn/ui (new-york)
 - **Backend** (`artifacts/api-server`): Express 5
-- **Database**: PostgreSQL + Drizzle ORM (`lib/db`)
-- **Validation**: Zod v3, drizzle-zod (`lib/api-zod`)
-- **API client**: Orval-generated React Query hooks (`lib/api-client-react`)
-- **Auth**: JWT (jsonwebtoken) + bcryptjs
-- **Charts**: Recharts
-- **Icons**: Lucide React + react-icons
+- **Banco de dados**: PostgreSQL + Drizzle ORM (`lib/db`)
+- **Validação**: Zod v4, drizzle-zod (`lib/api-zod`)
+- **API client**: hooks React Query gerados pelo Orval (`lib/api-client-react`)
+- **Autenticação**: JWT (jsonwebtoken) + bcryptjs
+- **Gráficos**: Recharts
+- **Ícones**: Lucide React
 
 ---
 
-## Replit Architecture — IMPORTANT
+## Padrões de Localização (pt-BR)
 
-Replit uses a **shared reverse proxy on port 80** to route traffic between services. Each artifact declares its port and path prefix in `.replit-artifact/artifact.toml`.
+| Contexto | Padrão | Exemplo |
+|---|---|---|
+| Idioma do HTML | `lang="pt-BR"` | `<html lang="pt-BR">` |
+| Formatação de datas | `date-fns/locale/ptBR` | `dd/MM/yyyy` |
+| Calendário | `locale="pt-BR"` | mês curto: "jan", "fev"... |
+| Moeda | `Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })` | R$ 1.250,00 |
+| Números | `toLocaleString("pt-BR")` | 1.250,5 |
+| Peso | quilogramas (kg) | 72 kg |
+| Altura | centímetros (cm) | 175 cm |
+| Temperatura corporal | graus Celsius (°C) | 36,5 °C |
+| Pressão arterial | mmHg | 120/80 mmHg |
+| Dor (escala EVA) | 0–10 | EVA 7/10 |
 
-| Service | Package filter | Local port | Proxy path |
+---
+
+## Arquitetura Replit — IMPORTANTE
+
+O Replit usa um **proxy reverso compartilhado na porta 80** para rotear tráfego entre serviços.
+
+| Serviço | Filtro do pacote | Porta local | Caminho proxy |
 |---|---|---|---|
 | Frontend | `@workspace/fisiogest` | **20408** | `/` |
 | API Server | `@workspace/api-server` | **8080** | `/api` |
 
-> **Never run the root-level `src/` + `server/` flat layout in Replit.** Those files exist for external hosting (e.g., Hostinger/Railway/Render) only. In Replit, always run the artifacts.
+> **Nunca execute o layout raiz (`src/` + `server/`) no Replit.** Esses arquivos existem apenas para hospedagem externa (ex.: Hostinger/Railway/Render).
 
-### Workflow command (`.replit`)
+### Comando do Workflow
 
 ```
 PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev
 ```
 
-- `waitForPort = 20408` — Replit waits for the frontend to be ready
-- `outputType = "webview"` — routes preview to the frontend
-
-### How requests flow in development
+### Fluxo de requisições em desenvolvimento
 
 ```
 Browser → https://<repl>.replit.dev/
-  ├── /api/*  → Replit proxy → localhost:8080  (api-server)
-  └── /*      → Replit proxy → localhost:20408 (fisiogest Vite dev server)
-                  └── /api/* (proxied by Vite) → localhost:8080
+  ├── /api/*  → Proxy Replit → localhost:8080  (api-server)
+  └── /*      → Proxy Replit → localhost:20408 (fisiogest Vite dev server)
+                  └── /api/* (proxy Vite) → localhost:8080
 ```
 
 ---
 
-## Project Structure
+## Estrutura do Projeto
 
 ```text
 /
 ├── artifacts/
-│   ├── fisiogest/                      # React frontend (@workspace/fisiogest)
+│   ├── fisiogest/                      # Frontend React (@workspace/fisiogest)
 │   │   ├── src/
 │   │   │   ├── main.tsx
 │   │   │   ├── App.tsx
-│   │   │   ├── index.css
+│   │   │   ├── index.css               # Tema TailwindCSS v4 — primary: teal 180°
 │   │   │   ├── pages/
-│   │   │   │   ├── index.tsx           # Redirect to /dashboard
 │   │   │   │   ├── login.tsx
 │   │   │   │   ├── register.tsx
 │   │   │   │   ├── dashboard.tsx
 │   │   │   │   ├── agenda.tsx
-│   │   │   │   ├── not-found.tsx
-│   │   │   │   ├── patients/
-│   │   │   │   │   ├── index.tsx       # Patient list + search
-│   │   │   │   │   └── [id].tsx        # Full patient chart (prontuário)
-│   │   │   │   ├── financial/
-│   │   │   │   │   └── index.tsx       # Financial dashboard + records
 │   │   │   │   ├── procedimentos.tsx
-│   │   │   │   └── relatorios.tsx
+│   │   │   │   ├── relatorios.tsx
+│   │   │   │   ├── patients/
+│   │   │   │   │   ├── index.tsx       # Lista de pacientes + busca
+│   │   │   │   │   └── [id].tsx        # Prontuário completo (abas)
+│   │   │   │   └── financial/
+│   │   │   │       └── index.tsx
 │   │   │   ├── components/
 │   │   │   │   ├── layout/app-layout.tsx
-│   │   │   │   └── ui/                 # shadcn/ui components
+│   │   │   │   ├── logo-mark.tsx       # SVG logo da marca
+│   │   │   │   └── ui/                 # Componentes shadcn/ui
 │   │   │   └── lib/
 │   │   │       └── auth-context.tsx
-│   │   ├── vite.config.ts              # PORT=20408, proxy /api → :8080
-│   │   └── .replit-artifact/artifact.toml
+│   │   ├── index.html                  # lang="pt-BR"
+│   │   └── vite.config.ts
 │   │
-│   ├── api-server/                     # Express API (@workspace/api-server)
-│   │   ├── src/
-│   │   │   ├── index.ts                # Requires PORT env var
-│   │   │   ├── app.ts
-│   │   │   ├── middleware/auth.ts      # JWT authMiddleware
-│   │   │   └── routes/
-│   │   │       ├── index.ts
-│   │   │       ├── health.ts           # GET /api/healthz
-│   │   │       ├── auth.ts             # POST /api/auth/register|login|me
-│   │   │       ├── patients.ts         # CRUD /api/patients — totalSpent via LEFT JOIN
-│   │   │       ├── procedures.ts       # CRUD /api/procedures
-│   │   │       ├── appointments.ts     # CRUD /api/appointments
-│   │   │       ├── medical-records.ts  # Nested under /api/patients/:id/*
-│   │   │       ├── financial.ts        # /api/financial/dashboard|records
-│   │   │       ├── reports.ts          # /api/reports/*
-│   │   │       └── dashboard.ts        # /api/dashboard
-│   │   ├── build.ts
-│   │   └── .replit-artifact/artifact.toml
+│   ├── api-server/                     # API Express (@workspace/api-server)
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── app.ts
+│   │       ├── middleware/auth.ts
+│   │       └── routes/
+│   │           ├── auth.ts
+│   │           ├── patients.ts
+│   │           ├── procedures.ts       # CRUD + maxCapacity
+│   │           ├── appointments.ts     # Governança de horários + available-slots
+│   │           ├── medical-records.ts
+│   │           ├── financial.ts
+│   │           ├── reports.ts
+│   │           └── dashboard.ts
 │   │
-│   └── mockup-sandbox/                 # UI prototyping sandbox
+│   └── mockup-sandbox/                 # Sandbox de prototipagem de UI
 │
 ├── lib/
 │   ├── db/                             # @workspace/db — Drizzle ORM + schema
-│   │   ├── src/
-│   │   │   ├── index.ts                # pg Pool + drizzle client export
-│   │   │   └── schema/
-│   │   │       ├── index.ts
-│   │   │       ├── patients.ts
-│   │   │       ├── appointments.ts
-│   │   │       ├── procedures.ts
-│   │   │       ├── medical-records.ts  # anamnesis, evaluations, treatment_plans,
-│   │   │       │                       # evolutions, discharge_summaries
-│   │   │       ├── financial.ts
-│   │   │       └── users.ts
+│   │   ├── src/schema/
+│   │   │   ├── patients.ts
+│   │   │   ├── appointments.ts
+│   │   │   ├── procedures.ts           # Campo maxCapacity (vagas simultâneas)
+│   │   │   ├── medical-records.ts
+│   │   │   ├── financial.ts
+│   │   │   └── users.ts
 │   │   └── drizzle.config.ts
-│   ├── api-zod/                        # @workspace/api-zod — Zod validation schemas
-│   ├── api-client-react/               # @workspace/api-client-react — React Query hooks
-│   │   └── src/
-│   │       ├── index.ts
-│   │       ├── custom-fetch.ts
-│   │       └── generated/
-│   │           ├── api.ts              # All hooks (useGetPatient, useSaveDischarge, …)
-│   │           └── api.schemas.ts
-│   └── api-spec/                       # OpenAPI spec source
+│   ├── api-zod/
+│   ├── api-client-react/
+│   └── api-spec/
 │
-├── src/                                # [EXTERNAL HOSTING ONLY] Flat frontend layout
-├── server/                             # [EXTERNAL HOSTING ONLY] Flat server layout
-├── db/                                 # [EXTERNAL HOSTING ONLY] Flat DB layout
-│
+├── src/                                # [SOMENTE HOSPEDAGEM EXTERNA]
+├── server/                             # [SOMENTE HOSPEDAGEM EXTERNA]
+├── db/                                 # [SOMENTE HOSPEDAGEM EXTERNA]
 ├── scripts/
-│   ├── post-merge.sh                   # Runs after task agent merges
-│   └── seed.ts
+│   ├── post-merge.sh
+│   └── seed-demo.ts                    # Seed completo: 5 pacientes, jan–mar 2026
 │
 ├── pnpm-workspace.yaml
-├── package.json                        # Root scripts + shared dev tooling
-├── drizzle.config.ts                   # Points to db/schema (root flat layout)
-└── .replit                             # Workflow + artifact config
+└── .replit
 ```
 
 ---
 
-## Database Schema
+## Schema do Banco de Dados
 
-All tables live in the PostgreSQL database provisioned by Replit. The canonical schema is in `lib/db/src/schema/` (used by the artifacts). The flat layout in `db/schema/` is kept in sync.
+Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canônico fica em `lib/db/src/schema/`.
 
-| Table | Key fields |
+| Tabela | Campos principais |
 |---|---|
 | `users` | id, email, passwordHash, name, role |
-| `patients` | id, name, cpf (unique), birthDate, phone, email, address, profession, emergencyContact, notes |
-| `procedures` | id, name, category, duration, price, cost |
-| `appointments` | id, patientId, procedureId, date, startTime, endTime, status, notes |
-| `anamnesis` | id, patientId (unique), mainComplaint, diseaseHistory, medications, painScale, … |
-| `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt |
-| `treatment_plans` | id, patientId (unique), objectives, techniques, frequency, estimatedSessions, status |
-| `evolutions` | id, patientId, **appointmentId** (optional FK), description, patientResponse, clinicalNotes, complications |
-| `discharge_summaries` | id, patientId (unique), dischargeDate, **dischargeReason**, **achievedResults**, **recommendations** |
+| `patients` | id, name, cpf (único), birthDate, phone, email, address, profession, emergencyContact, notes |
+| `procedures` | id, name, category, durationMinutes, price, cost, **maxCapacity** (default 1) |
+| `appointments` | id, patientId, procedureId, date, startTime, **endTime** (calculado), status, notes |
+| `anamnesis` | id, patientId (único), mainComplaint, diseaseHistory, medications, painScale… |
+| `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis |
+| `treatment_plans` | id, patientId (único), objectives, techniques, frequency, estimatedSessions, status |
+| `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications |
+| `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
 | `financial_records` | id, type (receita/despesa), amount, description, category, appointmentId?, patientId? |
 
-### Schema push commands
+### Comandos de schema
 
 ```bash
-# Push schema (prompts for confirmation on destructive changes)
-pnpm run db:push
+# Sincronizar schema (pede confirmação em mudanças destrutivas)
+pnpm --filter @workspace/db exec drizzle-kit push --config drizzle.config.ts
 
-# Force push schema without confirmation (safe for dev resets)
-pnpm run db:push-force
-
-# Via lib/db (workspace — used in Replit)
-pnpm --filter @workspace/db run push
-
-# Seed with demo data
+# Seed demo completo (jan–mar 2026)
 pnpm run db:seed
 ```
 
 ---
 
-## API Routes
+## Rotas da API
 
-All routes require `Authorization: Bearer <token>` except `/api/auth/*` and `/api/healthz`.
+Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/api/healthz`.
 
-### Auth
-| Method | Path | Description |
+### Autenticação
+| Método | Caminho | Descrição |
 |---|---|---|
-| POST | `/api/auth/register` | Create user |
-| POST | `/api/auth/login` | Returns JWT |
-| GET | `/api/auth/me` | Current user |
+| POST | `/api/auth/register` | Criar usuário |
+| POST | `/api/auth/login` | Retorna JWT |
+| GET | `/api/auth/me` | Usuário atual |
 
-### Patients
-| Method | Path | Description |
+### Pacientes
+| Método | Caminho | Descrição |
 |---|---|---|
-| GET | `/api/patients` | List with search + pagination |
-| POST | `/api/patients` | Create |
-| GET | `/api/patients/:id` | Detail + `totalAppointments` + `totalSpent` |
-| PUT | `/api/patients/:id` | Update |
-| DELETE | `/api/patients/:id` | Delete |
+| GET | `/api/patients` | Lista com busca + paginação |
+| POST | `/api/patients` | Criar |
+| GET | `/api/patients/:id` | Detalhe + `totalAppointments` + `totalSpent` |
+| PUT | `/api/patients/:id` | Atualizar |
+| DELETE | `/api/patients/:id` | Excluir |
 
-> `totalSpent` uses **LEFT JOIN** + OR condition to include both records with direct `patientId` and records linked via `appointmentId`. Only `receita` type records are counted.
-
-### Medical Records (nested under `/api/patients/:patientId`)
-| Method | Path | Description |
+### Prontuário (abaixo de `/api/patients/:patientId`)
+| Método | Caminho | Descrição |
 |---|---|---|
-| GET/POST | `/anamnesis` | Upsert anamnesis |
-| GET/POST | `/evaluations` | List / Create evaluation |
-| PUT/DELETE | `/evaluations/:id` | Update / Delete evaluation |
-| GET/POST | `/treatment-plan` | Upsert treatment plan |
-| GET/POST | `/evolutions` | List / Create evolution |
-| PUT/DELETE | `/evolutions/:id` | Update / Delete evolution |
-| GET/POST | `/discharge-summary` | Upsert COFFITO discharge summary |
-| GET | `/appointments` | Patient's appointment history |
-| GET | `/financial` | Patient's financial records (LEFT JOIN) |
+| GET/POST | `/anamnesis` | Upsert anamnese |
+| GET/POST | `/evaluations` | Listar / Criar avaliação |
+| PUT/DELETE | `/evaluations/:id` | Atualizar / Excluir |
+| GET/POST | `/treatment-plan` | Upsert plano de tratamento |
+| GET/POST | `/evolutions` | Listar / Criar evolução |
+| PUT/DELETE | `/evolutions/:id` | Atualizar / Excluir |
+| GET/POST | `/discharge-summary` | Upsert alta fisioterapêutica (COFFITO) |
+| GET | `/appointments` | Histórico de consultas do paciente |
+| GET | `/financial` | Registros financeiros do paciente |
 
-### Financial
-| Method | Path | Description |
+### Agendamentos
+| Método | Caminho | Descrição |
 |---|---|---|
-| GET | `/api/financial/dashboard` | Monthly KPIs |
-| GET | `/api/financial/records` | List records (filter by type/month/year) |
-| POST | `/api/financial/records` | Create record |
+| GET | `/api/appointments` | Listar (filtros: date, startDate, endDate, patientId, status) |
+| POST | `/api/appointments` | Criar — endTime calculado automaticamente |
+| GET | `/api/appointments/:id` | Detalhe |
+| PUT | `/api/appointments/:id` | Atualizar — recalcula endTime |
+| DELETE | `/api/appointments/:id` | Excluir |
+| POST | `/api/appointments/:id/complete` | Concluir + gerar registro financeiro |
+| GET | `/api/appointments/available-slots` | Horários disponíveis (date, procedureId, clinicStart, clinicEnd) |
+
+### Procedimentos
+| Método | Caminho | Descrição |
+|---|---|---|
+| GET | `/api/procedures` | Listar (filtro: category) |
+| POST | `/api/procedures` | Criar |
+| PUT | `/api/procedures/:id` | Atualizar (inclui maxCapacity) |
+| DELETE | `/api/procedures/:id` | Excluir |
+
+### Financeiro
+| Método | Caminho | Descrição |
+|---|---|---|
+| GET | `/api/financial/dashboard` | KPIs mensais |
+| GET | `/api/financial/records` | Listar registros (filtros: type, month, year) |
+| POST | `/api/financial/records` | Criar registro |
 
 ---
 
-## Clinical Features (Prontuário — `patients/[id].tsx`)
+## Regras de Governança de Agendamentos
 
-The patient chart page (`artifacts/fisiogest/src/pages/patients/[id].tsx`) implements the full clinical record as tabbed sections:
+1. **endTime sempre calculado** — o sistema calcula `endTime = startTime + procedure.durationMinutes`. O cliente nunca envia `endTime`.
+2. **Procedimentos com maxCapacity = 1** (padrão) — qualquer sobreposição de horário ativo gera conflito 409.
+3. **Procedimentos com maxCapacity > 1** (ex.: Pilates em Grupo = 4) — permite até N agendamentos simultâneos do mesmo procedimento. A 5ª tentativa retorna 409 com a mensagem "Horário lotado: N/N vagas ocupadas".
+4. **Endpoint de vagas** — `GET /api/appointments/available-slots?date=&procedureId=&clinicStart=08:00&clinicEnd=18:00` retorna slots a cada 30 min com `available` e `spotsLeft`.
 
-| Tab | Component | Description |
-|---|---|---|
-| Anamnese | `AnamnesisTab` | Chief complaint, history, medications, pain scale (EVA) |
-| Avaliações | `EvaluationsTab` | Physical evaluations — full CRUD with inline edit/delete |
-| Plano de Tratamento | `TreatmentPlanTab` | Objectives, techniques, frequency, status |
-| Evoluções | `EvolutionsTab` | Session notes — full CRUD, links to appointment via Select |
-| Histórico | `HistoryTab` | All appointments (status, procedure, date) |
-| Financeiro | `FinancialTab` | Revenue/expense history per patient |
-| Alta Fisioterapêutica | `DischargeTab` | COFFITO-required discharge: reason, results, recommendations |
+---
 
-### Patient sidebar
+## Funcionalidades do Sistema Clínico (Prontuário)
 
-Displays: name, phone, email, **age (calculated from birthDate)**, address, **profession**, **emergency contact**, CPF, clinical notes, total appointments, total spent.
+A página do prontuário (`artifacts/fisiogest/src/pages/patients/[id].tsx`) implementa o prontuário completo em abas:
+
+| Aba | Descrição |
+|---|---|
+| Anamnese | Queixa principal, histórico, medicamentos, escala de dor (EVA 0–10) |
+| Avaliações | Avaliações físicas — CRUD completo com edição/exclusão inline |
+| Plano de Tratamento | Objetivos, técnicas, frequência, status |
+| Evoluções | Notas de sessão — CRUD, vínculo com consulta |
+| Histórico | Todas as consultas (status, procedimento, data) |
+| Financeiro | Histórico de receitas/despesas por paciente |
+| Alta Fisioterapêutica | Alta obrigatória pelo COFFITO: motivo, resultados, recomendações |
+
+---
+
+## Identidade Visual
+
+- **Logo**: Figura estilizada em pose de reabilitação (braços estendidos + cruz médica) — `components/logo-mark.tsx`
+- **Cor primária**: Teal profundo `hsl(180 100% 25%)` — identidade fisioterapêutica
+- **Sidebar**: Teal escuro `hsl(183 50% 9%)` — coerência com a identidade
+- **Tipografia**: Inter (corpo) + Outfit (títulos)
+- **Ícones**: Lucide React — HeartHandshake (pacientes), Dumbbell (procedimentos), CalendarDays (agenda)
 
 ---
 
 ## Scripts
 
-### Root level
-
 ```bash
-pnpm install                          # Install all workspace deps
-pnpm dev                              # Start both services (correct ports for Replit)
-pnpm run db:push                      # Sync schema (with confirmation)
-pnpm run db:push-force                # Sync schema (force, no confirmation)
-pnpm --filter @workspace/db run push  # Sync schema via lib/db (workspace)
-pnpm run typecheck                    # tsc --noEmit (zero errors expected)
-pnpm run db:seed                      # Seed demo: demo@fisiogest.com / demo123
-```
+# Instalar dependências
+pnpm install
 
-### Per artifact
+# Iniciar os dois serviços
+pnpm dev
 
-```bash
-# Frontend
-PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev
+# Sincronizar schema via lib/db
+pnpm --filter @workspace/db exec drizzle-kit push --config drizzle.config.ts
 
-# API Server
-PORT=8080 pnpm --filter @workspace/api-server run dev
+# Verificar tipos TypeScript
+pnpm run typecheck
+
+# Seed de demonstração
+pnpm run db:seed
 ```
 
 ---
 
-## Demo / Test Credentials
+## Credenciais de Demonstração
 
-Created automatically by `pnpm run db:seed`:
+Criadas pelo seed (`pnpm run db:seed`):
 
-- **Email**: `demo@fisiogest.com`
-- **Password**: `demo123`
+- **E-mail**: `admin@fisiogest.com`
+- **Senha**: `admin123`
 
-The seed creates 10 patients, 8 procedures, 73 appointments and 50 financial records.
-
----
-
-## Features
-
-1. **Dashboard** — Today's appointments, monthly revenue, total patients, upcoming schedule
-2. **Agenda** — Weekly calendar view with time slots (08:00–18:00, Mon–Sat); create appointments by clicking empty slots; click existing appointments to open detail modal (view info, change status, edit date/time/notes, mark as complete, delete)
-3. **Pacientes** — Patient list with search/pagination, full prontuário with:
-   - Anamnese (chief complaint, EVA pain scale)
-   - Avaliações Físicas (CRUD with edit/delete)
-   - Plano de Tratamento
-   - Evoluções de Sessão (CRUD, links to appointment)
-   - Histórico de Consultas
-   - Financeiro do Paciente
-   - **Alta Fisioterapêutica** (COFFITO — discharge reason, results, recommendations)
-4. **Procedimentos** — CRUD for physiotherapy/aesthetics/pilates services with pricing
-5. **Financeiro** — Revenue dashboard, expense tracking, monthly KPIs
-6. **Relatórios** — Monthly revenue charts, procedure revenue, schedule occupation
+O seed cria 5 pacientes com prontuários completos, avaliações, planos de tratamento, 64 consultas (jan–mar 2026), evoluções e registros financeiros.
 
 ---
 
-## External Deployment (non-Replit)
+## Funcionalidades Implementadas
 
-For Hostinger / Railway / Render, use the **flat layout** at the root:
-
-```bash
-pnpm install && pnpm run build
-PORT=8080 NODE_ENV=production node dist/server.cjs
-```
-
-The root `src/` + `server/` + `db/` directories contain a self-contained version of the app. The root `vite.config.ts` proxies `/api` to `API_PORT` (default 3001).
-
-> The flat server layout (`server/routes/patients.ts`) mirrors the same LEFT JOIN fix for `totalSpent` as the artifacts version.
-
----
-
-## Known Design Decisions
-
-- **Evolutions do not have `updatedAt`** — evolution notes are append-only by clinical convention; edits are tracked by record replacement via the PUT endpoint.
-- **Financial `totalSpent` counts only `receita`** — the patient sidebar shows total revenue from that patient, not net of clinic expenses.
-- **Discharge summary is unique per patient** — one discharge per patient (upsert via POST), editable at any time via the same endpoint.
-- **`appointmentId` in evolutions is optional** — the physiotherapist may link an evolution to a scheduled appointment or leave it unlinked.
-- **Patient financial endpoint uses LEFT JOIN** — `GET /api/patients/:id/financial` uses a LEFT JOIN so avulso records (no `appointmentId`) are always included alongside appointment-linked records.
-- **Appointment "complete" auto-creates financial record** — `POST /api/appointments/:id/complete` sets status to `concluido` and automatically generates a `receita` financial record for the procedure price.
-
----
-
-## PRD Implementation Status
-
-| Feature | Status |
-|---------|--------|
-| Cadastro de pacientes | ✅ Completo |
+| Funcionalidade | Status |
+|---|---|
+| Cadastro e busca de pacientes | ✅ Completo |
 | Prontuário — Anamnese | ✅ Completo |
-| Prontuário — Avaliações (CRUD) | ✅ Completo |
-| Prontuário — Plano de Tratamento + progresso | ✅ Completo |
-| Prontuário — Evoluções (CRUD + vínculo consulta) | ✅ Completo |
+| Prontuário — Avaliações físicas (CRUD) | ✅ Completo |
+| Prontuário — Plano de Tratamento | ✅ Completo |
+| Prontuário — Evoluções de sessão (CRUD) | ✅ Completo |
 | Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
-| Agenda semanal + criar agendamentos | ✅ Completo |
-| Agenda — detalhe/edição/cancelamento de consulta | ✅ Completo |
-| Procedimentos (CRUD) | ✅ Completo |
+| Agenda semanal + criação por clique | ✅ Completo |
+| Agenda — detalhe, edição, cancelamento | ✅ Completo |
+| Governança de horários (endTime calculado, conflitos) | ✅ Completo |
+| Procedimentos com vagas múltiplas (maxCapacity) | ✅ Completo |
+| Endpoint de vagas disponíveis | ✅ Completo |
+| Procedimentos (CRUD + maxCapacity) | ✅ Completo |
 | Financeiro global (receitas, despesas, dashboard) | ✅ Completo |
 | Relatórios (mensal, por procedimento, ocupação) | ✅ Completo |
 | Dashboard com KPIs | ✅ Completo |
 | Autenticação JWT | ✅ Completo |
-| Notificações de consultas (WhatsApp/e-mail) | 🔲 Pendente (fora do MVP) |
-| Agendamento self-service pelo cliente | 🔲 Pendente (fora do MVP) |
+| Padronização pt-BR (datas, moeda, idioma HTML) | ✅ Completo |
+| Identidade visual fisioterapêutica | ✅ Completo |
+| Notificações (WhatsApp/e-mail) | 🔲 Pendente |
+| Agendamento self-service pelo paciente | 🔲 Pendente |
