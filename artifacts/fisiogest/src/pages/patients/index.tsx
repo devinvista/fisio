@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Search, Plus, UserPlus, Phone, Mail, ChevronRight, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 
 export default function PatientsList() {
   const [search, setSearch] = useState("");
@@ -152,7 +153,7 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
           <div className="space-y-2">
             <Label>Data de Nascimento</Label>
-            <Input type="date" value={formData.birthDate} onChange={e => setFormData({...formData, birthDate: e.target.value})} className="h-11" />
+            <DatePickerPTBR value={formData.birthDate} onChange={v => setFormData({...formData, birthDate: v})} className="h-11" />
           </div>
         </div>
         <div className="pt-4 flex justify-end gap-3">

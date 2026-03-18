@@ -37,6 +37,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   agendado: { label: "Agendado", color: "bg-blue-100 text-blue-700", icon: <Clock className="w-3 h-3" /> },
@@ -1143,8 +1144,7 @@ function DischargeTab({ patientId }: { patientId: number }) {
           <CardContent className="p-5 space-y-4">
             <div className="space-y-2">
               <Label className="text-sm font-semibold text-slate-700">Data da Alta <span className="text-red-500">*</span></Label>
-              <Input type="date" className="bg-slate-50 border-slate-200 focus:bg-white max-w-xs"
-                value={form.dischargeDate} onChange={e => setForm({ ...form, dischargeDate: e.target.value })} />
+              <DatePickerPTBR value={form.dischargeDate} onChange={v => setForm({ ...form, dischargeDate: v })} className="bg-slate-50 border-slate-200 max-w-xs" />
             </div>
 
             <div className="space-y-2">

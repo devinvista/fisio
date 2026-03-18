@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
+import { DatePickerPTBR, TimeInputPTBR } from "@/components/ui/date-picker-ptbr";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; badge: string }> = {
   agendado:  { label: "Agendado",   color: "bg-blue-50",   border: "border-blue-400",   badge: "bg-blue-100 text-blue-700" },
@@ -368,15 +369,19 @@ function AppointmentDetailModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Data</Label>
-                  <Input type="date" value={editForm.date}
-                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                    className="rounded-xl h-10" />
+                  <DatePickerPTBR
+                    value={editForm.date}
+                    onChange={(v) => setEditForm({ ...editForm, date: v })}
+                    className="rounded-xl h-10"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Horário</Label>
-                  <Input type="time" value={editForm.startTime}
-                    onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
-                    className="rounded-xl h-10" />
+                  <TimeInputPTBR
+                    value={editForm.startTime}
+                    onChange={(v) => setEditForm({ ...editForm, startTime: v })}
+                    className="rounded-xl h-10"
+                  />
                 </div>
               </div>
               <div className="space-y-1">
@@ -557,11 +562,9 @@ function CreateAppointmentForm({
 
       <div className="space-y-2">
         <Label>Data *</Label>
-        <Input
-          type="date"
-          required
+        <DatePickerPTBR
           value={formData.date}
-          onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: "" })}
+          onChange={(v) => setFormData({ ...formData, date: v, startTime: "" })}
           className="h-12 rounded-xl"
         />
       </div>
@@ -593,12 +596,11 @@ function CreateAppointmentForm({
             </SelectContent>
           </Select>
         ) : (
-          <Input
-            type="time"
-            required
+          <TimeInputPTBR
             value={formData.startTime}
-            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+            onChange={(v) => setFormData({ ...formData, startTime: v })}
             className="h-12 rounded-xl"
+            required
           />
         )}
         {formData.startTime && computedEndTime && (
