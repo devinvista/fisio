@@ -5,8 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ArrowRight } from "lucide-react";
-import { LogoMark } from "@/components/logo-mark";
+import { Stethoscope, Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
@@ -46,8 +45,8 @@ export default function Login() {
           className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-overlay"
         />
         <div className="relative z-10 p-12 text-white max-w-lg text-center">
-          <div className="inline-block mb-8">
-            <LogoMark size={88} className="text-white/90 drop-shadow-xl" />
+          <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md inline-block mb-8 border border-white/20">
+            <Stethoscope className="w-16 h-16" />
           </div>
           <h1 className="font-display text-5xl font-bold mb-6">FisioGest Pro</h1>
           <p className="text-xl text-white/80 leading-relaxed text-balance">
@@ -60,7 +59,9 @@ export default function Login() {
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 sm:p-10 border border-slate-100">
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <LogoMark size={34} className="text-primary" />
+            <div className="bg-primary p-2 rounded-lg">
+              <Stethoscope className="h-6 w-6 text-white" />
+            </div>
             <span className="font-display font-bold text-2xl">FisioGest Pro</span>
           </div>
 
