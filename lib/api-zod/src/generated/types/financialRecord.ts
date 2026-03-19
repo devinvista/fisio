@@ -14,5 +14,8 @@ export interface FinancialRecord {
   description: string;
   category?: string;
   appointmentId?: number;
+  patientId?: number;
+  procedureId?: number;
+  procedureName?: string;
   createdAt: Date;
 }

@@ -857,6 +857,9 @@ export const ListFinancialRecordsResponseItem = zod.object({
   description: zod.string(),
   category: zod.string().optional(),
   appointmentId: zod.number().optional(),
+  patientId: zod.number().optional(),
+  procedureId: zod.number().optional(),
+  procedureName: zod.string().optional(),
   createdAt: zod.date(),
 });
 export const ListFinancialRecordsResponse = zod.array(
@@ -875,6 +878,7 @@ export const CreateFinancialRecordBody = zod.object({
   amount: zod.number(),
   description: zod.string(),
   category: zod.string().optional(),
+  procedureId: zod.number().optional(),
 });
 
 /**

@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { appointmentsTable } from "./appointments";
 import { patientsTable } from "./patients";
+import { proceduresTable } from "./procedures";
 
 export const financialRecordsTable = pgTable("financial_records", {
   id: serial("id").primaryKey(),
@@ -12,6 +13,7 @@ export const financialRecordsTable = pgTable("financial_records", {
   category: text("category"),
   appointmentId: integer("appointment_id").references(() => appointmentsTable.id),
   patientId: integer("patient_id").references(() => patientsTable.id),
+  procedureId: integer("procedure_id").references(() => proceduresTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -61,11 +61,13 @@ O Replit usa um **proxy reverso compartilhado na porta 80** para rotear tráfego
 
 > **Nunca execute o layout raiz (`src/` + `server/`) no Replit.** Esses arquivos existem apenas para hospedagem externa (ex.: Hostinger/Railway/Render).
 
-### Comando do Workflow
+### Workflows (artifact-based)
 
-```
-PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev
-```
+Os serviços são iniciados por workflows individuais gerenciados pelo Replit:
+- `artifacts/api-server: API Server` → porta 8080
+- `artifacts/fisiogest: web` → porta 20408
+
+> Não use o workflow manual `Start application` — ele conflita com os workflows de artefato acima.
 
 ### Fluxo de requisições em desenvolvimento
 
@@ -168,7 +170,7 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `treatment_plans` | id, patientId (único), objectives, techniques, frequency, estimatedSessions, status |
 | `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications |
 | `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
-| `financial_records` | id, type (receita/despesa), amount, description, category, appointmentId?, patientId? |
+| `financial_records` | id, type (receita/despesa), amount, description, category, appointmentId?, patientId?, procedureId? (FK → procedures) |
 
 ### Comandos de schema
 

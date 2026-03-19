@@ -1,9 +1,14 @@
 import { AppLayout } from "@/components/layout/app-layout";
-import { useGetFinancialDashboard, useListFinancialRecords, useCreateFinancialRecord } from "@workspace/api-client-react";
+import {
+  useGetFinancialDashboard,
+  useListFinancialRecords,
+  useCreateFinancialRecord,
+  useListProcedures,
+} from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TrendingUp, TrendingDown, DollarSign, Plus, Loader2,
-  Ticket, Stethoscope, CalendarDays, Filter, ArrowDownUp,
+  Ticket, Stethoscope, CalendarDays, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
@@ -14,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -27,7 +31,7 @@ const MONTH_NAMES = [
 const EXPENSE_CATEGORIES = [
   "Aluguel", "Água e Luz", "Internet", "Material de Escritório",
   "Equipamentos", "Marketing", "Salários", "Impostos", "Manutenção",
-  "Outros",
+  "Material de Procedimento", "Outros",
 ];
 
 const REVENUE_CATEGORIES = [
@@ -57,7 +61,6 @@ export default function Financial() {
   const { data: rawRecords, isLoading: recLoading, refetch: refetchRec } =
     useListFinancialRecords({ month, year });
 
-  // Sort descending and filter by type
   const records = useMemo(() => {
     if (!rawRecords) return [];
     const sorted = [...rawRecords].sort(
@@ -76,7 +79,6 @@ export default function Financial() {
     [records]
   );
 
-  // Pie chart data from dashboard
   const pieData = useMemo(() => {
     const cats = dashboard?.revenueByCategory ?? [];
     return cats.filter((c: any) => Number(c.revenue) > 0).map((c: any) => ({
@@ -221,7 +223,6 @@ export default function Financial() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {/* Type filter */}
                 <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
                   {(["all", "receita", "despesa"] as const).map((t) => (
                     <button
@@ -269,7 +270,7 @@ export default function Financial() {
                     <tr className="bg-slate-50 border-b border-slate-200">
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Descrição</th>
-                      <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Categoria</th>
+                      <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Categoria / Procedimento</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Valor</th>
                     </tr>
@@ -283,8 +284,13 @@ export default function Financial() {
                         <td className="py-3.5 px-5 text-sm font-medium text-slate-800 max-w-[160px] truncate">
                           {record.description}
                         </td>
-                        <td className="py-3.5 px-5 hidden sm:table-cell">
-                          {record.category ? (
+                        <td className="py-3.5 px-5 hidden md:table-cell">
+                          {(record as any).procedureName ? (
+                            <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                              <Link2 className="w-3 h-3" />
+                              {(record as any).procedureName}
+                            </span>
+                          ) : record.category ? (
                             <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
                               {record.category}
                             </span>
@@ -312,14 +318,13 @@ export default function Financial() {
                     ))}
                   </tbody>
 
-                  {/* Totals footer */}
                   {records.length > 0 && (
                     <tfoot>
                       <tr className="bg-slate-50 border-t-2 border-slate-200">
-                        <td colSpan={3} className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">
+                        <td colSpan={3} className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">
                           Totais do período
                         </td>
-                        <td colSpan={1} className="py-3 px-5 sm:hidden" />
+                        <td colSpan={1} className="py-3 px-5 md:hidden" />
                         <td className="py-3 px-5">
                           {typeFilter !== "despesa" && totalReceitas > 0 && (
                             <span className="text-xs font-bold text-green-600 block">
@@ -351,7 +356,7 @@ export default function Financial() {
 
       {/* New record modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="border-none shadow-2xl rounded-3xl sm:max-w-[480px]">
+        <DialogContent className="border-none shadow-2xl rounded-3xl sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Novo Lançamento</DialogTitle>
           </DialogHeader>
@@ -403,32 +408,80 @@ function KpiCard({
 
 // ─── Create Record Form ───────────────────────────────────────────────────────
 
+type ExpenseMode = "geral" | "procedimento";
+
 function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
-  const [formData, setFormData] = useState({
-    type: "despesa" as "receita" | "despesa",
-    amount: "",
-    description: "",
-    category: "",
-  });
+  const [type, setType] = useState<"receita" | "despesa">("despesa");
+  const [expenseMode, setExpenseMode] = useState<ExpenseMode>("geral");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState<string | undefined>(undefined);
+  const [procedureId, setProcedureId] = useState<string | undefined>(undefined);
+
   const mutation = useCreateFinancialRecord();
   const { toast } = useToast();
+  const { data: procedures } = useListProcedures();
 
-  const categories = formData.type === "receita" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = type === "receita" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
+
+  const handleTypeChange = (newType: "receita" | "despesa") => {
+    setType(newType);
+    setCategory(undefined);
+    setProcedureId(undefined);
+    setExpenseMode("geral");
+  };
+
+  const handleExpenseModeChange = (mode: ExpenseMode) => {
+    setExpenseMode(mode);
+    setProcedureId(undefined);
+    setCategory(undefined);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount || !formData.description) return;
+
+    const numAmount = Number(amount);
+    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+      toast({ variant: "destructive", title: "Valor inválido", description: "Informe um valor maior que zero." });
+      return;
+    }
+    if (!description.trim()) {
+      toast({ variant: "destructive", title: "Descrição obrigatória" });
+      return;
+    }
+
+    const payload: {
+      type: "receita" | "despesa";
+      amount: number;
+      description: string;
+      category?: string;
+      procedureId?: number;
+    } = {
+      type,
+      amount: numAmount,
+      description: description.trim(),
+      category: category || undefined,
+      procedureId: (type === "despesa" && expenseMode === "procedimento" && procedureId)
+        ? parseInt(procedureId)
+        : undefined,
+    };
+
     mutation.mutate(
-      { data: { ...formData, amount: Number(formData.amount) } },
+      { data: payload },
       {
         onSuccess: () => {
           toast({ title: "Lançamento registrado com sucesso." });
           onSuccess();
         },
-        onError: () => toast({ variant: "destructive", title: "Erro ao salvar lançamento." }),
+        onError: (err: any) => {
+          const msg = err?.data?.message ?? "Verifique os dados e tente novamente.";
+          toast({ variant: "destructive", title: "Erro ao salvar lançamento.", description: msg });
+        },
       }
     );
   };
+
+  const isValid = amount && Number(amount) > 0 && description.trim().length > 0;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pt-3">
@@ -438,9 +491,9 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
           <button
             key={t}
             type="button"
-            onClick={() => setFormData({ ...formData, type: t, category: "" })}
+            onClick={() => handleTypeChange(t)}
             className={`py-3 rounded-2xl text-sm font-bold border-2 transition-all ${
-              formData.type === t
+              type === t
                 ? t === "receita"
                   ? "border-green-500 bg-green-50 text-green-700"
                   : "border-red-400 bg-red-50 text-red-700"
@@ -452,7 +505,39 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
         ))}
       </div>
 
+      {/* Expense mode toggle — only for despesas */}
+      {type === "despesa" && (
+        <div>
+          <Label className="text-sm font-semibold mb-2 block">Tipo de despesa</Label>
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            <button
+              type="button"
+              onClick={() => handleExpenseModeChange("geral")}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                expenseMode === "geral"
+                  ? "bg-white shadow text-slate-800"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Geral (custo fixo)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExpenseModeChange("procedimento")}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                expenseMode === "procedimento"
+                  ? "bg-white shadow text-slate-800"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Vinculada a Procedimento
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
+        {/* Amount */}
         <div className="space-y-1.5">
           <Label className="text-sm font-semibold">Valor (R$)</Label>
           <Input
@@ -461,36 +546,86 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
             min="0.01"
             required
             placeholder="0,00"
-            value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
             className="h-11 rounded-xl"
           />
         </div>
+
+        {/* Category or Procedure */}
+        {type === "despesa" && expenseMode === "procedimento" ? (
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Procedimento</Label>
+            <Select
+              value={procedureId ?? ""}
+              onValueChange={(v) => setProcedureId(v || undefined)}
+            >
+              <SelectTrigger className="h-11 rounded-xl">
+                <SelectValue placeholder="Selecionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(procedures ?? []).map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Categoria</Label>
+            <Select
+              value={category ?? ""}
+              onValueChange={(v) => setCategory(v || undefined)}
+            >
+              <SelectTrigger className="h-11 rounded-xl">
+                <SelectValue placeholder="Selecionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      {/* Procedure mode — show category too */}
+      {type === "despesa" && expenseMode === "procedimento" && (
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">Categoria</Label>
+          <Label className="text-sm font-semibold">Categoria do custo</Label>
           <Select
-            value={formData.category}
-            onValueChange={(v) => setFormData({ ...formData, category: v })}
+            value={category ?? ""}
+            onValueChange={(v) => setCategory(v || undefined)}
           >
             <SelectTrigger className="h-11 rounded-xl">
               <SelectValue placeholder="Selecionar..." />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((cat) => (
+              {EXPENSE_CATEGORIES.map((cat) => (
                 <SelectItem key={cat} value={cat}>{cat}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-      </div>
+      )}
 
+      {/* Description */}
       <div className="space-y-1.5">
         <Label className="text-sm font-semibold">Descrição</Label>
         <Input
           required
-          placeholder={formData.type === "receita" ? "Ex: Pacote de 10 sessões" : "Ex: Conta de Luz — Março"}
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          placeholder={
+            type === "receita"
+              ? "Ex: Pacote de 10 sessões"
+              : expenseMode === "procedimento"
+                ? "Ex: Esfoliante e máscara facial"
+                : "Ex: Conta de Luz — Março"
+          }
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
           className="h-11 rounded-xl"
         />
       </div>
@@ -498,16 +633,16 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
       <Button
         type="submit"
         className={`w-full h-12 rounded-xl text-base font-semibold shadow-lg mt-2 ${
-          formData.type === "receita"
+          type === "receita"
             ? "bg-green-600 hover:bg-green-700 shadow-green-200"
             : "bg-primary shadow-primary/20"
         }`}
-        disabled={mutation.isPending || !formData.amount || !formData.description}
+        disabled={mutation.isPending || !isValid}
       >
         {mutation.isPending ? (
           <Loader2 className="animate-spin w-5 h-5" />
         ) : (
-          `Registrar ${formData.type === "receita" ? "Receita" : "Despesa"}`
+          `Registrar ${type === "receita" ? "Receita" : "Despesa"}`
         )}
       </Button>
     </form>

@@ -109,8 +109,7 @@ router.get("/records", async (req, res) => {
     const month = req.query.month ? parseInt(req.query.month as string) : undefined;
     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
 
-    let query = db.select().from(financialRecordsTable);
-    const conditions = [];
+    const conditions: ReturnType<typeof eq>[] = [];
 
     if (type) conditions.push(eq(financialRecordsTable.type, type));
     if (month && year) {
@@ -120,11 +119,24 @@ router.get("/records", async (req, res) => {
       conditions.push(lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59")));
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as any;
-    }
+    const records = await db
+      .select({
+        id: financialRecordsTable.id,
+        type: financialRecordsTable.type,
+        amount: financialRecordsTable.amount,
+        description: financialRecordsTable.description,
+        category: financialRecordsTable.category,
+        appointmentId: financialRecordsTable.appointmentId,
+        patientId: financialRecordsTable.patientId,
+        procedureId: financialRecordsTable.procedureId,
+        procedureName: proceduresTable.name,
+        createdAt: financialRecordsTable.createdAt,
+      })
+      .from(financialRecordsTable)
+      .leftJoin(proceduresTable, eq(financialRecordsTable.procedureId, proceduresTable.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(financialRecordsTable.createdAt);
 
-    const records = await query.orderBy(financialRecordsTable.createdAt);
     res.json(records);
   } catch (err) {
     console.error(err);
@@ -134,22 +146,40 @@ router.get("/records", async (req, res) => {
 
 router.post("/records", async (req, res) => {
   try {
-    const { type = "despesa", amount, description, category, patientId } = req.body;
+    const { type = "despesa", amount, description, category, patientId, procedureId } = req.body;
+
     if (!amount || !description) {
-      res.status(400).json({ error: "Bad Request", message: "Amount and description are required" });
+      res.status(400).json({ error: "Bad Request", message: "Valor e descrição são obrigatórios" });
+      return;
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      res.status(400).json({ error: "Bad Request", message: "Valor deve ser maior que zero" });
       return;
     }
 
     const [record] = await db.insert(financialRecordsTable)
       .values({
         type,
-        amount: String(amount),
+        amount: String(numAmount),
         description,
-        category,
-        patientId: patientId ? parseInt(String(patientId)) : undefined,
+        category: category || null,
+        patientId: patientId ? parseInt(String(patientId)) : null,
+        procedureId: procedureId ? parseInt(String(procedureId)) : null,
       })
       .returning();
-    res.status(201).json(record);
+
+    const result = { ...record, procedureName: null as string | null };
+
+    if (record.procedureId) {
+      const [proc] = await db.select({ name: proceduresTable.name })
+        .from(proceduresTable)
+        .where(eq(proceduresTable.id, record.procedureId));
+      result.procedureName = proc?.name ?? null;
+    }
+
+    res.status(201).json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

@@ -12,4 +12,5 @@ export interface CreateFinancialRecordRequest {
   amount: number;
   description: string;
   category?: string;
+  procedureId?: number;
 }

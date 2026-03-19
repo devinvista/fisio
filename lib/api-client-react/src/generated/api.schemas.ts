@@ -340,6 +340,9 @@ export interface FinancialRecord {
   description: string;
   category?: string;
   appointmentId?: number;
+  patientId?: number;
+  procedureId?: number;
+  procedureName?: string;
   createdAt: string;
 }
 
@@ -356,6 +359,7 @@ export interface CreateFinancialRecordRequest {
   amount: number;
   description: string;
   category?: string;
+  procedureId?: number;
 }
 
 export type FinancialDashboardRevenueByCategoryItem = {
