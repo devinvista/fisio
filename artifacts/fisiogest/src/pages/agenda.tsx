@@ -29,6 +29,8 @@ import {
   User,
   Stethoscope,
   Clock,
+  Users,
+  ChevronRight as Arrow,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -39,19 +41,28 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { DatePickerPTBR, TimeInputPTBR } from "@/components/ui/date-picker-ptbr";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; badge: string }> = {
-  agendado:  { label: "Agendado",   color: "bg-blue-50",   border: "border-blue-400",   badge: "bg-blue-100 text-blue-700" },
-  confirmado:{ label: "Confirmado", color: "bg-green-50",  border: "border-green-500",  badge: "bg-green-100 text-green-700" },
-  concluido: { label: "Concluído",  color: "bg-slate-50",  border: "border-slate-400",  badge: "bg-slate-100 text-slate-600" },
-  cancelado: { label: "Cancelado",  color: "bg-red-50",    border: "border-red-400",    badge: "bg-red-100 text-red-700" },
-  faltou:    { label: "Faltou",     color: "bg-orange-50", border: "border-orange-400", badge: "bg-orange-100 text-orange-700" },
+const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; badge: string; dot: string }> = {
+  agendado:   { label: "Agendado",   color: "bg-blue-50",   border: "border-blue-400",   badge: "bg-blue-100 text-blue-700",     dot: "bg-blue-400" },
+  confirmado: { label: "Confirmado", color: "bg-green-50",  border: "border-green-500",  badge: "bg-green-100 text-green-700",   dot: "bg-green-500" },
+  concluido:  { label: "Concluído",  color: "bg-slate-50",  border: "border-slate-400",  badge: "bg-slate-100 text-slate-600",   dot: "bg-slate-400" },
+  cancelado:  { label: "Cancelado",  color: "bg-red-50",    border: "border-red-400",    badge: "bg-red-100 text-red-700",       dot: "bg-red-400" },
+  faltou:     { label: "Faltou",     color: "bg-orange-50", border: "border-orange-400", badge: "bg-orange-100 text-orange-700", dot: "bg-orange-400" },
+};
+
+type Appointment = NonNullable<ReturnType<typeof useListAppointments>["data"]>[number];
+
+type SlotGroup = {
+  procedureId: number;
+  procedureName: string;
+  appointments: Appointment[];
 };
 
 export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; procedureId?: number } | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<SlotGroup | null>(null);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 6 }).map((_, i) => addDays(weekStart, i));
@@ -68,12 +79,31 @@ export default function Agenda() {
     setIsNewModalOpen(true);
   };
 
-  const getAppointmentsForSlot = (date: Date, time: string) => {
+  const getGroupedSlots = (date: Date, time: string): SlotGroup[] => {
     if (!appointments) return [];
     const hourStr = time.split(":")[0];
-    return appointments.filter(
+    const slotApps = appointments.filter(
       (a) => a.date === format(date, "yyyy-MM-dd") && a.startTime.startsWith(hourStr)
     );
+    const byProcedure = new Map<number, SlotGroup>();
+    for (const apt of slotApps) {
+      const pid = apt.procedure?.id ?? 0;
+      if (!byProcedure.has(pid)) {
+        byProcedure.set(pid, {
+          procedureId: pid,
+          procedureName: apt.procedure?.name ?? "Procedimento",
+          appointments: [],
+        });
+      }
+      byProcedure.get(pid)!.appointments.push(apt);
+    }
+    return Array.from(byProcedure.values());
+  };
+
+  const handleRefresh = () => {
+    refetch();
+    setSelectedAppointment(null);
+    setSelectedGroup(null);
   };
 
   return (
@@ -105,6 +135,7 @@ export default function Agenda() {
 
       <Card className="border-none shadow-xl bg-white overflow-x-auto rounded-3xl">
         <div className="min-w-[800px]">
+          {/* Header */}
           <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/50">
             <div className="p-4 border-r border-slate-200 text-center text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-center">
               Hora
@@ -119,6 +150,7 @@ export default function Agenda() {
             ))}
           </div>
 
+          {/* Body */}
           {isLoading ? (
             <div className="h-96 flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -131,33 +163,34 @@ export default function Agenda() {
                     {hour}
                   </div>
                   {weekDays.map((day, j) => {
-                    const slotApps = getAppointmentsForSlot(day, hour);
+                    const groups = getGroupedSlots(day, hour);
                     return (
                       <div
                         key={j}
-                        className={`p-2 border-r border-slate-100 min-h-[100px] cursor-pointer hover:bg-slate-50 transition-colors relative group ${isSameDay(day, new Date()) ? "bg-primary/[0.02]" : ""}`}
+                        className={`p-1.5 border-r border-slate-100 min-h-[90px] cursor-pointer hover:bg-slate-50 transition-colors relative group ${isSameDay(day, new Date()) ? "bg-primary/[0.02]" : ""}`}
                         onClick={() => handleSlotClick(day, hour)}
                       >
-                        <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                          <Plus className="w-6 h-6 text-primary/50" />
-                        </div>
-                        {slotApps.map((apt) => {
-                          const cfg = STATUS_CONFIG[apt.status] || STATUS_CONFIG.agendado;
-                          return (
-                            <div
-                              key={apt.id}
-                              onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
-                              className={`relative z-10 p-2 mb-2 rounded-lg text-xs shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-shadow ${cfg.color} ${cfg.border}`}
-                            >
-                              <p className="font-bold truncate">{apt.patient?.name}</p>
-                              <p className="opacity-80 truncate">{apt.procedure?.name}</p>
-                              <p className="text-[10px] mt-1 font-medium">{apt.startTime} - {apt.endTime}</p>
-                              <span className={`inline-block mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${cfg.badge}`}>
-                                {cfg.label}
-                              </span>
-                            </div>
-                          );
-                        })}
+                        {groups.length === 0 && (
+                          <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                            <Plus className="w-5 h-5 text-primary/40" />
+                          </div>
+                        )}
+
+                        {groups.map((group) =>
+                          group.appointments.length === 1 ? (
+                            <SingleAppointmentCard
+                              key={group.procedureId}
+                              appointment={group.appointments[0]}
+                              onClick={(e) => { e.stopPropagation(); setSelectedAppointment(group.appointments[0]); }}
+                            />
+                          ) : (
+                            <GroupAppointmentCard
+                              key={group.procedureId}
+                              group={group}
+                              onClick={(e) => { e.stopPropagation(); setSelectedGroup(group); }}
+                            />
+                          )
+                        )}
                       </div>
                     );
                   })}
@@ -182,15 +215,282 @@ export default function Agenda() {
         </DialogContent>
       </Dialog>
 
-      {/* Appointment detail/edit modal */}
-      {selectedAppointment && (
+      {/* Single appointment detail modal */}
+      {selectedAppointment && !selectedGroup && (
         <AppointmentDetailModal
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
-          onRefresh={() => { refetch(); setSelectedAppointment(null); }}
+          onRefresh={handleRefresh}
+        />
+      )}
+
+      {/* Group slot modal */}
+      {selectedGroup && (
+        <GroupSlotModal
+          group={selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          onRefresh={handleRefresh}
+          onOpenAppointment={(apt) => { setSelectedGroup(null); setSelectedAppointment(apt); }}
+          onAddPatient={(date, time, procedureId) => {
+            setSelectedGroup(null);
+            setSelectedSlot({ date, time, procedureId });
+            setIsNewModalOpen(true);
+          }}
         />
       )}
     </AppLayout>
+  );
+}
+
+// ─── Single Appointment Card ──────────────────────────────────────────────────
+
+function SingleAppointmentCard({ appointment, onClick }: { appointment: Appointment; onClick: (e: React.MouseEvent) => void }) {
+  const cfg = STATUS_CONFIG[appointment.status] || STATUS_CONFIG.agendado;
+  return (
+    <div
+      onClick={onClick}
+      className={`relative z-10 p-2 mb-1.5 rounded-lg text-xs shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-all ${cfg.color} ${cfg.border}`}
+    >
+      <p className="font-bold truncate leading-tight">{appointment.patient?.name}</p>
+      <p className="opacity-70 truncate text-[10px] mt-0.5">{appointment.procedure?.name}</p>
+      <p className="text-[10px] mt-1 font-medium opacity-60">{appointment.startTime} – {appointment.endTime}</p>
+      <span className={`inline-block mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${cfg.badge}`}>
+        {cfg.label}
+      </span>
+    </div>
+  );
+}
+
+// ─── Group Appointment Card ───────────────────────────────────────────────────
+
+function GroupAppointmentCard({ group, onClick }: { group: SlotGroup; onClick: (e: React.MouseEvent) => void }) {
+  const { appointments, procedureName } = group;
+  const firstApt = appointments[0];
+  const cfg = STATUS_CONFIG[firstApt.status] || STATUS_CONFIG.agendado;
+
+  const statusCounts = appointments.reduce((acc, apt) => {
+    acc[apt.status] = (acc[apt.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const shownNames = appointments.slice(0, 2).map((a) => a.patient?.name?.split(" ")[0] ?? "—");
+  const extraCount = appointments.length - 2;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`relative z-10 p-2 mb-1.5 rounded-lg text-xs shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-all ${cfg.color} ${cfg.border}`}
+    >
+      {/* Procedure name + count */}
+      <div className="flex items-center justify-between gap-1 mb-1">
+        <p className="font-bold truncate leading-tight flex-1">{procedureName}</p>
+        <span className="flex items-center gap-0.5 bg-white/70 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shrink-0">
+          <Users className="w-2.5 h-2.5" />
+          {appointments.length}
+        </span>
+      </div>
+
+      {/* Patient names */}
+      <p className="text-[10px] opacity-70 truncate">
+        {shownNames.join(", ")}
+        {extraCount > 0 && ` +${extraCount}`}
+      </p>
+
+      {/* Time */}
+      <p className="text-[10px] mt-1 font-medium opacity-60">{firstApt.startTime} – {firstApt.endTime}</p>
+
+      {/* Status dots */}
+      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+        {Object.entries(statusCounts).map(([status, count]) => {
+          const c = STATUS_CONFIG[status];
+          return (
+            <span key={status} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${c.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+              {count} {c.label}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Group Slot Modal ─────────────────────────────────────────────────────────
+
+function GroupSlotModal({
+  group,
+  onClose,
+  onRefresh,
+  onOpenAppointment,
+  onAddPatient,
+}: {
+  group: SlotGroup;
+  onClose: () => void;
+  onRefresh: () => void;
+  onOpenAppointment: (apt: Appointment) => void;
+  onAddPatient: (date: string, time: string, procedureId: number) => void;
+}) {
+  const { toast } = useToast();
+  const updateMutation = useUpdateAppointment();
+  const completeMutation = useCompleteAppointment();
+
+  const firstApt = group.appointments[0];
+
+  const handleStatusChange = (apt: Appointment, newStatus: string) => {
+    updateMutation.mutate(
+      { id: apt.id, data: { status: newStatus } },
+      {
+        onSuccess: () => {
+          toast({ title: `${apt.patient?.name}: status alterado para "${STATUS_CONFIG[newStatus]?.label}".` });
+          onRefresh();
+        },
+        onError: () => toast({ variant: "destructive", title: "Erro ao alterar status." }),
+      }
+    );
+  };
+
+  const handleComplete = (apt: Appointment) => {
+    completeMutation.mutate(
+      { id: apt.id },
+      {
+        onSuccess: () => {
+          toast({ title: `${apt.patient?.name}: consulta concluída!` });
+          onRefresh();
+        },
+        onError: () => toast({ variant: "destructive", title: "Erro ao concluir consulta." }),
+      }
+    );
+  };
+
+  const isBusy = updateMutation.isPending || completeMutation.isPending;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[540px] border-none shadow-2xl rounded-3xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-xl">
+              <Users className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <DialogTitle className="font-display text-xl">{group.procedureName}</DialogTitle>
+              <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                {firstApt.startTime} – {firstApt.endTime}
+                <span className="mx-1">·</span>
+                {firstApt.date ? format(new Date(firstApt.date + "T12:00:00"), "dd/MM/yyyy") : ""}
+                <span className="mx-1">·</span>
+                <strong>{group.appointments.length} pacientes</strong>
+              </p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-2 mt-2 max-h-[60vh] overflow-y-auto pr-1">
+          {group.appointments.map((apt) => {
+            const cfg = STATUS_CONFIG[apt.status] || STATUS_CONFIG.agendado;
+            return (
+              <div
+                key={apt.id}
+                className={`rounded-2xl border border-slate-100 bg-slate-50 overflow-hidden`}
+              >
+                {/* Patient header */}
+                <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 text-sm truncate">{apt.patient?.name}</p>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.badge}`}>
+                      {cfg.label}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 h-7 px-2 rounded-lg text-slate-500 hover:text-primary hover:bg-primary/10"
+                    onClick={() => onOpenAppointment(apt)}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1" />
+                    Detalhes
+                    <Arrow className="w-3 h-3 ml-1" />
+                  </Button>
+                </div>
+
+                {/* Quick actions */}
+                {apt.status !== "concluido" && (
+                  <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+                    {apt.status !== "confirmado" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 rounded-lg text-[11px] border-green-200 text-green-700 hover:bg-green-50"
+                        onClick={() => handleStatusChange(apt, "confirmado")}
+                        disabled={isBusy}
+                      >
+                        <CheckCircle className="w-3 h-3 mr-1" /> Confirmar
+                      </Button>
+                    )}
+                    {apt.status !== "faltou" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 rounded-lg text-[11px] border-orange-200 text-orange-700 hover:bg-orange-50"
+                        onClick={() => handleStatusChange(apt, "faltou")}
+                        disabled={isBusy}
+                      >
+                        <AlertCircle className="w-3 h-3 mr-1" /> Faltou
+                      </Button>
+                    )}
+                    {apt.status !== "cancelado" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 rounded-lg text-[11px] border-red-200 text-red-700 hover:bg-red-50"
+                        onClick={() => handleStatusChange(apt, "cancelado")}
+                        disabled={isBusy}
+                      >
+                        <XCircle className="w-3 h-3 mr-1" /> Cancelar
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-7 px-2.5 rounded-lg text-[11px] bg-primary hover:bg-primary/90"
+                      onClick={() => handleComplete(apt)}
+                      disabled={isBusy}
+                    >
+                      {completeMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : (
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                      )}
+                      Concluir
+                    </Button>
+                  </div>
+                )}
+                {apt.status === "concluido" && (
+                  <div className="px-4 pb-3">
+                    <p className="text-xs text-slate-400 italic">Consulta concluída</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add patient to same slot */}
+        <div className="pt-3 border-t border-slate-100">
+          <Button
+            variant="outline"
+            className="w-full rounded-xl border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary/60"
+            onClick={() => onAddPatient(firstApt.date, firstApt.startTime, group.procedureId)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Adicionar paciente neste horário
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -201,7 +501,7 @@ function AppointmentDetailModal({
   onClose,
   onRefresh,
 }: {
-  appointment: any;
+  appointment: Appointment;
   onClose: () => void;
   onRefresh: () => void;
 }) {
@@ -293,7 +593,6 @@ function AppointmentDetailModal({
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-          {/* Info summary */}
           <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-3">
               <User className="w-4 h-4 text-slate-400 shrink-0" />
@@ -330,7 +629,6 @@ function AppointmentDetailModal({
             )}
           </div>
 
-          {/* Quick status actions */}
           {!isEditing && appointment.status !== "concluido" && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Alterar Status</p>
@@ -362,7 +660,6 @@ function AppointmentDetailModal({
             </div>
           )}
 
-          {/* Edit form */}
           {isEditing && (
             <div className="space-y-3 bg-slate-50 rounded-2xl p-4">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Editar Consulta</p>
@@ -412,7 +709,6 @@ function AppointmentDetailModal({
             </div>
           )}
 
-          {/* Footer actions */}
           <div className="flex items-center justify-between pt-1">
             <Button variant="ghost" size="sm" className="rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50"
               onClick={handleDelete} disabled={isBusy}>
@@ -436,15 +732,17 @@ function AppointmentDetailModal({
 function CreateAppointmentForm({
   initialDate,
   initialTime,
+  initialProcedureId,
   onSuccess,
 }: {
   initialDate?: string;
   initialTime?: string;
+  initialProcedureId?: number;
   onSuccess: () => void;
 }) {
   const [formData, setFormData] = useState({
     patientId: "",
-    procedureId: "",
+    procedureId: initialProcedureId ? String(initialProcedureId) : "",
     date: initialDate || format(new Date(), "yyyy-MM-dd"),
     startTime: initialTime || "",
     notes: "",
@@ -553,84 +851,88 @@ function CreateAppointmentForm({
           <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
             <Clock className="w-3 h-3" />
             Duração: {selectedProcedure.durationMinutes} min
-            {(selectedProcedure as any).maxCapacity > 1
-              ? ` · Capacidade: ${(selectedProcedure as any).maxCapacity} vagas`
-              : ""}
+            {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} pacientes simultâneos`}
           </p>
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label>Data *</Label>
-        <DatePickerPTBR
-          value={formData.date}
-          onChange={(v) => setFormData({ ...formData, date: v, startTime: "" })}
-          className="h-12 rounded-xl"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>
-          Horário *
-          {slotsFetching && <span className="ml-2 text-xs text-slate-400">Verificando disponibilidade...</span>}
-        </Label>
-        {canFetchSlots && availableSlots.length > 0 ? (
-          <Select
-            value={formData.startTime}
-            onValueChange={(v) => setFormData({ ...formData, startTime: v })}
-          >
-            <SelectTrigger className="h-12 rounded-xl">
-              <SelectValue placeholder="Selecione um horário disponível..." />
-            </SelectTrigger>
-            <SelectContent className="max-h-64">
-              {availableSlots.map((slot) => (
-                <SelectItem key={slot.time} value={slot.time} disabled={!slot.available}>
-                  {slot.time}
-                  {!slot.available
-                    ? " — lotado"
-                    : (slotsData?.procedure?.maxCapacity ?? 1) > 1
-                    ? ` — ${slot.spotsLeft} vaga${slot.spotsLeft !== 1 ? "s" : ""} livre${slot.spotsLeft !== 1 ? "s" : ""}`
-                    : " — disponível"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <TimeInputPTBR
-            value={formData.startTime}
-            onChange={(v) => setFormData({ ...formData, startTime: v })}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Data *</Label>
+          <DatePickerPTBR
+            value={formData.date}
+            onChange={(v) => setFormData({ ...formData, date: v, startTime: "" })}
             className="h-12 rounded-xl"
-            required
           />
-        )}
-        {formData.startTime && computedEndTime && (
-          <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
-            <Clock className="w-3 h-3" />
-            Término calculado: <span className="font-semibold text-slate-700">{computedEndTime}</span>
-          </p>
-        )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Horário *</Label>
+          {canFetchSlots ? (
+            <div>
+              {slotsFetching ? (
+                <div className="h-12 rounded-xl border border-slate-200 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                </div>
+              ) : (
+                <Select value={formData.startTime} onValueChange={(v) => setFormData({ ...formData, startTime: v })}>
+                  <SelectTrigger className="h-12 rounded-xl">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSlots.map((s) => (
+                      <SelectItem
+                        key={s.time}
+                        value={s.time}
+                        disabled={!s.available}
+                      >
+                        {s.time}
+                        {s.available
+                          ? s.spotsLeft < 99 ? ` · ${s.spotsLeft} vaga(s)` : ""
+                          : " · Lotado"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {formData.startTime && computedEndTime && (
+                <p className="text-xs text-slate-500 mt-1 pl-1">
+                  Término: {computedEndTime}
+                </p>
+              )}
+            </div>
+          ) : (
+            <TimeInputPTBR
+              value={formData.startTime}
+              onChange={(v) => setFormData({ ...formData, startTime: v })}
+              className="h-12 rounded-xl"
+            />
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
         <Label>Observações</Label>
         <Textarea
+          placeholder="Queixas, observações clínicas..."
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Informações adicionais sobre a consulta..."
           className="rounded-xl resize-none"
           rows={2}
         />
       </div>
 
-      <div className="pt-2">
-        <Button
-          type="submit"
-          className="w-full h-12 rounded-xl text-base shadow-lg shadow-primary/20"
-          disabled={mutation.isPending || !formData.patientId || !formData.procedureId || !formData.startTime}
-        >
-          {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirmar Agendamento"}
-        </Button>
-      </div>
+      <Button
+        type="submit"
+        className="w-full h-12 rounded-xl shadow-lg shadow-primary/20"
+        disabled={!formData.patientId || !formData.procedureId || !formData.startTime || mutation.isPending}
+      >
+        {mutation.isPending ? (
+          <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Agendando...</>
+        ) : (
+          <><CalIcon className="w-4 h-4 mr-2" /> Confirmar Agendamento</>
+        )}
+      </Button>
     </form>
   );
 }
