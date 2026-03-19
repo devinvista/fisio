@@ -28,10 +28,17 @@ const MONTH_NAMES = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-const EXPENSE_CATEGORIES = [
-  "Aluguel", "Água e Luz", "Internet", "Material de Escritório",
-  "Equipamentos", "Marketing", "Salários", "Impostos", "Manutenção",
-  "Material de Procedimento", "Outros",
+const GENERAL_EXPENSE_CATEGORIES = [
+  "Aluguel", "Água e Luz", "Internet", "Telefone",
+  "Material de Escritório", "Equipamentos", "Marketing",
+  "Salários", "Pró-labore", "Impostos e Taxas", "Contabilidade",
+  "Manutenção", "Seguro", "Outros",
+];
+
+const PROCEDURE_EXPENSE_CATEGORIES = [
+  "Insumos e Materiais", "Consumíveis", "Produtos Cosméticos",
+  "Medicamentos", "Luvas e EPI", "Material Descartável",
+  "Equipamento de Procedimento", "Outros",
 ];
 
 const REVENUE_CATEGORIES = [
@@ -422,7 +429,11 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
   const { toast } = useToast();
   const { data: procedures } = useListProcedures();
 
-  const categories = type === "receita" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = type === "receita"
+    ? REVENUE_CATEGORIES
+    : expenseMode === "procedimento"
+      ? PROCEDURE_EXPENSE_CATEGORIES
+      : GENERAL_EXPENSE_CATEGORIES;
 
   const handleTypeChange = (newType: "receita" | "despesa") => {
     setType(newType);
@@ -592,19 +603,19 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
         )}
       </div>
 
-      {/* Procedure mode — show category too */}
+      {/* Procedure mode — show category of the direct cost */}
       {type === "despesa" && expenseMode === "procedimento" && (
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">Categoria do custo</Label>
+          <Label className="text-sm font-semibold">Tipo de insumo / custo direto</Label>
           <Select
             value={category ?? ""}
             onValueChange={(v) => setCategory(v || undefined)}
           >
             <SelectTrigger className="h-11 rounded-xl">
-              <SelectValue placeholder="Selecionar..." />
+              <SelectValue placeholder="Selecionar tipo..." />
             </SelectTrigger>
             <SelectContent>
-              {EXPENSE_CATEGORIES.map((cat) => (
+              {PROCEDURE_EXPENSE_CATEGORIES.map((cat) => (
                 <SelectItem key={cat} value={cat}>{cat}</SelectItem>
               ))}
             </SelectContent>
