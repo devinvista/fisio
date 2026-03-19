@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import {
   anamnesisTable,
@@ -13,10 +13,14 @@ import {
 import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
+type P = { patientId: string };
+type PEval = { patientId: string; evaluationId: string };
+type PEvol = { patientId: string; evolutionId: string };
+
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
-router.get("/anamnesis", async (req, res) => {
+router.get("/anamnesis", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [anamnesis] = await db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId));
@@ -31,7 +35,7 @@ router.get("/anamnesis", async (req, res) => {
   }
 });
 
-router.post("/anamnesis", async (req, res) => {
+router.post("/anamnesis", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = req.body;
@@ -56,7 +60,7 @@ router.post("/anamnesis", async (req, res) => {
   }
 });
 
-router.get("/evaluations", async (req, res) => {
+router.get("/evaluations", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluations = await db.select().from(evaluationsTable)
@@ -69,7 +73,7 @@ router.get("/evaluations", async (req, res) => {
   }
 });
 
-router.post("/evaluations", async (req, res) => {
+router.post("/evaluations", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
@@ -84,7 +88,7 @@ router.post("/evaluations", async (req, res) => {
   }
 });
 
-router.put("/evaluations/:evaluationId", async (req, res) => {
+router.put("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
@@ -108,7 +112,7 @@ router.put("/evaluations/:evaluationId", async (req, res) => {
   }
 });
 
-router.delete("/evaluations/:evaluationId", async (req, res) => {
+router.delete("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
@@ -128,7 +132,7 @@ router.delete("/evaluations/:evaluationId", async (req, res) => {
   }
 });
 
-router.get("/treatment-plan", async (req, res) => {
+router.get("/treatment-plan", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [plan] = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId));
@@ -143,7 +147,7 @@ router.get("/treatment-plan", async (req, res) => {
   }
 });
 
-router.post("/treatment-plan", async (req, res) => {
+router.post("/treatment-plan", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { objectives, techniques, frequency, estimatedSessions, status = "ativo" } = req.body;
@@ -168,7 +172,7 @@ router.post("/treatment-plan", async (req, res) => {
   }
 });
 
-router.get("/evolutions", async (req, res) => {
+router.get("/evolutions", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutions = await db.select().from(evolutionsTable)
@@ -181,7 +185,7 @@ router.get("/evolutions", async (req, res) => {
   }
 });
 
-router.post("/evolutions", async (req, res) => {
+router.post("/evolutions", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
@@ -196,7 +200,7 @@ router.post("/evolutions", async (req, res) => {
   }
 });
 
-router.put("/evolutions/:evolutionId", async (req, res) => {
+router.put("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
@@ -220,7 +224,7 @@ router.put("/evolutions/:evolutionId", async (req, res) => {
   }
 });
 
-router.delete("/evolutions/:evolutionId", async (req, res) => {
+router.delete("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
@@ -240,7 +244,7 @@ router.delete("/evolutions/:evolutionId", async (req, res) => {
   }
 });
 
-router.get("/appointments", async (req, res) => {
+router.get("/appointments", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const rows = await db
@@ -260,7 +264,7 @@ router.get("/appointments", async (req, res) => {
   }
 });
 
-router.get("/discharge-summary", async (req, res) => {
+router.get("/discharge-summary", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [summary] = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
@@ -275,7 +279,7 @@ router.get("/discharge-summary", async (req, res) => {
   }
 });
 
-router.post("/discharge-summary", async (req, res) => {
+router.post("/discharge-summary", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { dischargeDate, dischargeReason, achievedResults, recommendations } = req.body;
@@ -300,7 +304,7 @@ router.post("/discharge-summary", async (req, res) => {
   }
 });
 
-router.get("/financial", async (req, res) => {
+router.get("/financial", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const rows = await db

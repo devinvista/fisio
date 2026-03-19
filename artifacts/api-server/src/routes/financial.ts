@@ -1,25 +1,40 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable } from "@workspace/db";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
 const router = Router();
 router.use(authMiddleware);
+
+function monthRange(year: number, month: number): { start: Date; end: Date } {
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 1);
+  return { start, end };
+}
+
+function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, "0");
+  return {
+    startDate: `${year}-${mm}-01`,
+    endDate: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
 
 router.get("/dashboard", async (req, res) => {
   try {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const { start, end } = monthRange(year, month);
+    const { startDate, endDate } = monthDateRange(year, month);
 
     const records = await db.select().from(financialRecordsTable)
       .where(
         and(
-          gte(financialRecordsTable.createdAt, new Date(startDate)),
-          lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
+          gte(financialRecordsTable.createdAt, start),
+          lt(financialRecordsTable.createdAt, end)
         )
       );
 
@@ -63,8 +78,8 @@ router.get("/dashboard", async (req, res) => {
       .where(
         and(
           eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, new Date(startDate)),
-          lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
+          gte(financialRecordsTable.createdAt, start),
+          lt(financialRecordsTable.createdAt, end)
         )
       )
       .groupBy(proceduresTable.category);
@@ -79,8 +94,8 @@ router.get("/dashboard", async (req, res) => {
       .where(
         and(
           eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, new Date(startDate)),
-          lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
+          gte(financialRecordsTable.createdAt, start),
+          lt(financialRecordsTable.createdAt, end)
         )
       )
       .groupBy(proceduresTable.name)
@@ -113,10 +128,9 @@ router.get("/records", async (req, res) => {
 
     if (type) conditions.push(eq(financialRecordsTable.type, type));
     if (month && year) {
-      const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-      const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
-      conditions.push(gte(financialRecordsTable.createdAt, new Date(startDate)));
-      conditions.push(lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59")));
+      const { start, end } = monthRange(year, month);
+      conditions.push(gte(financialRecordsTable.createdAt, start));
+      conditions.push(lt(financialRecordsTable.createdAt, end));
     }
 
     const records = await db

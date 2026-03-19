@@ -305,10 +305,10 @@ pnpm run db:seed
 
 Criadas pelo seed (`pnpm run db:seed`):
 
-- **E-mail**: `admin@fisiogest.com`
-- **Senha**: `admin123`
+- **E-mail**: `demo@fisiogest.com`
+- **Senha**: `demo123`
 
-O seed cria 5 pacientes com prontuários completos, avaliações, planos de tratamento, 64 consultas (jan–mar 2026), evoluções e registros financeiros.
+O seed cria 10 pacientes com prontuários completos, avaliações, planos de tratamento, 75 consultas, evoluções e 55 registros financeiros.
 
 ---
 

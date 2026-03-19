@@ -1,19 +1,36 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
 const router = Router();
 router.use(authMiddleware);
 
+function monthRange(year: number, month: number): { start: Date; end: Date } {
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 1),
+  };
+}
+
+function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, "0");
+  return {
+    startDate: `${year}-${mm}-01`,
+    endDate: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
-    const month = new Date().getMonth() + 1;
-    const year = new Date().getFullYear();
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const { start, end } = monthRange(year, month);
+    const { startDate, endDate } = monthDateRange(year, month);
 
     const todayAppts = await db
       .select({
@@ -52,8 +69,8 @@ router.get("/", async (req, res) => {
       .where(
         and(
           eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, new Date(startDate)),
-          lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
+          gte(financialRecordsTable.createdAt, start),
+          lt(financialRecordsTable.createdAt, end)
         )
       );
 
