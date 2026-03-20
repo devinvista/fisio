@@ -50,6 +50,50 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefato
 
 ---
 
+## Deploy no Hostinger
+
+O projeto está pronto para deploy no **Node.js Hosting** da Hostinger com as configurações abaixo.
+
+### Configurações do painel Hostinger
+
+| Campo | Valor |
+|---|---|
+| Node.js version | **22.x** |
+| Package manager | **pnpm** |
+| Build command | `pnpm install && pnpm run build` |
+| Start command | `node dist/server.cjs` |
+| Entry point | `dist/server.cjs` |
+
+### Variáveis de ambiente obrigatórias
+
+Configurar no painel Hostinger → **Environment Variables**:
+
+| Variável | Descrição |
+|---|---|
+| `DATABASE_URL` | String de conexão PostgreSQL (ex.: `postgresql://user:pass@host:5432/db`) |
+| `JWT_SECRET` | Chave secreta longa e aleatória (ex.: gere com `openssl rand -base64 64`) |
+| `NODE_ENV` | `production` |
+| `CORS_ORIGIN` | URL do domínio (ex.: `https://fisiogest.seudominio.com`) |
+
+> **JWT_SECRET é obrigatório**: o servidor recusa iniciar em produção sem essa variável.
+
+### Fluxo de build
+
+```
+pnpm install                    # instala todas as dependências
+pnpm run build
+  ├── vite build                # compila o frontend → dist/public/
+  └── tsx server/build.ts       # empacota o backend  → dist/server.cjs
+                                #                     + copia dist/migrations/
+node dist/server.cjs            # inicia o servidor (aplica migrations automaticamente)
+```
+
+### Migrações
+
+As migrations SQL ficam em `db/migrations/` (geradas com `pnpm run db:generate`). O servidor as aplica automaticamente na inicialização via `drizzle-orm/migrator`. Em um banco já existente (sem journal de migrations), a aplicação ignora tabelas já criadas com segurança.
+
+---
+
 ## Arquitetura Replit — IMPORTANTE
 
 O Replit usa um **proxy reverso compartilhado na porta 80** para rotear tráfego entre serviços.

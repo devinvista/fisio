@@ -1,7 +1,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import { build as esbuild } from "esbuild";
-import { rm, readFile } from "fs/promises";
+import { readFile, cp, mkdir } from "fs/promises";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +22,7 @@ const allowlist = [
 async function buildAll() {
   const distDir = path.resolve(rootDir, "dist");
 
-  console.log("building server...");
+  console.log("Building server...");
   const pkgPath = path.resolve(rootDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
   const allDeps = [
@@ -45,7 +45,13 @@ async function buildAll() {
     logLevel: "info",
   });
 
-  console.log("Build complete: dist/server.cjs");
+  console.log("Copying migration files...");
+  const migrationsSource = path.resolve(rootDir, "db/migrations");
+  const migrationsDest = path.resolve(distDir, "migrations");
+  await mkdir(migrationsDest, { recursive: true });
+  await cp(migrationsSource, migrationsDest, { recursive: true });
+
+  console.log("Build complete: dist/server.cjs + dist/migrations/");
 }
 
 buildAll().catch((err) => {
