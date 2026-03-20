@@ -70,7 +70,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
 };
 
 type Appointment = AppointmentWithDetails;
-type ViewMode = "workweek" | "fullweek";
+type ViewMode = "day" | "fullweek";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -98,8 +98,10 @@ export default function Agenda() {
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const daysCount = view === "workweek" ? 5 : 6;
-  const weekDays = Array.from({ length: daysCount }).map((_, i) => addDays(weekStart, i));
+  const daysCount = view === "day" ? 1 : 6;
+  const weekDays = view === "day"
+    ? [currentDate]
+    : Array.from({ length: 6 }).map((_, i) => addDays(weekStart, i));
 
   const startDateStr = format(weekDays[0], "yyyy-MM-dd");
   const endDateStr = format(weekDays[daysCount - 1], "yyyy-MM-dd");
@@ -109,17 +111,26 @@ export default function Agenda() {
   const hours = Array.from({ length: TOTAL_HOURS }).map((_, i) => HOUR_START + i);
 
   const weekLabel = useMemo(() => {
+    if (view === "day") {
+      return format(currentDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR });
+    }
     const s = weekDays[0];
     const e = weekDays[daysCount - 1];
     if (isSameMonth(s, e)) {
       return `${format(s, "d")}–${format(e, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`;
     }
     return `${format(s, "d MMM", { locale: ptBR })} – ${format(e, "d MMM yyyy", { locale: ptBR })}`;
-  }, [weekDays]);
+  }, [weekDays, view, currentDate]);
 
-  const goToday = () => setCurrentDate(new Date());
-  const goPrev = () => { setCurrentDate(subWeeks(currentDate, 1)); setMiniCalMonth(subWeeks(currentDate, 1)); };
-  const goNext = () => { setCurrentDate(addWeeks(currentDate, 1)); setMiniCalMonth(addWeeks(currentDate, 1)); };
+  const goToday = () => { setCurrentDate(new Date()); setMiniCalMonth(new Date()); };
+  const goPrev = () => {
+    const next = view === "day" ? addDays(currentDate, -1) : subWeeks(currentDate, 1);
+    setCurrentDate(next); setMiniCalMonth(next);
+  };
+  const goNext = () => {
+    const next = view === "day" ? addDays(currentDate, 1) : addWeeks(currentDate, 1);
+    setCurrentDate(next); setMiniCalMonth(next);
+  };
 
   const handleSlotClick = (date: Date, hour: number) => {
     setSelectedSlot({ date: format(date, "yyyy-MM-dd"), time: `${String(hour).padStart(2, "0")}:00` });
@@ -165,18 +176,21 @@ export default function Agenda() {
             </button>
           </div>
 
-          {/* Week label */}
-          <span className="text-sm font-semibold text-slate-700 min-w-[200px]">
+          {/* Week/day label */}
+          <span className={cn(
+            "text-sm font-semibold text-slate-700",
+            view === "day" ? "capitalize min-w-[260px]" : "min-w-[200px]"
+          )}>
             {weekLabel}
           </span>
 
           {/* View toggle */}
           <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden text-xs font-medium">
             <button
-              className={cn("px-3 h-9 transition-colors", view === "workweek" ? "bg-primary text-white" : "hover:bg-slate-100 text-slate-600")}
-              onClick={() => setView("workweek")}
+              className={cn("px-3 h-9 transition-colors", view === "day" ? "bg-primary text-white" : "hover:bg-slate-100 text-slate-600")}
+              onClick={() => setView("day")}
             >
-              Semana de trabalho
+              Dia
             </button>
             <button
               className={cn("px-3 h-9 transition-colors border-l border-slate-200", view === "fullweek" ? "bg-primary text-white" : "hover:bg-slate-100 text-slate-600")}
