@@ -8,6 +8,9 @@ import {
   useUpdateAppointment,
   useDeleteAppointment,
   useCompleteAppointment,
+  type AppointmentWithDetails,
+  type UpdateAppointmentRequestStatus,
+  type AppointmentStatus,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -66,7 +69,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
   faltou:     { label: "Faltou",     bg: "bg-orange-400", text: "text-white", dot: "bg-orange-400", border: "border-orange-500", badge: "bg-orange-100 text-orange-700" },
 };
 
-type Appointment = NonNullable<ReturnType<typeof useListAppointments>["data"]>[number];
+type Appointment = AppointmentWithDetails;
 type ViewMode = "workweek" | "fullweek";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -590,7 +593,7 @@ function AppointmentDetailModal({
 
   const handleStatusChange = (newStatus: string) => {
     updateMutation.mutate(
-      { id: appointment.id, data: { status: newStatus } },
+      { id: appointment.id, data: { status: newStatus as UpdateAppointmentRequestStatus } },
       {
         onSuccess: () => { toast({ title: `Status: ${STATUS_CONFIG[newStatus]?.label}` }); onRefresh(); },
         onError: () => toast({ variant: "destructive", title: "Erro ao alterar status." }),
@@ -722,7 +725,7 @@ function AppointmentDetailModal({
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Status</Label>
-                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
+                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v as AppointmentStatus })}>
                   <SelectTrigger className="rounded-xl h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(STATUS_CONFIG).map(([k, v]) => (
