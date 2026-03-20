@@ -39,7 +39,10 @@ import {
   Search,
   TrendingUp,
   Stethoscope,
+  BookOpen,
+  Printer,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +109,13 @@ export default function Procedimentos() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null);
   const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [catalogOptions, setCatalogOptions] = useState({
+    clinicName: "FisioGest Pro",
+    tagline: "Cuidando de você com excelência",
+    showPrices: true,
+    selectedCategories: ["fisioterapia", "estetica", "pilates"] as string[],
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -200,6 +210,322 @@ export default function Procedimentos() {
   const avgPrice = allProcedures.length ? allProcedures.reduce((s, p) => s + Number(p.price), 0) / allProcedures.length : 0;
   const avgMargin = allProcedures.length ? allProcedures.reduce((s, p) => s + getMargin(p.price, p.cost ?? 0), 0) / allProcedures.length : 0;
 
+  function generateCatalog() {
+    const { clinicName, tagline, showPrices, selectedCategories } = catalogOptions;
+
+    const categoryOrder = ["fisioterapia", "estetica", "pilates"];
+    const catLabels: Record<string, string> = { fisioterapia: "Fisioterapia", estetica: "Estética", pilates: "Pilates" };
+    const catColors: Record<string, string> = { fisioterapia: "#2563eb", estetica: "#db2777", pilates: "#7c3aed" };
+
+    const grouped = categoryOrder
+      .filter(cat => selectedCategories.includes(cat))
+      .map(cat => ({
+        cat,
+        label: catLabels[cat] ?? cat,
+        color: catColors[cat] ?? "#334155",
+        items: allProcedures.filter(p => p.category === cat),
+      }))
+      .filter(g => g.items.length > 0);
+
+    const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+
+    const itemsHtml = (items: Procedure[], color: string) =>
+      items.map(p => `
+        <div class="proc-card">
+          <div class="proc-header">
+            <div class="proc-name">${p.name}</div>
+            <div class="proc-meta">
+              <span class="proc-duration">⏱ ${p.durationMinutes} min</span>
+              ${showPrices ? `<span class="proc-price" style="color:${color}">${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(p.price))}</span>` : ""}
+            </div>
+          </div>
+          ${p.description ? `<div class="proc-desc">${p.description}</div>` : ""}
+        </div>
+      `).join("");
+
+    const sectionsHtml = grouped.map(g => `
+      <div class="category-section">
+        <div class="category-header" style="border-left: 4px solid ${g.color}">
+          <span class="category-title" style="color:${g.color}">${g.label}</span>
+          <span class="category-count">${g.items.length} serviço${g.items.length !== 1 ? "s" : ""}</span>
+        </div>
+        <div class="proc-grid">
+          ${itemsHtml(g.items, g.color)}
+        </div>
+      </div>
+    `).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catálogo de Serviços — ${clinicName}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+      min-height: 100vh;
+    }
+
+    /* ── Hero header ── */
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+      color: #fff;
+      padding: 52px 48px 44px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 240px; height: 240px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      bottom: -80px; left: 40%;
+      width: 300px; height: 300px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.03);
+    }
+    .hero-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+    .hero-name {
+      font-family: 'Outfit', sans-serif;
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #fff 60%, #7dd3fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-tagline {
+      font-size: 15px;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-bottom: 28px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 100px;
+    }
+
+    /* ── Content ── */
+    .content { padding: 40px 48px 56px; }
+
+    .intro {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.7;
+      margin-bottom: 36px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* ── Category sections ── */
+    .category-section { margin-bottom: 36px; }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+    .category-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .category-count {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    /* ── Procedure cards ── */
+    .proc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .proc-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      background: #fff;
+    }
+    .proc-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .proc-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a;
+      flex: 1;
+      line-height: 1.4;
+    }
+    .proc-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+      shrink: 0;
+    }
+    .proc-duration {
+      font-size: 11px;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+    .proc-price {
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .proc-desc {
+      font-size: 11.5px;
+      color: #64748b;
+      line-height: 1.55;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 20px 48px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8fafc;
+    }
+    .footer-brand {
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .footer-date {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    /* ── No-price note ── */
+    .no-price-note {
+      font-size: 12px;
+      color: #94a3b8;
+      font-style: italic;
+      margin-bottom: 28px;
+    }
+
+    /* ── Print ── */
+    .print-btn {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: #0f172a;
+      color: #fff;
+      border: none;
+      border-radius: 100px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .print-btn:hover { background: #1e293b; }
+
+    @media print {
+      body { background: #fff; }
+      .print-btn { display: none !important; }
+      .page { box-shadow: none; }
+      .proc-card { break-inside: avoid; }
+      .category-section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div class="hero-eyebrow">Portfólio de Serviços</div>
+      <div class="hero-name">${clinicName}</div>
+      <div class="hero-tagline">${tagline}</div>
+      <div class="hero-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+        ${allProcedures.length} serviços disponíveis
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="intro">
+        Conheça nossos serviços e tratamentos especializados. Nossa equipe está pronta para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.
+      </div>
+
+      ${!showPrices ? `<div class="no-price-note">* Entre em contato para informações sobre valores e pacotes personalizados.</div>` : ""}
+
+      ${sectionsHtml}
+    </div>
+
+    <div class="footer">
+      <div class="footer-brand">${clinicName}</div>
+      <div class="footer-date">Gerado em ${today}</div>
+    </div>
+  </div>
+
+  <button class="print-btn" onclick="window.print()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Imprimir / Salvar PDF
+  </button>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
+    setIsCatalogModalOpen(false);
+  }
+
   return (
     <AppLayout title="Procedimentos">
       <div className="space-y-5">
@@ -210,12 +536,21 @@ export default function Procedimentos() {
             <h1 className="text-2xl font-bold font-display text-slate-800">Procedimentos</h1>
             <p className="text-sm text-slate-500">Gerencie os serviços e procedimentos da clínica</p>
           </div>
-          <Button
-            className="h-9 px-4 rounded-lg shadow-md shadow-primary/20"
-            onClick={() => { resetForm(); setEditingProcedure(null); setIsModalOpen(true); }}
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Novo Procedimento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="h-9 px-4 rounded-lg"
+              onClick={() => setIsCatalogModalOpen(true)}
+            >
+              <BookOpen className="mr-1.5 h-4 w-4" /> Gerar Catálogo
+            </Button>
+            <Button
+              className="h-9 px-4 rounded-lg shadow-md shadow-primary/20"
+              onClick={() => { resetForm(); setEditingProcedure(null); setIsModalOpen(true); }}
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Novo Procedimento
+            </Button>
+          </div>
         </div>
 
         {/* ── Stats strip ────────────────────────────────────────────────── */}
@@ -419,6 +754,110 @@ export default function Procedimentos() {
               disabled={!form.name || !form.price || createMutation.isPending || updateMutation.isPending}
             >
               {editingProcedure ? "Salvar alterações" : "Criar procedimento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Catalog Options Modal ───────────────────────────────────────── */}
+      <Dialog open={isCatalogModalOpen} onOpenChange={setIsCatalogModalOpen}>
+        <DialogContent className="max-w-sm rounded-3xl border-none shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-primary" /> Gerar Catálogo
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            <div className="space-y-1">
+              <Label>Nome da clínica</Label>
+              <Input
+                value={catalogOptions.clinicName}
+                onChange={e => setCatalogOptions(o => ({ ...o, clinicName: e.target.value }))}
+                className="rounded-xl"
+                placeholder="Nome da clínica"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Slogan / descrição curta</Label>
+              <Input
+                value={catalogOptions.tagline}
+                onChange={e => setCatalogOptions(o => ({ ...o, tagline: e.target.value }))}
+                className="rounded-xl"
+                placeholder="Ex: Cuidando de você com excelência"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Categorias a incluir</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "fisioterapia", label: "Fisioterapia" },
+                  { value: "estetica", label: "Estética" },
+                  { value: "pilates", label: "Pilates" },
+                ].map(c => {
+                  const active = catalogOptions.selectedCategories.includes(c.value);
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() =>
+                        setCatalogOptions(o => ({
+                          ...o,
+                          selectedCategories: active
+                            ? o.selectedCategories.filter(x => x !== c.value)
+                            : [...o.selectedCategories, c.value],
+                        }))
+                      }
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                        active
+                          ? "bg-primary text-white border-primary"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Exibir preços (R$)</p>
+                <p className="text-xs text-slate-500">Mostre ou oculte os valores no catálogo</p>
+              </div>
+              <Switch
+                checked={catalogOptions.showPrices}
+                onCheckedChange={v => setCatalogOptions(o => ({ ...o, showPrices: v }))}
+              />
+            </div>
+
+            <div className={cn(
+              "flex items-center gap-2.5 rounded-xl px-4 py-2.5 text-xs",
+              catalogOptions.showPrices
+                ? "bg-blue-50 text-blue-700"
+                : "bg-slate-50 text-slate-500"
+            )}>
+              <Printer className="w-3.5 h-3.5 shrink-0" />
+              {catalogOptions.showPrices
+                ? "O catálogo será aberto com os preços visíveis. Use Ctrl+P para salvar como PDF."
+                : "O catálogo será aberto sem preços. Ideal para apresentação pública."}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setIsCatalogModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="rounded-xl"
+              onClick={generateCatalog}
+              disabled={catalogOptions.selectedCategories.length === 0}
+            >
+              <Printer className="mr-1.5 h-4 w-4" /> Abrir Catálogo
             </Button>
           </DialogFooter>
         </DialogContent>
