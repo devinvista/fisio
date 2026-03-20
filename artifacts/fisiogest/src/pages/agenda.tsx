@@ -855,7 +855,7 @@ function CreateAppointmentForm({
           onSuccess();
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.message || err?.message || "Conflito de horário.";
+          const msg = err?.data?.message || err?.message || "Conflito de horário.";
           toast({ variant: "destructive", title: "Erro ao agendar", description: msg });
         },
       }

@@ -35,7 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { format, differenceInYears } from "date-fns";
+import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 
@@ -44,12 +44,12 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
   confirmado: { label: "Confirmado", color: "bg-green-100 text-green-700", icon: <CheckCircle className="w-3 h-3" /> },
   concluido: { label: "Concluído", color: "bg-slate-100 text-slate-700", icon: <CheckCircle className="w-3 h-3" /> },
   cancelado: { label: "Cancelado", color: "bg-red-100 text-red-700", icon: <XCircle className="w-3 h-3" /> },
-  falta: { label: "Falta", color: "bg-orange-100 text-orange-700", icon: <AlertCircle className="w-3 h-3" /> },
+  faltou: { label: "Faltou", color: "bg-orange-100 text-orange-700", icon: <AlertCircle className="w-3 h-3" /> },
 };
 
 function formatDate(dateStr: string) {
   try {
-    return format(new Date(dateStr), "dd/MM/yyyy", { locale: ptBR });
+    return format(parseISO(dateStr), "dd/MM/yyyy", { locale: ptBR });
   } catch {
     return dateStr;
   }
@@ -1284,7 +1284,7 @@ export default function PatientDetail() {
                     <span>
                       {formatDate(patient.birthDate)}
                       <span className="ml-1.5 px-1.5 py-0.5 bg-primary/10 text-primary text-xs font-semibold rounded-full">
-                        {differenceInYears(new Date(), new Date(patient.birthDate))} anos
+                        {differenceInYears(new Date(), parseISO(patient.birthDate))} anos
                       </span>
                     </span>
                   </div>

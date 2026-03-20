@@ -131,9 +131,19 @@ export default function Procedimentos() {
     ? "/api/procedures"
     : `/api/procedures?category=${selectedCategory}`;
 
+  async function apiFetch<T = unknown>(url: string, options?: RequestInit): Promise<T> {
+    const r = await fetch(url, options);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body?.message || `Erro ${r.status}`);
+    }
+    if (r.status === 204) return undefined as T;
+    return r.json();
+  }
+
   const { data: allProcedures = [], isLoading } = useQuery<Procedure[]>({
     queryKey: ["procedures", selectedCategory],
-    queryFn: () => fetch(url).then(r => r.json()),
+    queryFn: () => apiFetch<Procedure[]>(url),
   });
 
   const procedures = allProcedures.filter(p =>
@@ -142,26 +152,29 @@ export default function Procedimentos() {
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form) =>
-      fetch("/api/procedures", {
+      apiFetch<Procedure>("/api/procedures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
-      }).then(r => r.json()),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
       setIsModalOpen(false);
       resetForm();
       toast({ title: "Procedimento criado com sucesso" });
     },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Erro ao criar procedimento", description: err.message });
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: (data: typeof form & { id: number }) =>
-      fetch(`/api/procedures/${data.id}`, {
+      apiFetch<Procedure>(`/api/procedures/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
-      }).then(r => r.json()),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
       setIsModalOpen(false);
@@ -169,14 +182,20 @@ export default function Procedimentos() {
       resetForm();
       toast({ title: "Procedimento atualizado" });
     },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Erro ao atualizar procedimento", description: err.message });
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => fetch(`/api/procedures/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => apiFetch<void>(`/api/procedures/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
       setDeletingProcedure(null);
       toast({ title: "Procedimento removido" });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Erro ao remover procedimento", description: err.message });
     },
   });
 

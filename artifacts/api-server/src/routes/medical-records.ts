@@ -331,4 +331,33 @@ router.get("/financial", async (req: Request<P>, res) => {
   }
 });
 
+router.post("/financial", async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const { type, amount, description, category } = req.body;
+
+    if (!type || !amount || !description) {
+      res.status(400).json({ error: "Bad Request", message: "type, amount e description são obrigatórios" });
+      return;
+    }
+
+    const [record] = await db.insert(financialRecordsTable).values({
+      type,
+      amount: String(amount),
+      description,
+      category,
+      patientId,
+    }).returning();
+
+    res.status(201).json(record);
+  } catch (err: any) {
+    if (err?.cause?.code === "23503" || err?.code === "23503") {
+      res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
+      return;
+    }
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 export default router;

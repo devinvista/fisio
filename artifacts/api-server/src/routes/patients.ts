@@ -78,7 +78,7 @@ router.get("/:id", async (req, res) => {
     }
 
     const [appointments, totalSpent] = await Promise.all([
-      db.select({ id: appointmentsTable.id, createdAt: appointmentsTable.createdAt })
+      db.select({ id: appointmentsTable.id, date: appointmentsTable.date, createdAt: appointmentsTable.createdAt })
         .from(appointmentsTable)
         .where(eq(appointmentsTable.patientId, id))
         .orderBy(desc(appointmentsTable.date)),
@@ -99,7 +99,7 @@ router.get("/:id", async (req, res) => {
     res.json({
       ...patient,
       totalAppointments: appointments.length,
-      lastAppointment: appointments[0]?.createdAt ?? null,
+      lastAppointment: appointments[0]?.date ?? null,
       totalSpent: Number(totalSpent[0]?.total ?? 0)
     });
   } catch (err) {

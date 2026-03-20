@@ -2,7 +2,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { useGetDashboard } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function Dashboard() {
@@ -165,7 +165,7 @@ export default function Dashboard() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                          {format(new Date(apt.date), "dd/MM (EEE)", { locale: ptBR })}
+                          {format(parseISO(apt.date), "dd/MM (EEE)", { locale: ptBR })}
                         </span>
                         <span className="text-sm font-bold text-slate-700">{apt.startTime}</span>
                       </div>
