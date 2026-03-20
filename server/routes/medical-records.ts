@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "../../db/index.js";
 import {
   anamnesisTable,
@@ -13,12 +13,16 @@ import {
 import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
+type P = { patientId: string };
+type PEval = { patientId: string; evaluationId: string };
+type PEvol = { patientId: string; evolutionId: string };
+
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
 // ─── Anamnesis ───────────────────────────────────────────────────────────────
 
-router.get("/anamnesis", async (req, res) => {
+router.get("/anamnesis", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [anamnesis] = await db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId));
@@ -33,7 +37,7 @@ router.get("/anamnesis", async (req, res) => {
   }
 });
 
-router.post("/anamnesis", async (req, res) => {
+router.post("/anamnesis", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = req.body;
@@ -60,7 +64,7 @@ router.post("/anamnesis", async (req, res) => {
 
 // ─── Evaluations ─────────────────────────────────────────────────────────────
 
-router.get("/evaluations", async (req, res) => {
+router.get("/evaluations", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluations = await db.select().from(evaluationsTable)
@@ -73,7 +77,7 @@ router.get("/evaluations", async (req, res) => {
   }
 });
 
-router.post("/evaluations", async (req, res) => {
+router.post("/evaluations", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
@@ -88,30 +92,42 @@ router.post("/evaluations", async (req, res) => {
   }
 });
 
-router.put("/evaluations/:evaluationId", async (req, res) => {
+router.put("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
   try {
+    const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
     const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
 
-    const [evaluation] = await db.update(evaluationsTable)
+    const [existing] = await db.select().from(evaluationsTable)
+      .where(eq(evaluationsTable.id, evaluationId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const [updated] = await db.update(evaluationsTable)
       .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
       .where(eq(evaluationsTable.id, evaluationId))
       .returning();
-
-    if (!evaluation) {
-      res.status(404).json({ error: "Not Found", message: "Evaluation not found" });
-      return;
-    }
-    res.json(evaluation);
+    res.json(updated);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.delete("/evaluations/:evaluationId", async (req, res) => {
+router.delete("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
   try {
+    const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
+
+    const [existing] = await db.select().from(evaluationsTable)
+      .where(eq(evaluationsTable.id, evaluationId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
     await db.delete(evaluationsTable).where(eq(evaluationsTable.id, evaluationId));
     res.status(204).send();
   } catch (err) {
@@ -122,7 +138,7 @@ router.delete("/evaluations/:evaluationId", async (req, res) => {
 
 // ─── Treatment Plan ───────────────────────────────────────────────────────────
 
-router.get("/treatment-plan", async (req, res) => {
+router.get("/treatment-plan", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [plan] = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId));
@@ -137,7 +153,7 @@ router.get("/treatment-plan", async (req, res) => {
   }
 });
 
-router.post("/treatment-plan", async (req, res) => {
+router.post("/treatment-plan", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { objectives, techniques, frequency, estimatedSessions, status = "ativo" } = req.body;
@@ -164,7 +180,7 @@ router.post("/treatment-plan", async (req, res) => {
 
 // ─── Evolutions ───────────────────────────────────────────────────────────────
 
-router.get("/evolutions", async (req, res) => {
+router.get("/evolutions", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutions = await db.select().from(evolutionsTable)
@@ -177,7 +193,7 @@ router.get("/evolutions", async (req, res) => {
   }
 });
 
-router.post("/evolutions", async (req, res) => {
+router.post("/evolutions", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
@@ -192,36 +208,42 @@ router.post("/evolutions", async (req, res) => {
   }
 });
 
-router.put("/evolutions/:evolutionId", async (req, res) => {
+router.put("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   try {
+    const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
     const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
 
-    const [evolution] = await db.update(evolutionsTable)
-      .set({
-        appointmentId: appointmentId ? Number(appointmentId) : null,
-        description,
-        patientResponse,
-        clinicalNotes,
-        complications,
-      })
-      .where(eq(evolutionsTable.id, evolutionId))
-      .returning();
-
-    if (!evolution) {
-      res.status(404).json({ error: "Not Found", message: "Evolution not found" });
+    const [existing] = await db.select().from(evolutionsTable)
+      .where(eq(evolutionsTable.id, evolutionId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
       return;
     }
-    res.json(evolution);
+
+    const [updated] = await db.update(evolutionsTable)
+      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications })
+      .where(eq(evolutionsTable.id, evolutionId))
+      .returning();
+    res.json(updated);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.delete("/evolutions/:evolutionId", async (req, res) => {
+router.delete("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   try {
+    const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
+
+    const [existing] = await db.select().from(evolutionsTable)
+      .where(eq(evolutionsTable.id, evolutionId));
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
     await db.delete(evolutionsTable).where(eq(evolutionsTable.id, evolutionId));
     res.status(204).send();
   } catch (err) {
@@ -230,9 +252,31 @@ router.delete("/evolutions/:evolutionId", async (req, res) => {
   }
 });
 
+// ─── Patient Appointments ─────────────────────────────────────────────────────
+
+router.get("/appointments", async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const rows = await db
+      .select({
+        appointment: appointmentsTable,
+        procedure: proceduresTable,
+      })
+      .from(appointmentsTable)
+      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
+      .where(eq(appointmentsTable.patientId, patientId))
+      .orderBy(desc(appointmentsTable.date));
+
+    res.json(rows.map(r => ({ ...r.appointment, procedure: r.procedure })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ─── Discharge Summary ────────────────────────────────────────────────────────
 
-router.get("/discharge-summary", async (req, res) => {
+router.get("/discharge-summary", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const [summary] = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
@@ -247,7 +291,7 @@ router.get("/discharge-summary", async (req, res) => {
   }
 });
 
-router.post("/discharge-summary", async (req, res) => {
+router.post("/discharge-summary", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { dischargeDate, dischargeReason, achievedResults, recommendations } = req.body;
@@ -279,28 +323,15 @@ router.post("/discharge-summary", async (req, res) => {
 
 // ─── Patient Financial Records ────────────────────────────────────────────────
 
-router.get("/financial", async (req, res) => {
+router.get("/financial", async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
 
-    const records = await db
+    const rows = await db
       .select({
-        id: financialRecordsTable.id,
-        type: financialRecordsTable.type,
-        amount: financialRecordsTable.amount,
-        description: financialRecordsTable.description,
-        category: financialRecordsTable.category,
-        patientId: financialRecordsTable.patientId,
-        appointmentId: financialRecordsTable.appointmentId,
-        createdAt: financialRecordsTable.createdAt,
-        procedure: {
-          id: proceduresTable.id,
-          name: proceduresTable.name,
-        },
-        appointment: {
-          id: appointmentsTable.id,
-          date: appointmentsTable.date,
-        },
+        record: financialRecordsTable,
+        appointment: appointmentsTable,
+        procedure: proceduresTable,
       })
       .from(financialRecordsTable)
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
@@ -313,7 +344,7 @@ router.get("/financial", async (req, res) => {
       )
       .orderBy(desc(financialRecordsTable.createdAt));
 
-    res.json(records);
+    res.json(rows.map(r => ({ ...r.record, appointment: r.appointment, procedure: r.procedure })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

@@ -149,7 +149,7 @@ router.get("/available-slots", async (req, res) => {
     const { date, procedureId, clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
 
     if (!date || !procedureId) {
-      res.status(400).json({ error: "date and procedureId are required" });
+      res.status(400).json({ error: "date e procedureId são obrigatórios" });
       return;
     }
 
@@ -159,7 +159,7 @@ router.get("/available-slots", async (req, res) => {
       .where(eq(proceduresTable.id, parseInt(procedureId as string)));
 
     if (!procedure) {
-      res.status(404).json({ error: "Procedure not found" });
+      res.status(404).json({ error: "Procedimento não encontrado" });
       return;
     }
 
@@ -272,8 +272,8 @@ router.post("/", async (req, res) => {
     if (conflict) {
       const message =
         maxCapacity > 1
-          ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas para ${procedure.name} neste horário.`
-          : "Conflito de horário: já existe um agendamento neste intervalo.";
+          ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas para "${procedure.name}" neste horário.`
+          : `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
       res.status(409).json({ error: "Conflict", message });
       return;
     }

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db/index.js";
 import { financialRecordsTable, appointmentsTable, proceduresTable } from "../../db/index.js";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 
 const router = Router();
@@ -12,31 +12,49 @@ const MONTH_NAMES = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
 
+function monthRange(year: number, month: number): { start: Date; end: Date } {
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 1),
+  };
+}
+
+function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, "0");
+  return {
+    startDate: `${year}-${mm}-01`,
+    endDate: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 router.get("/monthly-revenue", async (req, res) => {
   try {
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
-    const result = [];
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year + 1, 0, 1);
 
-    for (let month = 1; month <= 12; month++) {
-      const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-      const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
-
-      const records = await db.select({
-        type: financialRecordsTable.type,
-        total: sql<number>`SUM(amount::numeric)`
-      })
-        .from(financialRecordsTable)
-        .where(
-          and(
-            gte(financialRecordsTable.createdAt, new Date(startDate)),
-            lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
-          )
+    const rows = await db.select({
+      month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})::int`,
+      type: financialRecordsTable.type,
+      total: sql<number>`SUM(${financialRecordsTable.amount}::numeric)`,
+    })
+      .from(financialRecordsTable)
+      .where(
+        and(
+          gte(financialRecordsTable.createdAt, yearStart),
+          lt(financialRecordsTable.createdAt, yearEnd)
         )
-        .groupBy(financialRecordsTable.type);
+      )
+      .groupBy(
+        sql`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})`,
+        financialRecordsTable.type
+      );
 
-      const revenue = Number(records.find(r => r.type === "receita")?.total ?? 0);
-      const expenses = Number(records.find(r => r.type === "despesa")?.total ?? 0);
-
+    const result = [];
+    for (let month = 1; month <= 12; month++) {
+      const revenue = Number(rows.find(r => r.month === month && r.type === "receita")?.total ?? 0);
+      const expenses = Number(rows.find(r => r.month === month && r.type === "despesa")?.total ?? 0);
       result.push({ month, monthName: MONTH_NAMES[month - 1], revenue, expenses, profit: revenue - expenses });
     }
 
@@ -52,8 +70,7 @@ router.get("/procedure-revenue", async (req, res) => {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const { start, end } = monthRange(year, month);
 
     const results = await db.select({
       procedureId: proceduresTable.id,
@@ -69,8 +86,8 @@ router.get("/procedure-revenue", async (req, res) => {
         and(
           eq(financialRecordsTable.appointmentId, appointmentsTable.id),
           eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, new Date(startDate)),
-          lte(financialRecordsTable.createdAt, new Date(endDate + "T23:59:59"))
+          gte(financialRecordsTable.createdAt, start),
+          lt(financialRecordsTable.createdAt, end)
         )
       )
       .groupBy(proceduresTable.id, proceduresTable.name, proceduresTable.category)
@@ -93,8 +110,7 @@ router.get("/schedule-occupation", async (req, res) => {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const { startDate, endDate } = monthDateRange(year, month);
 
     const appointments = await db.select().from(appointmentsTable)
       .where(
