@@ -91,7 +91,7 @@ function minutesToHeight(minutes: number): number {
 
 export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<ViewMode>("workweek");
+  const [view, setView] = useState<ViewMode>("fullweek");
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
