@@ -1,4 +1,4 @@
-import { pgTable, serial, text, date, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, date, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,7 @@ export const patientsTable = pgTable("patients", {
   profession: text("profession"),
   emergencyContact: text("emergency_contact"),
   notes: text("notes"),
+  clinicId: integer("clinic_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

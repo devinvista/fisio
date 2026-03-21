@@ -3,11 +3,12 @@ import { db } from "@workspace/db";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "@workspace/db";
 import { eq, ilike, or, and, sql, desc } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("patients.read"), async (req, res) => {
   try {
     const search = req.query.search as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
@@ -29,14 +30,14 @@ router.get("/", async (req, res) => {
 
     const [patients, countResult] = await Promise.all([
       query.orderBy(desc(patientsTable.createdAt)).limit(limit).offset(offset),
-      countQuery
+      countQuery,
     ]);
 
     res.json({
       data: patients,
       total: Number(countResult[0]?.count ?? 0),
       page,
-      limit
+      limit,
     });
   } catch (err) {
     console.error(err);
@@ -44,22 +45,23 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("patients.create"), async (req, res) => {
   try {
     const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
     if (!name || !cpf || !phone) {
-      res.status(400).json({ error: "Bad Request", message: "Name, CPF and phone are required" });
+      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e telefone são obrigatórios" });
       return;
     }
 
-    const [patient] = await db.insert(patientsTable).values({
-      name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes
-    }).returning();
+    const [patient] = await db
+      .insert(patientsTable)
+      .values({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
+      .returning();
 
     res.status(201).json(patient);
   } catch (err: any) {
     if (err.code === "23505") {
-      res.status(400).json({ error: "Bad Request", message: "CPF already registered" });
+      res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
       return;
     }
     console.error(err);
@@ -67,22 +69,27 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("patients.read"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [patient] = await db.select().from(patientsTable).where(eq(patientsTable.id, id));
+    const [patient] = await db
+      .select()
+      .from(patientsTable)
+      .where(eq(patientsTable.id, id));
 
     if (!patient) {
-      res.status(404).json({ error: "Not Found", message: "Patient not found" });
+      res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
       return;
     }
 
     const [appointments, totalSpent] = await Promise.all([
-      db.select({ id: appointmentsTable.id, date: appointmentsTable.date, createdAt: appointmentsTable.createdAt })
+      db
+        .select({ id: appointmentsTable.id, date: appointmentsTable.date, createdAt: appointmentsTable.createdAt })
         .from(appointmentsTable)
         .where(eq(appointmentsTable.patientId, id))
         .orderBy(desc(appointmentsTable.date)),
-      db.select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
+      db
+        .select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
         .from(financialRecordsTable)
         .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
         .where(
@@ -93,14 +100,14 @@ router.get("/:id", async (req, res) => {
               eq(appointmentsTable.patientId, id)
             )
           )
-        )
+        ),
     ]);
 
     res.json({
       ...patient,
       totalAppointments: appointments.length,
       lastAppointment: appointments[0]?.date ?? null,
-      totalSpent: Number(totalSpent[0]?.total ?? 0)
+      totalSpent: Number(totalSpent[0]?.total ?? 0),
     });
   } catch (err) {
     console.error(err);
@@ -108,18 +115,19 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission("patients.update"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
 
-    const [patient] = await db.update(patientsTable)
+    const [patient] = await db
+      .update(patientsTable)
       .set({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
       .where(eq(patientsTable.id, id))
       .returning();
 
     if (!patient) {
-      res.status(404).json({ error: "Not Found", message: "Patient not found" });
+      res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
       return;
     }
     res.json(patient);
@@ -129,7 +137,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("patients.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(patientsTable).where(eq(patientsTable.id, id));

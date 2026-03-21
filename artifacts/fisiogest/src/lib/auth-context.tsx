@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useLocation } from "wouter";
 import { getCurrentUser } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
+import { resolvePermissions, type Permission } from "@/lib/permissions";
 
 interface AuthContextType {
   user: User | null;
@@ -9,6 +10,8 @@ interface AuthContextType {
   isLoading: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  hasPermission: (permission: Permission) => boolean;
+  hasRole: (role: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,8 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLocation("/login");
   };
 
+  const hasPermission = (permission: Permission): boolean => {
+    if (!user) return false;
+    const perms = resolvePermissions(user.roles ?? []);
+    return perms.has(permission);
+  };
+
+  const hasRole = (role: string): boolean => {
+    if (!user) return false;
+    return (user.roles ?? []).includes(role);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout, hasPermission, hasRole }}>
       {children}
     </AuthContext.Provider>
   );

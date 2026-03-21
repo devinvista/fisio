@@ -2,12 +2,13 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
+import { resolvePermissions } from "@workspace/db";
+import type { Role } from "@workspace/db";
 
 const router = Router();
 router.use(authMiddleware);
-
-// ── helpers ──────────────────────────────────────────────────────────────────
 
 function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number);
@@ -30,11 +31,7 @@ function minutesToTime(minutes: number): string {
 
 async function getWithDetails(id: number) {
   const result = await db
-    .select({
-      appointment: appointmentsTable,
-      patient: patientsTable,
-      procedure: proceduresTable,
-    })
+    .select({ appointment: appointmentsTable, patient: patientsTable, procedure: proceduresTable })
     .from(appointmentsTable)
     .leftJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
     .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
@@ -46,19 +43,6 @@ async function getWithDetails(id: number) {
   return { ...appointment, patient, procedure };
 }
 
-/**
- * Governance: check whether a time slot is available.
- *
- * Rules:
- * 1. endTime is always derived from startTime + procedure.durationMinutes.
- * 2. A "conflict" exists when another active appointment (not cancelado/faltou)
- *    overlaps the proposed window on the same date.
- * 3. Procedures with maxCapacity > 1 (e.g. Pilates em Grupo) allow multiple
- *    simultaneous bookings up to their capacity.
- * 4. For multi-capacity procedures, only bookings of the SAME procedure compete
- *    for slots; other procedures still block the therapist's time normally.
- * 5. excludeId skips a specific appointment (used on PUT to avoid self-conflict).
- */
 async function checkConflict(
   date: string,
   startTime: string,
@@ -68,7 +52,6 @@ async function checkConflict(
   excludeId?: number
 ): Promise<{ conflict: boolean; currentCount: number }> {
   if (maxCapacity > 1) {
-    // Multi-capacity: count bookings of the SAME procedure in this window
     const conditions = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
@@ -82,10 +65,8 @@ async function checkConflict(
       .from(appointmentsTable)
       .where(and(...conditions));
 
-    const currentCount = existing.length;
-    return { conflict: currentCount >= maxCapacity, currentCount };
+    return { conflict: existing.length >= maxCapacity, currentCount: existing.length };
   } else {
-    // Single-capacity (default): any active overlap is a conflict
     const conditions = [
       eq(appointmentsTable.date, date),
       sql`status NOT IN ('cancelado', 'faltou')`,
@@ -102,23 +83,26 @@ async function checkConflict(
   }
 }
 
-// ── routes ───────────────────────────────────────────────────────────────────
-
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("appointments.read"), async (req: AuthRequest, res) => {
   try {
     const { date, startDate, endDate, patientId, status } = req.query;
 
     let query = db
-      .select({
-        appointment: appointmentsTable,
-        patient: patientsTable,
-        procedure: proceduresTable,
-      })
+      .select({ appointment: appointmentsTable, patient: patientsTable, procedure: proceduresTable })
       .from(appointmentsTable)
       .leftJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id));
 
     const conditions = [];
+
+    // Profissional without admin permission sees only their own appointments
+    const roles = (req.userRoles ?? []) as Role[];
+    const perms = resolvePermissions(roles);
+    const isAdminOrSecretary = perms.has("users.manage") || roles.includes("secretaria");
+    if (!isAdminOrSecretary && roles.includes("profissional") && req.userId) {
+      conditions.push(eq(appointmentsTable.professionalId, req.userId));
+    }
+
     if (date) conditions.push(eq(appointmentsTable.date, date as string));
     if (startDate) conditions.push(gte(appointmentsTable.date, startDate as string));
     if (endDate) conditions.push(lte(appointmentsTable.date, endDate as string));
@@ -143,18 +127,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/**
- * GET /appointments/available-slots
- * Returns available start times for a given date + procedure.
- * Respects procedure duration and existing bookings + capacity rules.
- *
- * Query params:
- *   date        — yyyy-MM-dd
- *   procedureId — number
- *   clinicStart — HH:mm (default 08:00)
- *   clinicEnd   — HH:mm (default 18:00)
- */
-router.get("/available-slots", async (req, res) => {
+router.get("/available-slots", requirePermission("appointments.read"), async (req, res) => {
   try {
     const { date, procedureId, clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
 
@@ -173,12 +146,11 @@ router.get("/available-slots", async (req, res) => {
       return;
     }
 
-    const openMin  = timeToMinutes(clinicStart as string);
+    const openMin = timeToMinutes(clinicStart as string);
     const closeMin = timeToMinutes(clinicEnd as string);
     const duration = procedure.durationMinutes;
-    const maxCap   = procedure.maxCapacity ?? 1;
+    const maxCap = procedure.maxCapacity ?? 1;
 
-    // All active appointments on this date
     const existingAppts = await db
       .select({
         id: appointmentsTable.id,
@@ -198,12 +170,11 @@ router.get("/available-slots", async (req, res) => {
 
     for (let start = openMin; start + duration <= closeMin; start += 30) {
       const startTime = minutesToTime(start);
-      const slotEnd   = start + duration;
+      const slotEnd = start + duration;
 
       let occupiedCount: number;
 
       if (maxCap > 1) {
-        // Multi-capacity: only same-procedure bookings consume spots
         occupiedCount = existingAppts.filter(
           (a) =>
             a.procedureId === procedure.id &&
@@ -211,7 +182,6 @@ router.get("/available-slots", async (req, res) => {
             timeToMinutes(a.endTime) > start
         ).length;
       } else {
-        // Single-capacity: any overlapping booking blocks the slot
         occupiedCount = existingAppts.filter(
           (a) =>
             timeToMinutes(a.startTime) < slotEnd &&
@@ -226,10 +196,10 @@ router.get("/available-slots", async (req, res) => {
     res.json({
       date,
       procedure: {
-        id:              procedure.id,
-        name:            procedure.name,
+        id: procedure.id,
+        name: procedure.name,
         durationMinutes: procedure.durationMinutes,
-        maxCapacity:     maxCap,
+        maxCapacity: maxCap,
       },
       slots,
     });
@@ -239,7 +209,7 @@ router.get("/available-slots", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
     const { patientId, procedureId, date, startTime, notes } = req.body;
 
@@ -261,8 +231,7 @@ router.post("/", async (req, res) => {
       return;
     }
 
-    // endTime is always derived from procedure duration — never accepted from the client
-    const endTime    = addMinutes(startTime, procedure.durationMinutes);
+    const endTime = addMinutes(startTime, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
 
     const { conflict, currentCount } = await checkConflict(
@@ -280,7 +249,16 @@ router.post("/", async (req, res) => {
 
     const [appointment] = await db
       .insert(appointmentsTable)
-      .values({ patientId, procedureId, date, startTime, endTime, status: "agendado", notes })
+      .values({
+        patientId,
+        procedureId,
+        date,
+        startTime,
+        endTime,
+        status: "agendado",
+        notes,
+        professionalId: req.userId,
+      })
       .returning();
 
     const details = await getWithDetails(appointment.id);
@@ -291,7 +269,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const details = await getWithDetails(id);
@@ -306,7 +284,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission("appointments.update"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { patientId, procedureId, date, startTime, status, notes } = req.body;
@@ -315,7 +293,6 @@ router.put("/:id", async (req, res) => {
     let maxCapacity = 1;
     let effectiveProcedureId = procedureId;
 
-    // Recalculate endTime whenever startTime or procedure changes
     if (startTime) {
       if (procedureId) {
         const [proc] = await db
@@ -327,7 +304,6 @@ router.put("/:id", async (req, res) => {
           maxCapacity = proc.maxCapacity ?? 1;
         }
       } else {
-        // Keep current procedure
         const current = await getWithDetails(id);
         if (current?.procedure) {
           endTime = addMinutes(startTime, current.procedure.durationMinutes);
@@ -336,7 +312,6 @@ router.put("/:id", async (req, res) => {
         }
       }
 
-      // Run conflict check when rescheduling
       if (date && endTime) {
         const { conflict, currentCount } = await checkConflict(
           date, startTime, endTime, effectiveProcedureId, maxCapacity, id
@@ -372,7 +347,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(appointmentsTable).where(eq(appointmentsTable.id, id));
@@ -383,7 +358,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/complete", async (req, res) => {
+router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
 

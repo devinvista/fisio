@@ -1,37 +1,73 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { usersTable, userRolesTable } from "@workspace/db";
+import type { Role } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
 
+async function getUserRoles(userId: number): Promise<Role[]> {
+  const rows = await db
+    .select({ role: userRolesTable.role })
+    .from(userRolesTable)
+    .where(eq(userRolesTable.userId, userId));
+  return rows.map((r) => r.role as Role);
+}
+
+async function assignRoles(userId: number, roles: Role[]): Promise<void> {
+  if (roles.length === 0) return;
+  await db.insert(userRolesTable).values(
+    roles.map((role) => ({ userId, role }))
+  );
+}
+
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role = "profissional" } = req.body;
+    const { name, email, password, roles } = req.body;
+    const roleList: Role[] = Array.isArray(roles) && roles.length > 0
+      ? roles
+      : ["profissional"];
+
     if (!name || !email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Name, email and password are required" });
+      res.status(400).json({ error: "Bad Request", message: "Nome, e-mail e senha são obrigatórios" });
       return;
     }
 
-    const existing = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    const existing = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+
     if (existing.length > 0) {
-      res.status(400).json({ error: "Bad Request", message: "Email already registered" });
+      res.status(400).json({ error: "Bad Request", message: "E-mail já cadastrado" });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db.insert(usersTable).values({ name, email, passwordHash, role }).returning();
+    const [user] = await db
+      .insert(usersTable)
+      .values({ name, email, passwordHash })
+      .returning();
 
-    const token = generateToken(user.id, user.role);
+    await assignRoles(user.id, roleList);
+
+    const token = generateToken(user.id, roleList);
     res.status(201).json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        roles: roleList,
+        createdAt: user.createdAt,
+      },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error", message: "Failed to register" });
+    res.status(500).json({ error: "Internal Server Error", message: "Falha no cadastro" });
   }
 });
 
@@ -39,41 +75,66 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Email and password are required" });
+      res.status(400).json({ error: "Bad Request", message: "E-mail e senha são obrigatórios" });
       return;
     }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+
     if (!user) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid credentials" });
+      res.status(401).json({ error: "Unauthorized", message: "Credenciais inválidas" });
       return;
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      res.status(401).json({ error: "Unauthorized", message: "Invalid credentials" });
+      res.status(401).json({ error: "Unauthorized", message: "Credenciais inválidas" });
       return;
     }
 
-    const token = generateToken(user.id, user.role);
+    const roles = await getUserRoles(user.id);
+    const token = generateToken(user.id, roles);
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        roles,
+        createdAt: user.createdAt,
+      },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Internal Server Error", message: "Failed to login" });
+    res.status(500).json({ error: "Internal Server Error", message: "Falha no login" });
   }
 });
 
 router.get("/me", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!)).limit(1);
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, req.userId!))
+      .limit(1);
+
     if (!user) {
-      res.status(404).json({ error: "Not Found", message: "User not found" });
+      res.status(404).json({ error: "Not Found", message: "Usuário não encontrado" });
       return;
     }
-    res.json({ id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt });
+
+    const roles = await getUserRoles(user.id);
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      roles,
+      createdAt: user.createdAt,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

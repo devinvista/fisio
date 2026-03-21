@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { useEffect } from "react";
+import type { Permission } from "@/lib/permissions";
 
 import Login from "./pages/login";
 import Register from "./pages/register";
@@ -14,6 +15,7 @@ import PatientDetail from "./pages/patients/[id]";
 import Financial from "./pages/financial/index";
 import Procedimentos from "./pages/procedimentos";
 import Relatorios from "./pages/relatorios";
+import Usuarios from "./pages/usuarios";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -57,6 +59,38 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+function PermissionRoute({
+  component: Component,
+  permission,
+}: {
+  component: React.ComponentType;
+  permission: Permission;
+}) {
+  const { token, isLoading, hasPermission } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    }
+  }, [token, isLoading, setLocation]);
+
+  if (isLoading) return <div className="min-h-screen bg-background flex items-center justify-center">Carregando...</div>;
+  if (!token) return null;
+
+  if (!hasPermission(permission)) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="text-6xl">🔒</div>
+        <h1 className="text-2xl font-bold text-foreground">Acesso Negado</h1>
+        <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+      </div>
+    );
+  }
+
+  return <Component />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -66,22 +100,25 @@ function Router() {
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
       <Route path="/agenda">
-        {() => <ProtectedRoute component={Agenda} />}
+        {() => <PermissionRoute component={Agenda} permission="appointments.read" />}
       </Route>
       <Route path="/pacientes/:id">
-        {() => <ProtectedRoute component={PatientDetail} />}
+        {() => <PermissionRoute component={PatientDetail} permission="patients.read" />}
       </Route>
       <Route path="/pacientes">
-        {() => <ProtectedRoute component={PatientsList} />}
+        {() => <PermissionRoute component={PatientsList} permission="patients.read" />}
       </Route>
       <Route path="/procedimentos">
-        {() => <ProtectedRoute component={Procedimentos} />}
+        {() => <PermissionRoute component={Procedimentos} permission="procedures.manage" />}
       </Route>
       <Route path="/financeiro">
-        {() => <ProtectedRoute component={Financial} />}
+        {() => <PermissionRoute component={Financial} permission="financial.read" />}
       </Route>
       <Route path="/relatorios">
-        {() => <ProtectedRoute component={Relatorios} />}
+        {() => <PermissionRoute component={Relatorios} permission="reports.read" />}
+      </Route>
+      <Route path="/usuarios">
+        {() => <PermissionRoute component={Usuarios} permission="users.manage" />}
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -8,11 +8,13 @@ import medicalRecordsRouter from "./medical-records.js";
 import financialRouter from "./financial.js";
 import reportsRouter from "./reports.js";
 import dashboardRouter from "./dashboard.js";
+import usersRouter from "./users.js";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);
+router.use("/users", usersRouter);
 router.use("/patients", patientsRouter);
 router.use("/patients/:patientId", medicalRecordsRouter);
 router.use("/procedures", proceduresRouter);

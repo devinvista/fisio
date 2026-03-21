@@ -28,6 +28,7 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefato
 - **Validação**: Zod v4, drizzle-zod (`lib/api-zod`)
 - **API client**: hooks React Query gerados pelo Orval (`lib/api-client-react`)
 - **Autenticação**: JWT (jsonwebtoken) + bcryptjs
+- **Autorização**: RBAC com tabelas `user_roles`, `roles_permissions`; roles: admin, profissional, secretaria
 - **Gráficos**: Recharts
 - **Ícones**: Lucide React
 
@@ -347,12 +348,16 @@ pnpm run db:seed
 
 ## Credenciais de Demonstração
 
-Criadas pelo seed (`pnpm run db:seed`):
+Criadas pelo seed (`pnpm run db:seed-demo`):
 
-- **E-mail**: `demo@fisiogest.com`
-- **Senha**: `demo123`
+| E-mail | Senha | Perfis | Acesso |
+|--------|-------|--------|--------|
+| `admin@fisiogest.com.br` | `123456` | admin | Completo |
+| `fisio@fisiogest.com.br` | `123456` | profissional | Pacientes, prontuário, agenda, relatórios |
+| `secretaria@fisiogest.com.br` | `123456` | secretaria | Agenda e consulta de pacientes |
+| `marta@fisiogest.com.br` | `123456` | admin + profissional | Completo |
 
-O seed cria 10 pacientes com prontuários completos, avaliações, planos de tratamento, 75 consultas, evoluções e 55 registros financeiros.
+O seed cria 4 usuários com RBAC, 10 procedimentos, 8 pacientes, 16 agendamentos e 7 despesas de exemplo.
 
 ---
 

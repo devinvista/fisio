@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { appointmentsTable } from "./appointments";
@@ -14,6 +14,7 @@ export const financialRecordsTable = pgTable("financial_records", {
   appointmentId: integer("appointment_id").references(() => appointmentsTable.id),
   patientId: integer("patient_id").references(() => patientsTable.id),
   procedureId: integer("procedure_id").references(() => proceduresTable.id),
+  clinicId: integer("clinic_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

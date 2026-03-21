@@ -8,10 +8,11 @@ import {
   dischargeSummariesTable,
   financialRecordsTable,
   appointmentsTable,
-  proceduresTable
+  proceduresTable,
 } from "@workspace/db";
 import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 type P = { patientId: string };
 type PEval = { patientId: string; evaluationId: string };
@@ -20,12 +21,15 @@ type PEvol = { patientId: string; evolutionId: string };
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
-router.get("/anamnesis", async (req: Request<P>, res) => {
+router.get("/anamnesis", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const [anamnesis] = await db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId));
+    const [anamnesis] = await db
+      .select()
+      .from(anamnesisTable)
+      .where(eq(anamnesisTable.patientId, patientId));
     if (!anamnesis) {
-      res.status(404).json({ error: "Not Found", message: "Anamnesis not found" });
+      res.status(404).json({ error: "Not Found", message: "Anamnese não encontrada" });
       return;
     }
     res.json(anamnesis);
@@ -35,21 +39,26 @@ router.get("/anamnesis", async (req: Request<P>, res) => {
   }
 });
 
-router.post("/anamnesis", async (req: Request<P>, res) => {
+router.post("/anamnesis", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = req.body;
 
-    const existing = await db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId));
+    const existing = await db
+      .select()
+      .from(anamnesisTable)
+      .where(eq(anamnesisTable.patientId, patientId));
 
     let anamnesis;
     if (existing.length > 0) {
-      [anamnesis] = await db.update(anamnesisTable)
+      [anamnesis] = await db
+        .update(anamnesisTable)
         .set({ mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale, updatedAt: new Date() })
         .where(eq(anamnesisTable.patientId, patientId))
         .returning();
     } else {
-      [anamnesis] = await db.insert(anamnesisTable)
+      [anamnesis] = await db
+        .insert(anamnesisTable)
         .values({ patientId, mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale })
         .returning();
     }
@@ -60,10 +69,12 @@ router.post("/anamnesis", async (req: Request<P>, res) => {
   }
 });
 
-router.get("/evaluations", async (req: Request<P>, res) => {
+router.get("/evaluations", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const evaluations = await db.select().from(evaluationsTable)
+    const evaluations = await db
+      .select()
+      .from(evaluationsTable)
       .where(eq(evaluationsTable.patientId, patientId))
       .orderBy(desc(evaluationsTable.createdAt));
     res.json(evaluations);
@@ -73,12 +84,12 @@ router.get("/evaluations", async (req: Request<P>, res) => {
   }
 });
 
-router.post("/evaluations", async (req: Request<P>, res) => {
+router.post("/evaluations", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
-
-    const [evaluation] = await db.insert(evaluationsTable)
+    const [evaluation] = await db
+      .insert(evaluationsTable)
       .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis })
       .returning();
     res.status(201).json(evaluation);
@@ -88,20 +99,23 @@ router.post("/evaluations", async (req: Request<P>, res) => {
   }
 });
 
-router.put("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
+router.put("/evaluations/:evaluationId", requirePermission("medical.write"), async (req: Request<PEval>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
     const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
 
-    const [existing] = await db.select().from(evaluationsTable)
+    const [existing] = await db
+      .select()
+      .from(evaluationsTable)
       .where(eq(evaluationsTable.id, evaluationId));
     if (!existing || existing.patientId !== patientId) {
       res.status(404).json({ error: "Not Found" });
       return;
     }
 
-    const [updated] = await db.update(evaluationsTable)
+    const [updated] = await db
+      .update(evaluationsTable)
       .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
       .where(eq(evaluationsTable.id, evaluationId))
       .returning();
@@ -112,12 +126,14 @@ router.put("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
   }
 });
 
-router.delete("/evaluations/:evaluationId", async (req: Request<PEval>, res) => {
+router.delete("/evaluations/:evaluationId", requirePermission("medical.write"), async (req: Request<PEval>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
 
-    const [existing] = await db.select().from(evaluationsTable)
+    const [existing] = await db
+      .select()
+      .from(evaluationsTable)
       .where(eq(evaluationsTable.id, evaluationId));
     if (!existing || existing.patientId !== patientId) {
       res.status(404).json({ error: "Not Found" });
@@ -132,12 +148,15 @@ router.delete("/evaluations/:evaluationId", async (req: Request<PEval>, res) => 
   }
 });
 
-router.get("/treatment-plan", async (req: Request<P>, res) => {
+router.get("/treatment-plan", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const [plan] = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId));
+    const [plan] = await db
+      .select()
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.patientId, patientId));
     if (!plan) {
-      res.status(404).json({ error: "Not Found", message: "Treatment plan not found" });
+      res.status(404).json({ error: "Not Found", message: "Plano de tratamento não encontrado" });
       return;
     }
     res.json(plan);
@@ -147,21 +166,26 @@ router.get("/treatment-plan", async (req: Request<P>, res) => {
   }
 });
 
-router.post("/treatment-plan", async (req: Request<P>, res) => {
+router.post("/treatment-plan", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { objectives, techniques, frequency, estimatedSessions, status = "ativo" } = req.body;
 
-    const existing = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId));
+    const existing = await db
+      .select()
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.patientId, patientId));
 
     let plan;
     if (existing.length > 0) {
-      [plan] = await db.update(treatmentPlansTable)
+      [plan] = await db
+        .update(treatmentPlansTable)
         .set({ objectives, techniques, frequency, estimatedSessions, status, updatedAt: new Date() })
         .where(eq(treatmentPlansTable.patientId, patientId))
         .returning();
     } else {
-      [plan] = await db.insert(treatmentPlansTable)
+      [plan] = await db
+        .insert(treatmentPlansTable)
         .values({ patientId, objectives, techniques, frequency, estimatedSessions, status })
         .returning();
     }
@@ -172,10 +196,12 @@ router.post("/treatment-plan", async (req: Request<P>, res) => {
   }
 });
 
-router.get("/evolutions", async (req: Request<P>, res) => {
+router.get("/evolutions", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const evolutions = await db.select().from(evolutionsTable)
+    const evolutions = await db
+      .select()
+      .from(evolutionsTable)
       .where(eq(evolutionsTable.patientId, patientId))
       .orderBy(desc(evolutionsTable.createdAt));
     res.json(evolutions);
@@ -185,12 +211,12 @@ router.get("/evolutions", async (req: Request<P>, res) => {
   }
 });
 
-router.post("/evolutions", async (req: Request<P>, res) => {
+router.post("/evolutions", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
-
-    const [evolution] = await db.insert(evolutionsTable)
+    const [evolution] = await db
+      .insert(evolutionsTable)
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications })
       .returning();
     res.status(201).json(evolution);
@@ -200,20 +226,23 @@ router.post("/evolutions", async (req: Request<P>, res) => {
   }
 });
 
-router.put("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
+router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async (req: Request<PEvol>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
     const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
 
-    const [existing] = await db.select().from(evolutionsTable)
+    const [existing] = await db
+      .select()
+      .from(evolutionsTable)
       .where(eq(evolutionsTable.id, evolutionId));
     if (!existing || existing.patientId !== patientId) {
       res.status(404).json({ error: "Not Found" });
       return;
     }
 
-    const [updated] = await db.update(evolutionsTable)
+    const [updated] = await db
+      .update(evolutionsTable)
       .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications })
       .where(eq(evolutionsTable.id, evolutionId))
       .returning();
@@ -224,12 +253,14 @@ router.put("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   }
 });
 
-router.delete("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
+router.delete("/evolutions/:evolutionId", requirePermission("medical.write"), async (req: Request<PEvol>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
 
-    const [existing] = await db.select().from(evolutionsTable)
+    const [existing] = await db
+      .select()
+      .from(evolutionsTable)
       .where(eq(evolutionsTable.id, evolutionId));
     if (!existing || existing.patientId !== patientId) {
       res.status(404).json({ error: "Not Found" });
@@ -244,32 +275,32 @@ router.delete("/evolutions/:evolutionId", async (req: Request<PEvol>, res) => {
   }
 });
 
-router.get("/appointments", async (req: Request<P>, res) => {
+router.get("/appointments", requirePermission("appointments.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const rows = await db
-      .select({
-        appointment: appointmentsTable,
-        procedure: proceduresTable,
-      })
+      .select({ appointment: appointmentsTable, procedure: proceduresTable })
       .from(appointmentsTable)
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(eq(appointmentsTable.patientId, patientId))
       .orderBy(desc(appointmentsTable.date));
 
-    res.json(rows.map(r => ({ ...r.appointment, procedure: r.procedure })));
+    res.json(rows.map((r) => ({ ...r.appointment, procedure: r.procedure })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.get("/discharge-summary", async (req: Request<P>, res) => {
+router.get("/discharge-summary", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const [summary] = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
+    const [summary] = await db
+      .select()
+      .from(dischargeSummariesTable)
+      .where(eq(dischargeSummariesTable.patientId, patientId));
     if (!summary) {
-      res.status(404).json({ error: "Not Found", message: "Discharge summary not found" });
+      res.status(404).json({ error: "Not Found", message: "Alta fisioterapêutica não encontrada" });
       return;
     }
     res.json(summary);
@@ -279,21 +310,26 @@ router.get("/discharge-summary", async (req: Request<P>, res) => {
   }
 });
 
-router.post("/discharge-summary", async (req: Request<P>, res) => {
+router.post("/discharge-summary", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { dischargeDate, dischargeReason, achievedResults, recommendations } = req.body;
 
-    const existing = await db.select().from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId));
+    const existing = await db
+      .select()
+      .from(dischargeSummariesTable)
+      .where(eq(dischargeSummariesTable.patientId, patientId));
 
     let summary;
     if (existing.length > 0) {
-      [summary] = await db.update(dischargeSummariesTable)
+      [summary] = await db
+        .update(dischargeSummariesTable)
         .set({ dischargeDate, dischargeReason, achievedResults, recommendations, updatedAt: new Date() })
         .where(eq(dischargeSummariesTable.patientId, patientId))
         .returning();
     } else {
-      [summary] = await db.insert(dischargeSummariesTable)
+      [summary] = await db
+        .insert(dischargeSummariesTable)
         .values({ patientId, dischargeDate, dischargeReason, achievedResults, recommendations })
         .returning();
     }
@@ -304,7 +340,7 @@ router.post("/discharge-summary", async (req: Request<P>, res) => {
   }
 });
 
-router.get("/financial", async (req: Request<P>, res) => {
+router.get("/financial", requirePermission("financial.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const rows = await db
@@ -324,14 +360,14 @@ router.get("/financial", async (req: Request<P>, res) => {
       )
       .orderBy(desc(financialRecordsTable.createdAt));
 
-    res.json(rows.map(r => ({ ...r.record, appointment: r.appointment, procedure: r.procedure })));
+    res.json(rows.map((r) => ({ ...r.record, appointment: r.appointment, procedure: r.procedure })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.post("/financial", async (req: Request<P>, res) => {
+router.post("/financial", requirePermission("financial.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const { type, amount, description, category } = req.body;
@@ -341,13 +377,10 @@ router.post("/financial", async (req: Request<P>, res) => {
       return;
     }
 
-    const [record] = await db.insert(financialRecordsTable).values({
-      type,
-      amount: String(amount),
-      description,
-      category,
-      patientId,
-    }).returning();
+    const [record] = await db
+      .insert(financialRecordsTable)
+      .values({ type, amount: String(amount), description, category, patientId })
+      .returning();
 
     res.status(201).json(record);
   } catch (err: any) {

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -22,7 +23,7 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
-router.get("/dashboard", async (req, res) => {
+router.get("/dashboard", requirePermission("financial.read"), async (req, res) => {
   try {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
@@ -30,23 +31,21 @@ router.get("/dashboard", async (req, res) => {
     const { start, end } = monthRange(year, month);
     const { startDate, endDate } = monthDateRange(year, month);
 
-    const records = await db.select().from(financialRecordsTable)
-      .where(
-        and(
-          gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end)
-        )
-      );
+    const records = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(and(gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end)));
 
     const monthlyRevenue = records
-      .filter(r => r.type === "receita")
+      .filter((r) => r.type === "receita")
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
     const monthlyExpenses = records
-      .filter(r => r.type === "despesa")
+      .filter((r) => r.type === "despesa")
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
-    const completedAppts = await db.select({ count: sql<number>`count(*)` })
+    const completedAppts = await db
+      .select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
       .where(
         and(
@@ -56,22 +55,19 @@ router.get("/dashboard", async (req, res) => {
         )
       );
 
-    const totalAppts = await db.select({ count: sql<number>`count(*)` })
+    const totalAppts = await db
+      .select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
-      .where(
-        and(
-          gte(appointmentsTable.date, startDate),
-          lte(appointmentsTable.date, endDate)
-        )
-      );
+      .where(and(gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate)));
 
     const completedCount = Number(completedAppts[0]?.count ?? 0);
     const averageTicket = completedCount > 0 ? monthlyRevenue / completedCount : 0;
 
-    const categoryRevenue = await db.select({
-      category: proceduresTable.category,
-      revenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`
-    })
+    const categoryRevenue = await db
+      .select({
+        category: proceduresTable.category,
+        revenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
+      })
       .from(financialRecordsTable)
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
@@ -84,10 +80,11 @@ router.get("/dashboard", async (req, res) => {
       )
       .groupBy(proceduresTable.category);
 
-    const topProc = await db.select({
-      name: proceduresTable.name,
-      total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`
-    })
+    const topProc = await db
+      .select({
+        name: proceduresTable.name,
+        total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
+      })
       .from(financialRecordsTable)
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
@@ -110,7 +107,10 @@ router.get("/dashboard", async (req, res) => {
       totalAppointments: Number(totalAppts[0]?.count ?? 0),
       completedAppointments: completedCount,
       topProcedure: topProc[0]?.name ?? null,
-      revenueByCategory: categoryRevenue.map(c => ({ category: c.category ?? "outros", revenue: Number(c.revenue) }))
+      revenueByCategory: categoryRevenue.map((c) => ({
+        category: c.category ?? "outros",
+        revenue: Number(c.revenue),
+      })),
     });
   } catch (err) {
     console.error(err);
@@ -118,7 +118,7 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
-router.get("/records", async (req, res) => {
+router.get("/records", requirePermission("financial.read"), async (req, res) => {
   try {
     const type = req.query.type as string | undefined;
     const month = req.query.month ? parseInt(req.query.month as string) : undefined;
@@ -158,7 +158,7 @@ router.get("/records", async (req, res) => {
   }
 });
 
-router.post("/records", async (req, res) => {
+router.post("/records", requirePermission("financial.write"), async (req, res) => {
   try {
     const { type = "despesa", amount, description, category, patientId, procedureId } = req.body;
 
@@ -173,7 +173,8 @@ router.post("/records", async (req, res) => {
       return;
     }
 
-    const [record] = await db.insert(financialRecordsTable)
+    const [record] = await db
+      .insert(financialRecordsTable)
       .values({
         type,
         amount: String(numAmount),
@@ -187,7 +188,8 @@ router.post("/records", async (req, res) => {
     const result = { ...record, procedureName: null as string | null };
 
     if (record.procedureId) {
-      const [proc] = await db.select({ name: proceduresTable.name })
+      const [proc] = await db
+        .select({ name: proceduresTable.name })
         .from(proceduresTable)
         .where(eq(proceduresTable.id, record.procedureId));
       result.procedureName = proc?.name ?? null;

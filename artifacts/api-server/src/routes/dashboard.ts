@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -23,7 +24,7 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("patients.read"), async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
     const now = new Date();

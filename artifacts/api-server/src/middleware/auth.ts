@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import type { Role } from "@workspace/db";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -17,7 +18,7 @@ const secret = JWT_SECRET || "fisiogest-dev-secret-key-do-not-use-in-production"
 
 export interface AuthRequest extends Request {
   userId?: number;
-  userRole?: string;
+  userRoles?: Role[];
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -29,15 +30,15 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 
   const token = authHeader.substring(7);
   try {
-    const payload = jwt.verify(token, secret) as { userId: number; role: string };
+    const payload = jwt.verify(token, secret) as { userId: number; roles: Role[] };
     req.userId = payload.userId;
-    req.userRole = payload.role;
+    req.userRoles = payload.roles ?? [];
     next();
   } catch {
     res.status(401).json({ error: "Unauthorized", message: "Invalid token" });
   }
 }
 
-export function generateToken(userId: number, role: string): string {
-  return jwt.sign({ userId, role }, secret, { expiresIn: "7d" });
+export function generateToken(userId: number, roles: Role[]): string {
+  return jwt.sign({ userId, roles }, secret, { expiresIn: "7d" });
 }

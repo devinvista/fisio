@@ -3,11 +3,12 @@ import { db } from "@workspace/db";
 import { proceduresTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const category = req.query.category as string | undefined;
     let query = db.select().from(proceduresTable);
@@ -22,22 +23,28 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
     if (!name || !category || !durationMinutes || !price) {
-      res.status(400).json({ error: "Bad Request", message: "name, category, durationMinutes e price são obrigatórios" });
+      res.status(400).json({
+        error: "Bad Request",
+        message: "name, category, durationMinutes e price são obrigatórios",
+      });
       return;
     }
-    const [procedure] = await db.insert(proceduresTable).values({
-      name,
-      category,
-      durationMinutes: parseInt(durationMinutes),
-      price: String(price),
-      cost: cost ? String(cost) : "0",
-      description,
-      maxCapacity: maxCapacity ? parseInt(maxCapacity) : 1,
-    }).returning();
+    const [procedure] = await db
+      .insert(proceduresTable)
+      .values({
+        name,
+        category,
+        durationMinutes: parseInt(durationMinutes),
+        price: String(price),
+        cost: cost ? String(cost) : "0",
+        description,
+        maxCapacity: maxCapacity ? parseInt(maxCapacity) : 1,
+      })
+      .returning();
     res.status(201).json(procedure);
   } catch (err) {
     console.error(err);
@@ -45,11 +52,12 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
-    const [procedure] = await db.update(proceduresTable)
+    const [procedure] = await db
+      .update(proceduresTable)
       .set({
         name,
         category,
@@ -61,6 +69,7 @@ router.put("/:id", async (req, res) => {
       })
       .where(eq(proceduresTable.id, id))
       .returning();
+
     if (!procedure) {
       res.status(404).json({ error: "Not Found" });
       return;
@@ -72,7 +81,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await db.delete(proceduresTable).where(eq(proceduresTable.id, id));
