@@ -50,23 +50,52 @@ async function checkConflict(
   procedureId: number,
   maxCapacity: number,
   excludeId?: number
-): Promise<{ conflict: boolean; currentCount: number }> {
+): Promise<{ conflict: boolean; currentCount: number; reason?: string }> {
   if (maxCapacity > 1) {
-    const conditions = [
+    // Rule: all patients in a group session must share the exact same startTime (and endTime).
+    // 1. Count bookings already in this exact group session.
+    const sameSessionConds = [
+      eq(appointmentsTable.date, date),
+      eq(appointmentsTable.procedureId, procedureId),
+      eq(appointmentsTable.startTime, startTime),
+      sql`status NOT IN ('cancelado', 'faltou')`,
+    ];
+    if (excludeId) sameSessionConds.push(ne(appointmentsTable.id, excludeId));
+
+    const sameSession = await db
+      .select({ id: appointmentsTable.id })
+      .from(appointmentsTable)
+      .where(and(...sameSessionConds));
+
+    if (sameSession.length >= maxCapacity) {
+      return { conflict: true, currentCount: sameSession.length, reason: "full" };
+    }
+
+    // 2. Ensure no other group session of this procedure overlaps this time slot.
+    // (A session at a different startTime that still overlaps blocks the professional.)
+    const overlapConds = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
       sql`status NOT IN ('cancelado', 'faltou')`,
+      sql`start_time != ${startTime}`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
-    if (excludeId) conditions.push(ne(appointmentsTable.id, excludeId));
+    if (excludeId) overlapConds.push(ne(appointmentsTable.id, excludeId));
 
-    const existing = await db
-      .select({ id: appointmentsTable.id })
+    const overlapping = await db
+      .select({ id: appointmentsTable.id, startTime: appointmentsTable.startTime })
       .from(appointmentsTable)
-      .where(and(...conditions));
+      .where(and(...overlapConds));
 
-    return { conflict: existing.length >= maxCapacity, currentCount: existing.length };
+    if (overlapping.length > 0) {
+      return { conflict: true, currentCount: sameSession.length, reason: "overlap" };
+    }
+
+    return { conflict: false, currentCount: sameSession.length };
   } else {
+    // Rule: next slot is only free after the previous one ends.
+    // Overlap = start_time < newEndTime AND end_time > newStartTime.
+    // A new appointment starting exactly when another ends (end_time = newStartTime) is NOT a conflict.
     const conditions = [
       eq(appointmentsTable.date, date),
       sql`status NOT IN ('cancelado', 'faltou')`,
@@ -172,24 +201,40 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
       const startTime = minutesToTime(start);
       const slotEnd = start + duration;
 
-      let occupiedCount: number;
+      let spotsLeft: number;
 
       if (maxCap > 1) {
-        occupiedCount = existingAppts.filter(
+        // Group procedures: all patients share the exact same startTime.
+        // Count bookings already in this specific group session.
+        const sameSessionCount = existingAppts.filter(
+          (a) => a.procedureId === procedure.id && a.startTime === startTime
+        ).length;
+
+        // Check if a DIFFERENT group session of this procedure overlaps this slot.
+        const hasConflictingSession = existingAppts.some(
           (a) =>
             a.procedureId === procedure.id &&
+            a.startTime !== startTime &&
             timeToMinutes(a.startTime) < slotEnd &&
             timeToMinutes(a.endTime) > start
-        ).length;
+        );
+
+        if (hasConflictingSession) {
+          spotsLeft = 0;
+        } else {
+          spotsLeft = Math.max(0, maxCap - sameSessionCount);
+        }
       } else {
-        occupiedCount = existingAppts.filter(
+        // Individual procedures: blocked if any appointment overlaps this slot.
+        // A slot starting exactly when another ends is NOT blocked (end_time > start → strict).
+        const occupiedCount = existingAppts.filter(
           (a) =>
             timeToMinutes(a.startTime) < slotEnd &&
             timeToMinutes(a.endTime) > start
         ).length;
+        spotsLeft = Math.max(0, maxCap - occupiedCount);
       }
 
-      const spotsLeft = Math.max(0, maxCap - occupiedCount);
       slots.push({ time: startTime, available: spotsLeft > 0, spotsLeft });
     }
 
@@ -234,15 +279,19 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
     const endTime = addMinutes(startTime, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
 
-    const { conflict, currentCount } = await checkConflict(
+    const { conflict, currentCount, reason } = await checkConflict(
       date, startTime, endTime, procedure.id, maxCapacity
     );
 
     if (conflict) {
-      const message =
-        maxCapacity > 1
+      let message: string;
+      if (maxCapacity > 1) {
+        message = reason === "full"
           ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas para "${procedure.name}" neste horário.`
-          : `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
+          : `Conflito de horário: já existe uma sessão de "${procedure.name}" que se sobrepõe a este horário.`;
+      } else {
+        message = `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
+      }
       res.status(409).json({ error: "Conflict", message });
       return;
     }
@@ -313,15 +362,19 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
       }
 
       if (date && endTime) {
-        const { conflict, currentCount } = await checkConflict(
+        const { conflict, currentCount, reason } = await checkConflict(
           date, startTime, endTime, effectiveProcedureId, maxCapacity, id
         );
 
         if (conflict) {
-          const message =
-            maxCapacity > 1
+          let message: string;
+          if (maxCapacity > 1) {
+            message = reason === "full"
               ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas neste horário.`
-              : `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
+              : `Conflito de horário: já existe uma sessão que se sobrepõe a este horário.`;
+          } else {
+            message = `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
+          }
           res.status(409).json({ error: "Conflict", message });
           return;
         }
