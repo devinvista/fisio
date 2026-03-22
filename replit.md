@@ -354,10 +354,36 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 |--------|-------|--------|--------|
 | `admin@fisiogest.com.br` | `123456` | admin | Completo |
 | `fisio@fisiogest.com.br` | `123456` | profissional | Pacientes, prontuário, agenda, relatórios |
+| `rodrigo@fisiogest.com.br` | `123456` | profissional | Pacientes, prontuário, agenda, relatórios |
 | `secretaria@fisiogest.com.br` | `123456` | secretaria | Agenda e consulta de pacientes |
 | `marta@fisiogest.com.br` | `123456` | admin + profissional | Completo |
 
-O seed cria 4 usuários com RBAC, 10 procedimentos, 8 pacientes, 16 agendamentos e 7 despesas de exemplo.
+### Volume de dados (jan–abr/2026)
+
+| Entidade | Quantidade |
+|---|---|
+| Usuários | 5 (3 roles distintos) |
+| Procedimentos | 12 |
+| Pacientes | 20 |
+| Agendamentos | ~406 (jan–abr/2026) |
+| Evoluções | ~272 (para cada sessão concluída) |
+| Receitas | ~272 → R$ 37.730,00 |
+| Despesas | 33 (fixas + variáveis, 3 meses) |
+| Anamneses | 20 |
+| Avaliações físicas | 20 |
+| Planos de tratamento | 20 |
+| Altas fisioterapêuticas | 3 |
+
+### Colunas adicionadas ao schema (atualização 2026-03-22)
+
+- `appointments.professional_id` — FK para `users.id`
+- `appointments.clinic_id`
+- `patients.clinic_id`
+- `procedures.clinic_id`
+- `financial_records.clinic_id`
+- `financial_records.payment_date`
+- `financial_records.payment_method`
+- Tabelas RBAC criadas: `user_roles`, `permissions`, `roles_permissions`
 
 ---
 
