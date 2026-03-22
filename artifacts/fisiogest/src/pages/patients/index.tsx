@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useListPatients, useCreatePatient } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,8 @@ export default function PatientsList() {
   });
   const { data, isLoading, refetch } = useListPatients({ search, limit: 50 });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("patients.create");
 
   function changeView(mode: ViewMode) {
     setViewMode(mode);
@@ -80,17 +83,19 @@ export default function PatientsList() {
             <h1 className="text-2xl font-bold font-display text-slate-800">Pacientes</h1>
             <p className="text-sm text-slate-500">Gerencie o cadastro e prontuários dos pacientes</p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="h-9 px-4 rounded-lg shadow-md shadow-primary/20">
-                <Plus className="w-4 h-4 mr-1.5" />
-                Novo Paciente
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
-              <CreatePatientForm onSuccess={() => { setIsDialogOpen(false); refetch(); }} />
-            </DialogContent>
-          </Dialog>
+          {canCreate && (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="h-9 px-4 rounded-lg shadow-md shadow-primary/20">
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Novo Paciente
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
+                <CreatePatientForm onSuccess={() => { setIsDialogOpen(false); refetch(); }} />
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
 
         {/* ── Stats strip ─────────────────────────────────────────────────── */}

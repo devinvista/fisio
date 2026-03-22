@@ -1,4 +1,4 @@
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useGetPatient,
@@ -16,16 +16,23 @@ import {
   useDeleteEvolution,
   useGetDischarge,
   useSaveDischarge,
+  useUpdatePatient,
+  useDeletePatient,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Loader2, Phone, Mail, Calendar, Activity, ClipboardList, TrendingUp,
   FileText, DollarSign, History, Plus, ChevronDown, ChevronUp, User,
   MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle,
-  LogOut, Pencil, Trash2, ShieldAlert, UserCheck
+  LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
+import { useAuth } from "@/lib/auth-context";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   agendado: { label: "Agendado", color: "bg-blue-100 text-blue-700", icon: <Clock className="w-3 h-3" /> },
@@ -1227,12 +1235,267 @@ function DischargeTab({ patientId }: { patientId: number }) {
   );
 }
 
+// ─── Edit Patient Dialog ─────────────────────────────────────────────────────────
+
+interface PatientData {
+  id: number;
+  name: string;
+  cpf: string;
+  phone: string;
+  email?: string | null;
+  birthDate?: string | null;
+  address?: string | null;
+  profession?: string | null;
+  emergencyContact?: string | null;
+  notes?: string | null;
+}
+
+function EditPatientDialog({
+  patient,
+  open,
+  onClose,
+  onSaved,
+}: {
+  patient: PatientData;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { hasPermission, hasRole } = useAuth();
+  const { toast } = useToast();
+  const mutation = useUpdatePatient();
+  const isAdmin = hasRole("admin");
+
+  const [form, setForm] = useState({
+    name: patient.name ?? "",
+    cpf: patient.cpf ?? "",
+    phone: patient.phone ?? "",
+    email: patient.email ?? "",
+    birthDate: patient.birthDate ?? "",
+    address: patient.address ?? "",
+    profession: patient.profession ?? "",
+    emergencyContact: patient.emergencyContact ?? "",
+    notes: patient.notes ?? "",
+  });
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        name: patient.name ?? "",
+        cpf: patient.cpf ?? "",
+        phone: patient.phone ?? "",
+        email: patient.email ?? "",
+        birthDate: patient.birthDate ?? "",
+        address: patient.address ?? "",
+        profession: patient.profession ?? "",
+        emergencyContact: patient.emergencyContact ?? "",
+        notes: patient.notes ?? "",
+      });
+    }
+  }, [open, patient]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate(
+      { id: patient.id, data: form },
+      {
+        onSuccess: () => {
+          toast({ title: "Cadastro atualizado", description: "Os dados do paciente foram salvos com sucesso." });
+          onSaved();
+          onClose();
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message ?? "Não foi possível atualizar o cadastro.";
+          toast({ variant: "destructive", title: "Erro ao salvar", description: msg });
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[620px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="p-6 pb-0">
+          <DialogTitle className="font-display text-xl flex items-center gap-2">
+            <Pencil className="w-5 h-5 text-primary" /> Editar Cadastro
+          </DialogTitle>
+          <DialogDescription className="text-sm text-slate-500">
+            {isAdmin
+              ? "Todos os campos estão disponíveis para edição."
+              : "Você pode editar dados de contato e informações pessoais."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+
+          {/* ── Identidade (somente admin) ── */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+              Identificação
+              {!isAdmin && (
+                <span className="ml-2 inline-flex items-center gap-1 text-slate-300 normal-case tracking-normal font-normal">
+                  <Lock className="w-3 h-3" /> restrito ao administrador
+                </span>
+              )}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Nome Completo *</Label>
+                <Input
+                  required
+                  disabled={!isAdmin}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="h-10 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">CPF *</Label>
+                <Input
+                  required
+                  disabled={!isAdmin}
+                  value={form.cpf}
+                  onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+                  placeholder="000.000.000-00"
+                  className="h-10 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Contato ── */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">Contato</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Telefone *</Label>
+                <Input
+                  required
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(11) 99999-0000"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">E-mail</Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="h-10"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Dados Pessoais ── */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">Dados Pessoais</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Data de Nascimento</Label>
+                <DatePickerPTBR
+                  value={form.birthDate}
+                  onChange={(v) => setForm({ ...form, birthDate: v })}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Profissão</Label>
+                <Input
+                  value={form.profession}
+                  onChange={(e) => setForm({ ...form, profession: e.target.value })}
+                  placeholder="Ex: Professora"
+                  className="h-10"
+                />
+              </div>
+            </div>
+            <div className="mt-4 space-y-1.5">
+              <Label className="text-sm font-medium text-slate-700">Endereço</Label>
+              <Input
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                placeholder="Rua, número - Bairro - Cidade"
+                className="h-10"
+              />
+            </div>
+          </div>
+
+          {/* ── Emergência + Notas ── */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">Informações Adicionais</p>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-500" /> Contato de Emergência
+                </Label>
+                <Input
+                  value={form.emergencyContact}
+                  onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })}
+                  placeholder="Nome — Telefone — Parentesco"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Observações</Label>
+                <Textarea
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  placeholder="Observações clínicas ou administrativas relevantes..."
+                  className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
+              Cancelar
+            </Button>
+            <Button type="submit" className="h-10 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
+              {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              Salvar Alterações
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function PatientDetail() {
   const { id } = useParams();
+  const [, setLocation] = useLocation();
   const patientId = Number(id);
-  const { data: patient, isLoading } = useGetPatient(patientId);
+  const { data: patient, isLoading, refetch } = useGetPatient(patientId);
+  const { hasPermission } = useAuth();
+  const { toast } = useToast();
+  const deleteMutation = useDeletePatient();
+  const queryClient = useQueryClient();
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const canEdit = hasPermission("patients.update");
+  const canDelete = hasPermission("patients.delete");
+
+  const handleDelete = () => {
+    deleteMutation.mutate(
+      { id: patientId },
+      {
+        onSuccess: () => {
+          toast({ title: "Paciente excluído", description: "O cadastro foi removido permanentemente." });
+          setLocation("/pacientes");
+        },
+        onError: () => {
+          toast({ variant: "destructive", title: "Erro ao excluir", description: "Não foi possível excluir o paciente." });
+        },
+      }
+    );
+  };
 
   if (isLoading) {
     return (
@@ -1256,6 +1519,41 @@ export default function PatientDetail() {
   return (
     <AppLayout title="Prontuário do Paciente">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Dialogs */}
+        {canEdit && (
+          <EditPatientDialog
+            patient={patient as PatientData}
+            open={editOpen}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}`] });
+              refetch();
+            }}
+          />
+        )}
+
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir paciente?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação é permanente e removerá <strong>{patient.name}</strong> e todos os seus dados clínicos. Esta operação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                Sim, excluir permanentemente
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Sidebar */}
         <div className="lg:col-span-1 space-y-4">
@@ -1329,6 +1627,30 @@ export default function PatientDetail() {
                 <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-[10px] text-amber-700 font-semibold uppercase mb-0.5">Observações</p>
                   <p className="text-xs text-amber-800">{patient.notes}</p>
+                </div>
+              )}
+
+              {/* ── Action buttons ── */}
+              {(canEdit || canDelete) && (
+                <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
+                  {canEdit && (
+                    <Button
+                      variant="outline"
+                      className="w-full h-9 rounded-xl text-sm border-primary/30 text-primary hover:bg-primary/5 hover:border-primary"
+                      onClick={() => setEditOpen(true)}
+                    >
+                      <Pencil className="w-3.5 h-3.5 mr-2" /> Editar Cadastro
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button
+                      variant="outline"
+                      className="w-full h-9 rounded-xl text-sm border-red-200 text-red-600 hover:bg-red-50 hover:border-red-400"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir Paciente
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
