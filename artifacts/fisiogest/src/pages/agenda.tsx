@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useListAppointments,
@@ -44,7 +44,11 @@ import {
   User,
   Stethoscope,
   Clock,
+  Repeat,
+  RefreshCw,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -132,8 +136,11 @@ export default function Agenda() {
     setCurrentDate(next); setMiniCalMonth(next);
   };
 
-  const handleSlotClick = (date: Date, hour: number) => {
-    setSelectedSlot({ date: format(date, "yyyy-MM-dd"), time: `${String(hour).padStart(2, "0")}:00` });
+  const handleSlotClick = (date: Date, hour: number, half: 0 | 30 = 0) => {
+    setSelectedSlot({
+      date: format(date, "yyyy-MM-dd"),
+      time: `${String(hour).padStart(2, "0")}:${half === 30 ? "30" : "00"}`,
+    });
     setIsNewModalOpen(true);
   };
 
@@ -323,19 +330,38 @@ export default function Agenda() {
                       )}
                       style={{ height: TOTAL_HOURS * SLOT_HEIGHT }}
                     >
-                      {/* Hour lines */}
+                      {/* Hour lines — split into two 30-min clickable halves */}
                       {hours.map((h) => (
                         <div
                           key={h}
-                          className="absolute left-0 right-0 border-b border-slate-100 cursor-pointer hover:bg-slate-50/80 transition-colors group"
+                          className="absolute left-0 right-0 border-b border-slate-100"
                           style={{ top: (h - HOUR_START) * SLOT_HEIGHT, height: SLOT_HEIGHT }}
-                          onClick={() => handleSlotClick(day, h)}
                         >
-                          {/* Half-hour line */}
-                          <div className="absolute left-0 right-0 border-b border-slate-50" style={{ top: SLOT_HEIGHT / 2 }} />
-                          {/* Plus hint */}
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            <Plus className="w-4 h-4 text-slate-300" />
+                          {/* Top half: :00 */}
+                          <div
+                            className="absolute left-0 right-0 cursor-pointer hover:bg-primary/5 transition-colors group/half"
+                            style={{ top: 0, height: SLOT_HEIGHT / 2 }}
+                            onClick={() => handleSlotClick(day, h, 0)}
+                          >
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/half:opacity-100 transition-opacity pointer-events-none">
+                              <span className="text-[9px] font-semibold text-primary/60 bg-primary/10 rounded px-1">
+                                +{String(h).padStart(2, "0")}:00
+                              </span>
+                            </div>
+                          </div>
+                          {/* Half-hour divider */}
+                          <div className="absolute left-0 right-0 border-b border-slate-100/80" style={{ top: SLOT_HEIGHT / 2 }} />
+                          {/* Bottom half: :30 */}
+                          <div
+                            className="absolute left-0 right-0 cursor-pointer hover:bg-primary/5 transition-colors group/half"
+                            style={{ top: SLOT_HEIGHT / 2, height: SLOT_HEIGHT / 2 }}
+                            onClick={() => handleSlotClick(day, h, 30)}
+                          >
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/half:opacity-100 transition-opacity pointer-events-none">
+                              <span className="text-[9px] font-semibold text-primary/60 bg-primary/10 rounded px-1">
+                                +{String(h).padStart(2, "0")}:30
+                              </span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -782,6 +808,16 @@ function AppointmentDetailModal({
 
 // ─── Create Appointment Form ──────────────────────────────────────────────────
 
+const DAYS_OF_WEEK = [
+  { label: "Dom", value: 0 },
+  { label: "Seg", value: 1 },
+  { label: "Ter", value: 2 },
+  { label: "Qua", value: 3 },
+  { label: "Qui", value: 4 },
+  { label: "Sex", value: 5 },
+  { label: "Sáb", value: 6 },
+];
+
 function CreateAppointmentForm({
   initialDate,
   initialTime,
@@ -800,6 +836,18 @@ function CreateAppointmentForm({
     startTime: initialTime || "",
     notes: "",
   });
+
+  // Recurring
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurDays, setRecurDays] = useState<number[]>(() => {
+    if (initialDate) {
+      const dow = new Date(initialDate + "T12:00:00").getDay();
+      return [dow];
+    }
+    return [];
+  });
+  const [recurSessions, setRecurSessions] = useState(8);
+  const [recurPending, setRecurPending] = useState(false);
 
   const { data: patients } = useListPatients({ limit: 1000 });
   const { data: procedures } = useListProcedures();
@@ -826,6 +874,15 @@ function CreateAppointmentForm({
 
   const availableSlots = (slotsData?.slots ?? []) as { time: string; available: boolean; spotsLeft: number }[];
 
+  // Auto-select initialTime when slots are loaded
+  useEffect(() => {
+    if (!initialTime || formData.startTime || slotsFetching || availableSlots.length === 0) return;
+    const match = availableSlots.find((s) => s.time === initialTime && s.available);
+    if (match) {
+      setFormData((prev) => ({ ...prev, startTime: initialTime }));
+    }
+  }, [availableSlots, slotsFetching, initialTime]);
+
   const computedEndTime = useMemo(() => {
     if (!formData.startTime || !selectedProcedure) return null;
     const [h, m] = formData.startTime.split(":").map(Number);
@@ -833,12 +890,62 @@ function CreateAppointmentForm({
     return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
   }, [formData.startTime, selectedProcedure]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const toggleRecurDay = (dow: number) => {
+    setRecurDays((prev) =>
+      prev.includes(dow) ? prev.filter((d) => d !== dow) : [...prev, dow]
+    );
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.startTime) {
       toast({ variant: "destructive", title: "Selecione um horário." });
       return;
     }
+
+    if (isRecurring) {
+      if (recurDays.length === 0) {
+        toast({ variant: "destructive", title: "Selecione ao menos um dia da semana." });
+        return;
+      }
+      if (recurSessions < 1 || recurSessions > 100) {
+        toast({ variant: "destructive", title: "Número de sessões deve ser entre 1 e 100." });
+        return;
+      }
+      setRecurPending(true);
+      try {
+        const res = await fetch("/api/appointments/recurring", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            patientId: Number(formData.patientId),
+            procedureId: Number(formData.procedureId),
+            date: formData.date,
+            startTime: formData.startTime,
+            notes: formData.notes || undefined,
+            recurrence: { daysOfWeek: recurDays, totalSessions: recurSessions },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast({ variant: "destructive", title: "Erro ao criar recorrência", description: data.message || "Erro desconhecido." });
+        } else {
+          const skippedMsg = data.skipped > 0 ? ` (${data.skipped} horário(s) com conflito foram pulados)` : "";
+          toast({
+            title: `${data.created} sessão(ões) agendada(s)!`,
+            description: `Recorrência criada com sucesso.${skippedMsg}`,
+          });
+          onSuccess();
+        }
+      } catch {
+        toast({ variant: "destructive", title: "Erro ao criar recorrência." });
+      } finally {
+        setRecurPending(false);
+      }
+      return;
+    }
+
     mutation.mutate(
       {
         data: {
@@ -862,8 +969,11 @@ function CreateAppointmentForm({
     );
   };
 
+  const isBusy = mutation.isPending || recurPending;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+      {/* Paciente */}
       <div className="space-y-1.5">
         <Label>Paciente *</Label>
         <Select value={formData.patientId} onValueChange={(v) => setFormData({ ...formData, patientId: v })}>
@@ -876,6 +986,7 @@ function CreateAppointmentForm({
         </Select>
       </div>
 
+      {/* Procedimento */}
       <div className="space-y-1.5">
         <Label>Procedimento *</Label>
         <Select value={formData.procedureId} onValueChange={(v) => setFormData({ ...formData, procedureId: v, startTime: "" })}>
@@ -898,12 +1009,17 @@ function CreateAppointmentForm({
         )}
       </div>
 
+      {/* Data + Horário */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Data *</Label>
           <DatePickerPTBR
             value={formData.date}
-            onChange={(v) => setFormData({ ...formData, date: v, startTime: "" })}
+            onChange={(v) => {
+              const dow = new Date(v + "T12:00:00").getDay();
+              setFormData({ ...formData, date: v, startTime: "" });
+              if (isRecurring && recurDays.length === 0) setRecurDays([dow]);
+            }}
             className="h-11 rounded-xl"
           />
         </div>
@@ -954,6 +1070,7 @@ function CreateAppointmentForm({
         </div>
       </div>
 
+      {/* Observações */}
       <div className="space-y-1.5">
         <Label>Observações</Label>
         <Textarea
@@ -965,13 +1082,87 @@ function CreateAppointmentForm({
         />
       </div>
 
+      {/* Recorrência toggle */}
+      <div className="rounded-2xl border border-slate-200 overflow-hidden">
+        <button
+          type="button"
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+          onClick={() => setIsRecurring((v) => !v)}
+        >
+          <div className="flex items-center gap-2">
+            <Repeat className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold text-slate-700">Agendamento recorrente</span>
+          </div>
+          <Switch checked={isRecurring} onCheckedChange={setIsRecurring} className="pointer-events-none" />
+        </button>
+
+        {isRecurring && (
+          <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100 bg-slate-50/60">
+            <p className="text-xs text-slate-500">
+              Cria automaticamente todas as sessões com o mesmo horário nos dias selecionados, a partir da data escolhida.
+            </p>
+
+            {/* Days of week */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Dias da semana *</Label>
+              <div className="flex gap-1.5 flex-wrap">
+                {DAYS_OF_WEEK.map((d) => (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => toggleRecurDay(d.value)}
+                    className={cn(
+                      "w-10 h-9 rounded-lg text-xs font-semibold transition-all border",
+                      recurDays.includes(d.value)
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-primary/50 hover:text-primary"
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Total sessions */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Total de sessões *</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={recurSessions}
+                  onChange={(e) => setRecurSessions(Number(e.target.value))}
+                  className="h-9 w-24 rounded-xl text-sm"
+                />
+                <span className="text-xs text-slate-500">sessões · a partir de {formData.date ? format(new Date(formData.date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>
+              </div>
+            </div>
+
+            {recurDays.length > 0 && recurSessions > 0 && (
+              <div className="flex items-center gap-1.5 bg-primary/5 rounded-xl px-3 py-2">
+                <RefreshCw className="w-3 h-3 text-primary shrink-0" />
+                <p className="text-xs text-primary font-medium">
+                  {recurSessions} sessão(ões) toda(s){" "}
+                  {recurDays.map((d) => DAYS_OF_WEEK.find((x) => x.value === d)?.label).join(", ")}{" "}
+                  às {formData.startTime || "—"}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <Button
         type="submit"
         className="w-full h-11 rounded-xl shadow-lg shadow-primary/20"
-        disabled={!formData.patientId || !formData.procedureId || !formData.startTime || mutation.isPending}
+        disabled={!formData.patientId || !formData.procedureId || !formData.startTime || isBusy}
       >
-        {mutation.isPending ? (
-          <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Agendando...</>
+        {isBusy ? (
+          <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isRecurring ? "Criando recorrência..." : "Agendando..."}</>
+        ) : isRecurring ? (
+          <><Repeat className="w-4 h-4 mr-2" /> Criar {recurSessions} sessão(ões) recorrente(s)</>
         ) : (
           <><CalIcon className="w-4 h-4 mr-2" /> Confirmar Agendamento</>
         )}

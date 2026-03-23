@@ -411,6 +411,76 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
   }
 });
 
+router.post("/recurring", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
+  try {
+    const { patientId, procedureId, date, startTime, notes, recurrence } = req.body;
+
+    if (!patientId || !procedureId || !date || !startTime || !recurrence) {
+      res.status(400).json({ error: "Bad Request", message: "patientId, procedureId, date, startTime e recurrence são obrigatórios" });
+      return;
+    }
+
+    const { daysOfWeek, totalSessions } = recurrence as { daysOfWeek: number[]; totalSessions: number };
+
+    if (!Array.isArray(daysOfWeek) || daysOfWeek.length === 0 || !totalSessions || totalSessions < 1) {
+      res.status(400).json({ error: "Bad Request", message: "recurrence.daysOfWeek e recurrence.totalSessions são obrigatórios" });
+      return;
+    }
+
+    const [procedure] = await db.select().from(proceduresTable).where(eq(proceduresTable.id, procedureId));
+    if (!procedure) {
+      res.status(404).json({ error: "Not Found", message: "Procedimento não encontrado" });
+      return;
+    }
+
+    const endTimeFn = (st: string) => addMinutes(st, procedure.durationMinutes);
+    const maxCapacity = procedure.maxCapacity ?? 1;
+    const recurrenceGroupId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const created = [];
+    const skipped = [];
+
+    let sessionCount = 0;
+    let cursor = new Date(date + "T12:00:00Z");
+    // advance to first matching day of week
+    let safetyLimit = 0;
+
+    while (sessionCount < totalSessions && safetyLimit < 500) {
+      safetyLimit++;
+      const dow = cursor.getUTCDay(); // 0=Sun ... 6=Sat
+      if (daysOfWeek.includes(dow)) {
+        const sessionDate = cursor.toISOString().slice(0, 10);
+        const et = endTimeFn(startTime);
+        const { conflict, reason, currentCount } = await checkConflict(sessionDate, startTime, et, procedure.id, maxCapacity);
+        if (conflict) {
+          skipped.push({ date: sessionDate, reason: reason || "conflict", currentCount });
+        } else {
+          const [apt] = await db.insert(appointmentsTable).values({
+            patientId,
+            procedureId,
+            date: sessionDate,
+            startTime,
+            endTime: et,
+            status: "agendado",
+            notes: notes || undefined,
+            professionalId: req.userId,
+            recurrenceGroupId,
+            recurrenceIndex: sessionCount,
+          }).returning();
+          created.push(apt);
+          sessionCount++;
+        }
+      }
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    res.status(201).json({ created: created.length, skipped: skipped.length, recurrenceGroupId, skippedDetails: skipped });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);

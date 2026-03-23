@@ -16,6 +16,8 @@ export const appointmentsTable = pgTable("appointments", {
   status: text("status").notNull().default("agendado"),
   notes: text("notes"),
   clinicId: integer("clinic_id"),
+  recurrenceGroupId: text("recurrence_group_id"),
+  recurrenceIndex: integer("recurrence_index"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
