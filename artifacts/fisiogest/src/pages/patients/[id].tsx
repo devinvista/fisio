@@ -1314,8 +1314,8 @@ function EditPatientDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-[620px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="p-6 pb-0">
+      <DialogContent className="sm:max-w-[620px] border-none shadow-2xl rounded-2xl">
+        <DialogHeader>
           <DialogTitle className="font-display text-xl flex items-center gap-2">
             <Pencil className="w-5 h-5 text-primary" /> Editar Cadastro
           </DialogTitle>
@@ -1326,7 +1326,7 @@ function EditPatientDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5">
 
           {/* ── Identidade (somente admin) ── */}
           <div>

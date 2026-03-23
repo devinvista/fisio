@@ -91,7 +91,7 @@ export default function PatientsList() {
                   Novo Paciente
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl rounded-2xl">
+              <DialogContent className="sm:max-w-[600px] border-none shadow-2xl rounded-2xl">
                 <CreatePatientForm onSuccess={() => { setIsDialogOpen(false); refetch(); }} />
               </DialogContent>
             </Dialog>
@@ -408,10 +408,10 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <>
-      <DialogHeader className="p-6 pb-0">
+      <DialogHeader>
         <DialogTitle className="font-display text-2xl">Novo Paciente</DialogTitle>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label>Nome Completo *</Label>
           <Input
