@@ -1075,17 +1075,19 @@ function CreateAppointmentForm({
 
       {/* Recorrência toggle */}
       <div className="rounded-2xl border border-slate-200 overflow-hidden">
-        <button
-          type="button"
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+        <div
+          role="button"
+          tabIndex={0}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer select-none"
           onClick={() => setIsRecurring((v) => !v)}
+          onKeyDown={(e) => e.key === "Enter" || e.key === " " ? setIsRecurring((v) => !v) : undefined}
         >
           <div className="flex items-center gap-2">
             <Repeat className="w-4 h-4 text-primary" />
             <span className="text-sm font-semibold text-slate-700">Agendamento recorrente</span>
           </div>
           <Switch checked={isRecurring} onCheckedChange={setIsRecurring} className="pointer-events-none" />
-        </button>
+        </div>
 
         {isRecurring && (
           <div className="px-4 pb-4 pt-1 space-y-3 border-t border-slate-100 bg-slate-50/60">
