@@ -9,10 +9,12 @@ import {
   financialRecordsTable,
   appointmentsTable,
   proceduresTable,
+  examAttachmentsTable,
 } from "@workspace/db";
 import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 type P = { patientId: string };
 type PEval = { patientId: string; evaluationId: string };
@@ -388,6 +390,79 @@ router.post("/financial", requirePermission("financial.write"), async (req: Requ
       res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
       return;
     }
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Exam Attachments ─────────────────────────────────────────────────────────
+
+const objectStorageService = new ObjectStorageService();
+
+type PAttach = { patientId: string; attachmentId: string };
+
+router.get("/attachments", requirePermission("medical.read"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const attachments = await db
+      .select()
+      .from(examAttachmentsTable)
+      .where(eq(examAttachmentsTable.patientId, patientId))
+      .orderBy(desc(examAttachmentsTable.uploadedAt));
+    res.json(attachments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/attachments", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const { originalFilename, contentType, fileSize, objectPath, description } = req.body;
+
+    if (!originalFilename || !contentType || !fileSize || !objectPath) {
+      res.status(400).json({ error: "Campos obrigatórios: originalFilename, contentType, fileSize, objectPath" });
+      return;
+    }
+
+    const [attachment] = await db
+      .insert(examAttachmentsTable)
+      .values({ patientId, originalFilename, contentType, fileSize, objectPath, description: description || null })
+      .returning();
+
+    res.status(201).json(attachment);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/attachments/:attachmentId", requirePermission("medical.write"), async (req: Request<PAttach>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const attachmentId = parseInt(req.params.attachmentId);
+
+    const [existing] = await db
+      .select()
+      .from(examAttachmentsTable)
+      .where(eq(examAttachmentsTable.id, attachmentId));
+
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Anexo não encontrado" });
+      return;
+    }
+
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
+      await objectFile.delete();
+    } catch {
+      // If GCS delete fails, still remove from DB
+    }
+
+    await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));
+    res.json({ success: true });
+  } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }

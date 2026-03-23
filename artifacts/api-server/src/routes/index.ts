@@ -9,6 +9,7 @@ import financialRouter from "./financial.js";
 import reportsRouter from "./reports.js";
 import dashboardRouter from "./dashboard.js";
 import usersRouter from "./users.js";
+import storageRouter from "./storage.js";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use("/appointments", appointmentsRouter);
 router.use("/financial", financialRouter);
 router.use("/reports", reportsRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/storage", storageRouter);
 
 export default router;

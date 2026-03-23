@@ -32,7 +32,8 @@ import {
   Loader2, Phone, Mail, Calendar, Activity, ClipboardList, TrendingUp,
   FileText, DollarSign, History, Plus, ChevronDown, ChevronUp, User,
   MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle,
-  LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock,
+  LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock, Paperclip, Upload,
+  FileImage, File, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,7 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -80,6 +81,229 @@ function InfoBlock({ label, value, className = "" }: { label: string; value: str
     <div className={className}>
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
       <p className="text-sm text-slate-700 whitespace-pre-wrap">{value}</p>
+    </div>
+  );
+}
+
+// ─── Exam Attachments ───────────────────────────────────────────────────────────
+
+type ExamAttachment = {
+  id: number;
+  patientId: number;
+  originalFilename: string;
+  contentType: string;
+  fileSize: number;
+  objectPath: string;
+  description: string | null;
+  uploadedAt: string;
+};
+
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentTypeIcon({ contentType }: { contentType: string }) {
+  if (contentType.startsWith("image/")) return <FileImage className="w-5 h-5 text-blue-500" />;
+  if (contentType === "application/pdf") return <FileText className="w-5 h-5 text-red-500" />;
+  return <File className="w-5 h-5 text-slate-400" />;
+}
+
+function ExamAttachmentsSection({ patientId }: { patientId: number }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const token = () => localStorage.getItem("fisiogest_token");
+
+  const { data: attachments = [], isLoading } = useQuery<ExamAttachment[]>({
+    queryKey: [`/api/patients/${patientId}/attachments`],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/attachments`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar anexos");
+      return res.json();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!fileInputRef.current) fileInputRef.current!.value = "";
+    if (!file) return;
+    if (!ACCEPTED_MIME.includes(file.type)) {
+      toast({ title: "Tipo não suportado", description: "Aceitos: PDF, DOCX, JPG, PNG, WebP.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "Arquivo muito grande", description: "Tamanho máximo: 20 MB.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const urlRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+
+      const metaRes = await fetch(`/api/patients/${patientId}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ originalFilename: file.name, contentType: file.type, fileSize: file.size, objectPath }),
+      });
+      if (!metaRes.ok) throw new Error("Falha ao registrar anexo");
+
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/attachments`] });
+      toast({ title: "Arquivo enviado", description: file.name });
+    } catch (err: any) {
+      toast({ title: "Erro no upload", description: err?.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDownload = async (attachment: ExamAttachment) => {
+    try {
+      const res = await fetch(`/api/storage${attachment.objectPath}`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao baixar arquivo");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = attachment.originalFilename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Erro ao baixar", description: "Não foi possível baixar o arquivo.", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (attachment: ExamAttachment) => {
+    setDeletingId(attachment.id);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/attachments/${attachment.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error();
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/attachments`] });
+      toast({ title: "Anexo removido" });
+    } catch {
+      toast({ title: "Erro ao remover", description: "Não foi possível remover o arquivo.", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-4 border-t border-slate-100">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Paperclip className="w-4 h-4 text-slate-500" />
+          <span className="text-sm font-semibold text-slate-700">Anexos e Exames</span>
+          {attachments.length > 0 && (
+            <span className="bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
+              {attachments.length}
+            </span>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {uploading ? "Enviando..." : "Adicionar arquivo"}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_MIME.join(",")}
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      {isLoading && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
+        </div>
+      )}
+
+      {!isLoading && attachments.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+          <Paperclip className="w-8 h-8 mb-2 opacity-30" />
+          <p className="text-sm font-medium">Nenhum anexo</p>
+          <p className="text-xs mt-0.5">PDF, DOCX, JPG, PNG ou WebP · máx. 20 MB</p>
+        </div>
+      )}
+
+      {!isLoading && attachments.length > 0 && (
+        <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 overflow-hidden">
+          {attachments.map((att) => (
+            <div key={att.id} className="flex items-center gap-3 px-3 py-2.5 bg-white hover:bg-slate-50 transition-colors">
+              <AttachmentTypeIcon contentType={att.contentType} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-700 truncate">{att.originalFilename}</p>
+                <p className="text-xs text-slate-400">
+                  {formatFileSize(att.fileSize)} · {formatDateTime(att.uploadedAt)}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-primary"
+                  title="Baixar"
+                  onClick={() => handleDownload(att)}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-red-500"
+                  title="Remover"
+                  disabled={deletingId === att.id}
+                  onClick={() => handleDelete(att)}
+                >
+                  {deletingId === att.id
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Trash2 className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -198,6 +422,8 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
             <span>Sem dor (0)</span><span>Moderada (5)</span><span>Insuportável (10)</span>
           </div>
         </div>
+        <ExamAttachmentsSection patientId={patientId} />
+
         <div className="pt-3 flex justify-end">
           <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}

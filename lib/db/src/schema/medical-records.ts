@@ -85,3 +85,18 @@ export const dischargeSummariesTable = pgTable("discharge_summaries", {
 export const insertDischargeSummarySchema = createInsertSchema(dischargeSummariesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDischargeSummary = z.infer<typeof insertDischargeSummarySchema>;
 export type DischargeSummary = typeof dischargeSummariesTable.$inferSelect;
+
+export const examAttachmentsTable = pgTable("exam_attachments", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id, { onDelete: "cascade" }),
+  originalFilename: text("original_filename").notNull(),
+  contentType: text("content_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  objectPath: text("object_path").notNull(),
+  description: text("description"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertExamAttachmentSchema = createInsertSchema(examAttachmentsTable).omit({ id: true, uploadedAt: true });
+export type InsertExamAttachment = z.infer<typeof insertExamAttachmentSchema>;
+export type ExamAttachment = typeof examAttachmentsTable.$inferSelect;
