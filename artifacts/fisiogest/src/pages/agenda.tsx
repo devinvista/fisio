@@ -47,7 +47,6 @@ import {
   Repeat,
   RefreshCw,
 } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -1086,7 +1085,16 @@ function CreateAppointmentForm({
             <Repeat className="w-4 h-4 text-primary" />
             <span className="text-sm font-semibold text-slate-700">Agendamento recorrente</span>
           </div>
-          <Switch checked={isRecurring} onCheckedChange={setIsRecurring} className="pointer-events-none" />
+          {/* Pure CSS toggle — no Radix inside Dialog */}
+          <div className={cn(
+            "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors pointer-events-none",
+            isRecurring ? "bg-primary" : "bg-input"
+          )}>
+            <span className={cn(
+              "block h-4 w-4 rounded-full bg-background shadow-lg transition-transform",
+              isRecurring ? "translate-x-4" : "translate-x-0"
+            )} />
+          </div>
         </div>
 
         {isRecurring && (
