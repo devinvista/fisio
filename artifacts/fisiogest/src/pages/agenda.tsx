@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useListAppointments,
@@ -874,14 +874,18 @@ function CreateAppointmentForm({
 
   const availableSlots = (slotsData?.slots ?? []) as { time: string; available: boolean; spotsLeft: number }[];
 
-  // Auto-select initialTime when slots are loaded
+  // Auto-select initialTime when slots are loaded — run only once per slotsData load
+  const autoSelectedRef = useRef(false);
   useEffect(() => {
-    if (!initialTime || formData.startTime || slotsFetching || availableSlots.length === 0) return;
-    const match = availableSlots.find((s) => s.time === initialTime && s.available);
+    if (autoSelectedRef.current || !initialTime || slotsFetching || !slotsData?.slots?.length) return;
+    const match = (slotsData.slots as { time: string; available: boolean }[]).find(
+      (s) => s.time === initialTime && s.available
+    );
     if (match) {
+      autoSelectedRef.current = true;
       setFormData((prev) => ({ ...prev, startTime: initialTime }));
     }
-  }, [availableSlots, slotsFetching, initialTime]);
+  }, [slotsData, slotsFetching, initialTime]);
 
   const computedEndTime = useMemo(() => {
     if (!formData.startTime || !selectedProcedure) return null;
