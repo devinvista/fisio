@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useListAppointments,
@@ -874,19 +874,6 @@ function CreateAppointmentForm({
 
   const availableSlots = (slotsData?.slots ?? []) as { time: string; available: boolean; spotsLeft: number }[];
 
-  // Auto-select initialTime when slots are loaded — run only once per slotsData load
-  const autoSelectedRef = useRef(false);
-  useEffect(() => {
-    if (autoSelectedRef.current || !initialTime || slotsFetching || !slotsData?.slots?.length) return;
-    const match = (slotsData.slots as { time: string; available: boolean }[]).find(
-      (s) => s.time === initialTime && s.available
-    );
-    if (match) {
-      autoSelectedRef.current = true;
-      setFormData((prev) => ({ ...prev, startTime: initialTime }));
-    }
-  }, [slotsData, slotsFetching, initialTime]);
-
   const computedEndTime = useMemo(() => {
     if (!formData.startTime || !selectedProcedure) return null;
     const [h, m] = formData.startTime.split(":").map(Number);
@@ -993,7 +980,7 @@ function CreateAppointmentForm({
       {/* Procedimento */}
       <div className="space-y-1.5">
         <Label>Procedimento *</Label>
-        <Select value={formData.procedureId} onValueChange={(v) => setFormData({ ...formData, procedureId: v, startTime: "" })}>
+        <Select value={formData.procedureId} onValueChange={(v) => setFormData({ ...formData, procedureId: v })}>
           <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione o procedimento..." /></SelectTrigger>
           <SelectContent>
             {procedures?.map((p) => (
