@@ -325,6 +325,10 @@ export default function Agenda() {
               </div>
             ))}
             <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-violet-500" />
+              <span className="text-xs text-slate-600">Sessão em grupo</span>
+            </div>
+            <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-slate-300" />
               <span className="text-xs text-slate-600">Bloqueado</span>
             </div>
@@ -493,7 +497,76 @@ export default function Agenda() {
                       })}
 
                       {/* Appointments */}
-                      {positioned.map(({ appointment: apt, col, totalCols }) => {
+                      {positioned.map((item) => {
+                        if (item.type === "group") {
+                          const { appointments: grpApts, startTime, endTime, maxCapacity, col, totalCols } = item;
+                          const startMin = timeToMinutes(startTime);
+                          const endMin = timeToMinutes(endTime);
+                          const top = minutesToTop(startMin);
+                          const height = Math.max(minutesToHeight(endMin - startMin), 28);
+                          const widthPct = 100 / totalCols;
+                          const leftPct = col * widthPct;
+                          const short = height < 48;
+                          const occupancy = grpApts.length;
+                          const spotsLeft = maxCapacity - occupancy;
+                          const firstApt = grpApts[0];
+
+                          return (
+                            <div
+                              key={`group-${item.procedureId}-${startTime}`}
+                              className="absolute rounded-lg px-2 py-1 cursor-pointer overflow-hidden transition-all hover:brightness-95 hover:shadow-md z-10 border-l-2 bg-violet-500 text-white border-violet-600"
+                              style={{
+                                top: top + 2,
+                                height: height - 4,
+                                left: `${leftPct + 1}%`,
+                                width: `${widthPct - 2}%`,
+                              }}
+                              onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
+                            >
+                              {short ? (
+                                <div className="flex items-center gap-1">
+                                  <Users className="w-2.5 h-2.5 shrink-0 opacity-80" />
+                                  <p className="text-[10px] font-semibold truncate">
+                                    {startTime} · {occupancy}/{maxCapacity}
+                                  </p>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p className="text-[11px] font-bold truncate leading-tight flex-1">
+                                      {firstApt.procedure?.name}
+                                    </p>
+                                    <span className={cn(
+                                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-tight",
+                                      spotsLeft > 0 ? "bg-white/25 text-white" : "bg-red-200 text-red-800"
+                                    )}>
+                                      {occupancy}/{maxCapacity}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] opacity-70 mt-0.5">{startTime} – {endTime}</p>
+                                  <div className="mt-1 space-y-0.5">
+                                    {grpApts.slice(0, 3).map((a) => (
+                                      <p key={a.id} className="text-[9px] opacity-90 truncate leading-tight flex items-center gap-0.5">
+                                        <span className="opacity-60">·</span> {a.patient?.name?.split(" ")[0]}
+                                      </p>
+                                    ))}
+                                    {occupancy > 3 && (
+                                      <p className="text-[9px] opacity-60">+{occupancy - 3} mais</p>
+                                    )}
+                                    {spotsLeft > 0 && height >= 80 && (
+                                      <p className="text-[9px] opacity-60 flex items-center gap-0.5 mt-0.5">
+                                        <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
+                                      </p>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // Single appointment
+                        const { appointment: apt, col, totalCols } = item;
                         const startMin = timeToMinutes(apt.startTime);
                         const endMin = timeToMinutes(apt.endTime);
                         const top = minutesToTop(startMin);
@@ -597,44 +670,95 @@ function CurrentTimeLine() {
   );
 }
 
-// ─── Position Appointments (handle overlaps) ──────────────────────────────────
+// ─── Position Appointments (handle overlaps + group sessions) ─────────────────
 
-function positionAppointments(appointments: Appointment[]): {
-  appointment: Appointment;
-  col: number;
-  totalCols: number;
-}[] {
+type PositionedItem =
+  | { type: "single"; appointment: Appointment; col: number; totalCols: number }
+  | {
+      type: "group";
+      appointments: Appointment[];
+      procedureId: number;
+      startTime: string;
+      endTime: string;
+      maxCapacity: number;
+      col: number;
+      totalCols: number;
+    };
+
+function positionAppointments(appointments: Appointment[]): PositionedItem[] {
   if (appointments.length === 0) return [];
 
-  // Sort by start time
-  const sorted = [...appointments].sort(
-    (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
-  );
+  // Separate group-session appointments from singles.
+  // Cancelled/missed appointments in a group are shown individually.
+  const groupMap = new Map<string, Appointment[]>();
+  const singles: Appointment[] = [];
 
-  // Simple overlap grouping
-  const groups: Appointment[][] = [];
-  let currentGroup: Appointment[] = [];
-  let groupEnd = 0;
-
-  for (const apt of sorted) {
-    const start = timeToMinutes(apt.startTime);
-    const end = timeToMinutes(apt.endTime);
-    if (currentGroup.length === 0 || start < groupEnd) {
-      currentGroup.push(apt);
-      groupEnd = Math.max(groupEnd, end);
+  for (const apt of appointments) {
+    const maxCap = apt.procedure?.maxCapacity ?? 1;
+    if (maxCap > 1 && !["cancelado", "faltou"].includes(apt.status)) {
+      const key = `${apt.procedureId}|${apt.startTime}`;
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key)!.push(apt);
     } else {
-      groups.push(currentGroup);
-      currentGroup = [apt];
-      groupEnd = end;
+      singles.push(apt);
     }
   }
-  if (currentGroup.length > 0) groups.push(currentGroup);
 
-  const result: { appointment: Appointment; col: number; totalCols: number }[] = [];
-  for (const group of groups) {
-    const cols = group.length;
-    group.forEach((apt, idx) => {
-      result.push({ appointment: apt, col: idx, totalCols: cols });
+  // Build a unified slot list for layout calculation.
+  type Slot =
+    | { kind: "single"; apt: Appointment }
+    | { kind: "group"; key: string; apts: Appointment[] };
+
+  const slots: Slot[] = [
+    ...[...groupMap.entries()].map(([key, apts]) => ({ kind: "group" as const, key, apts })),
+    ...singles.map((apt) => ({ kind: "single" as const, apt })),
+  ];
+
+  const getStart = (s: Slot) =>
+    timeToMinutes(s.kind === "single" ? s.apt.startTime : s.apts[0].startTime);
+  const getEnd = (s: Slot) =>
+    timeToMinutes(s.kind === "single" ? s.apt.endTime : s.apts[0].endTime);
+
+  slots.sort((a, b) => getStart(a) - getStart(b));
+
+  // Overlap grouping for column layout.
+  const layoutGroups: Slot[][] = [];
+  let current: Slot[] = [];
+  let maxEnd = 0;
+
+  for (const slot of slots) {
+    const start = getStart(slot);
+    const end = getEnd(slot);
+    if (current.length === 0 || start < maxEnd) {
+      current.push(slot);
+      maxEnd = Math.max(maxEnd, end);
+    } else {
+      layoutGroups.push(current);
+      current = [slot];
+      maxEnd = end;
+    }
+  }
+  if (current.length > 0) layoutGroups.push(current);
+
+  const result: PositionedItem[] = [];
+  for (const group of layoutGroups) {
+    const totalCols = group.length;
+    group.forEach((slot, col) => {
+      if (slot.kind === "single") {
+        result.push({ type: "single", appointment: slot.apt, col, totalCols });
+      } else {
+        const first = slot.apts[0];
+        result.push({
+          type: "group",
+          appointments: slot.apts,
+          procedureId: first.procedureId,
+          startTime: first.startTime,
+          endTime: first.endTime,
+          maxCapacity: first.procedure?.maxCapacity ?? slot.apts.length,
+          col,
+          totalCols,
+        });
+      }
     });
   }
   return result;
