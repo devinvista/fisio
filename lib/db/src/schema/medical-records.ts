@@ -89,11 +89,13 @@ export type DischargeSummary = typeof dischargeSummariesTable.$inferSelect;
 export const examAttachmentsTable = pgTable("exam_attachments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patientsTable.id, { onDelete: "cascade" }),
-  originalFilename: text("original_filename").notNull(),
-  contentType: text("content_type").notNull(),
-  fileSize: integer("file_size").notNull(),
-  objectPath: text("object_path").notNull(),
+  examTitle: text("exam_title"),
+  originalFilename: text("original_filename"),
+  contentType: text("content_type"),
+  fileSize: integer("file_size"),
+  objectPath: text("object_path"),
   description: text("description"),
+  resultText: text("result_text"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 

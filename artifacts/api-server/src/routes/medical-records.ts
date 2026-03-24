@@ -419,16 +419,28 @@ router.get("/attachments", requirePermission("medical.read"), async (req: Reques
 router.post("/attachments", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { originalFilename, contentType, fileSize, objectPath, description } = req.body;
+    const { originalFilename, contentType, fileSize, objectPath, description, resultText, examTitle } = req.body;
 
-    if (!originalFilename || !contentType || !fileSize || !objectPath) {
-      res.status(400).json({ error: "Campos obrigatórios: originalFilename, contentType, fileSize, objectPath" });
+    const hasFile = objectPath && originalFilename;
+    const hasText = resultText && resultText.trim().length > 0;
+
+    if (!hasFile && !hasText) {
+      res.status(400).json({ error: "Informe um arquivo ou um resultado em texto." });
       return;
     }
 
     const [attachment] = await db
       .insert(examAttachmentsTable)
-      .values({ patientId, originalFilename, contentType, fileSize, objectPath, description: description || null })
+      .values({
+        patientId,
+        examTitle: examTitle || null,
+        originalFilename: originalFilename || null,
+        contentType: contentType || null,
+        fileSize: fileSize || null,
+        objectPath: objectPath || null,
+        description: description || null,
+        resultText: resultText || null,
+      })
       .returning();
 
     res.status(201).json(attachment);
