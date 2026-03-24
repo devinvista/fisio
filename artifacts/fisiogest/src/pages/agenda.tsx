@@ -33,7 +33,6 @@ import { Button } from "@/components/ui/button";
 import {
   ChevronLeft,
   ChevronRight,
-  Plus,
   Calendar as CalIcon,
   Loader2,
   CheckCircle,
@@ -260,14 +259,6 @@ export default function Agenda() {
             <Lock className="w-3.5 h-3.5 mr-1.5" /> Bloquear
           </Button>
 
-          {/* New button */}
-          <Button
-            size="sm"
-            className="h-9 px-4 rounded-lg shadow-md shadow-primary/20"
-            onClick={() => { setSelectedSlot(null); setIsNewModalOpen(true); }}
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> Novo
-          </Button>
         </div>
       </div>
 
@@ -310,7 +301,6 @@ export default function Agenda() {
               appointments={appointments}
               blockedSlots={blockedSlots}
               onDayClick={(day) => { setCurrentDate(day); setMiniCalMonth(day); setView("day"); }}
-              onNewAppointment={(dateStr) => { setSelectedSlot({ date: dateStr, time: "" }); setIsNewModalOpen(true); }}
             />
           )}
 
@@ -1279,13 +1269,11 @@ function MonthGrid({
   appointments,
   blockedSlots,
   onDayClick,
-  onNewAppointment,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   blockedSlots: BlockedSlot[];
   onDayClick: (day: Date) => void;
-  onNewAppointment: (dateStr: string) => void;
 }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -1329,7 +1317,6 @@ function MonthGrid({
       {/* Day cells */}
       <div className="grid grid-cols-7 flex-1" style={{ gridAutoRows: "minmax(100px, 1fr)" }}>
         {days.map((day, i) => {
-          const dateStr = format(day, "yyyy-MM-dd");
           const inMonth = isSameMonth(day, currentDate);
           const today = isToday(day);
           const dayAppts = getDayAppts(day);
@@ -1362,20 +1349,9 @@ function MonthGrid({
                 >
                   {format(day, "d")}
                 </span>
-                <div className="flex items-center gap-1">
-                  {hasBlock && (
-                    <Lock className="w-3 h-3 text-slate-400" />
-                  )}
-                  {inMonth && (
-                    <button
-                      className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center hover:bg-primary/10 text-primary"
-                      onClick={(e) => { e.stopPropagation(); onNewAppointment(dateStr); }}
-                      title="Novo agendamento"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                {hasBlock && (
+                  <Lock className="w-3 h-3 text-slate-400" />
+                )}
               </div>
 
               {/* Appointment pills */}
