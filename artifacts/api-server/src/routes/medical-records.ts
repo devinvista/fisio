@@ -10,6 +10,7 @@ import {
   appointmentsTable,
   proceduresTable,
   examAttachmentsTable,
+  atestadosTable,
 } from "@workspace/db";
 import { eq, desc, or } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
@@ -473,6 +474,79 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
     }
 
     await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Atestados ────────────────────────────────────────────────────────────────
+
+type PAtestado = { patientId: string; atestadoId: string };
+
+router.get("/atestados", requirePermission("medical.read"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const atestados = await db
+      .select()
+      .from(atestadosTable)
+      .where(eq(atestadosTable.patientId, patientId))
+      .orderBy(desc(atestadosTable.issuedAt));
+    res.json(atestados);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/atestados", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const { type, professionalName, professionalSpecialty, professionalCouncil, content, cid, daysOff } = req.body;
+
+    if (!type || !professionalName || !content) {
+      res.status(400).json({ error: "Campos obrigatórios: type, professionalName, content" });
+      return;
+    }
+
+    const [atestado] = await db
+      .insert(atestadosTable)
+      .values({
+        patientId,
+        type,
+        professionalName,
+        professionalSpecialty: professionalSpecialty || null,
+        professionalCouncil: professionalCouncil || null,
+        content,
+        cid: cid || null,
+        daysOff: daysOff ? parseInt(daysOff) : null,
+      })
+      .returning();
+
+    res.status(201).json(atestado);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/atestados/:atestadoId", requirePermission("medical.write"), async (req: Request<PAtestado>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const atestadoId = parseInt(req.params.atestadoId);
+
+    const [existing] = await db
+      .select()
+      .from(atestadosTable)
+      .where(eq(atestadosTable.id, atestadoId));
+
+    if (!existing || existing.patientId !== patientId) {
+      res.status(404).json({ error: "Atestado não encontrado" });
+      return;
+    }
+
+    await db.delete(atestadosTable).where(eq(atestadosTable.id, atestadoId));
     res.json({ success: true });
   } catch (err) {
     console.error(err);

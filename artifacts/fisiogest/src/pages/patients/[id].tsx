@@ -33,7 +33,8 @@ import {
   FileText, DollarSign, History, Plus, ChevronDown, ChevronUp, User,
   MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle,
   LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock, Paperclip, Upload,
-  FileImage, File, Download,
+  FileImage, File, Download, ScrollText, Printer, BadgeCheck, CalendarDays,
+  ClipboardCheck, PenLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
