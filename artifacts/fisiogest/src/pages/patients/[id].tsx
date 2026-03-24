@@ -1442,7 +1442,7 @@ const DISCHARGE_REASONS = [
   "Outro",
 ];
 
-function DischargeTab({ patientId }: { patientId: number }) {
+function DischargeTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
   const { data, isLoading } = useGetDischarge(patientId);
   const mutation = useSaveDischarge();
   const { toast } = useToast();
@@ -1590,6 +1590,10 @@ function DischargeTab({ patientId }: { patientId: number }) {
           </CardContent>
         </Card>
       ) : null}
+
+      <div className="mt-6 pt-6 border-t border-slate-200">
+        <AtestadosTab patientId={patientId} patient={patient} />
+      </div>
     </div>
   );
 }
@@ -2431,7 +2435,6 @@ export default function PatientDetail() {
                   { value: "evolutions",  icon: <TrendingUp className="w-3.5 h-3.5 shrink-0" />,     label: "Evoluções" },
                   { value: "history",     icon: <History className="w-3.5 h-3.5 shrink-0" />,        label: "Histórico" },
                   { value: "financial",   icon: <DollarSign className="w-3.5 h-3.5 shrink-0" />,     label: "Financeiro" },
-                  { value: "atestados",   icon: <ScrollText className="w-3.5 h-3.5 shrink-0" />,     label: "Atestados" },
                 ].map(tab => (
                   <TabsTrigger
                     key={tab.value}
@@ -2462,10 +2465,9 @@ export default function PatientDetail() {
               <HistoryTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
             </TabsContent>
             <TabsContent value="financial"><FinancialTab patientId={patientId} /></TabsContent>
-            <TabsContent value="atestados">
-              <AtestadosTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
+            <TabsContent value="discharge">
+              <DischargeTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
             </TabsContent>
-            <TabsContent value="discharge"><DischargeTab patientId={patientId} /></TabsContent>
           </Tabs>
         </div>
       </div>
