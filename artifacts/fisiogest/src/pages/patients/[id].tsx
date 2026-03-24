@@ -260,7 +260,7 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Paperclip className="w-4 h-4 text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Anexos e Exames</span>
+          <span className="text-sm font-semibold text-slate-700">Anexos e Exames Complementares</span>
           {attachments.length > 0 && (
             <span className="bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
               {attachments.length}
