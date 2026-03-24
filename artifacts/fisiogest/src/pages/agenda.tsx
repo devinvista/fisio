@@ -48,6 +48,7 @@ import {
   RefreshCw,
   Lock,
   Ban,
+  Users,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -107,7 +108,7 @@ export default function Agenda() {
   const [view, setView] = useState<ViewMode>("fullweek");
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; procedureId?: number } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
 
@@ -550,6 +551,7 @@ export default function Agenda() {
           <CreateAppointmentForm
             initialDate={selectedSlot?.date}
             initialTime={selectedSlot?.time}
+            initialProcedureId={selectedSlot?.procedureId}
             onSuccess={() => { setIsNewModalOpen(false); refetch(); }}
           />
         </DialogContent>
@@ -558,8 +560,14 @@ export default function Agenda() {
       {selectedAppointment && (
         <AppointmentDetailModal
           appointment={selectedAppointment}
+          allAppointments={appointments}
           onClose={() => setSelectedAppointment(null)}
           onRefresh={handleRefreshAll}
+          onAddToSession={(date, time, procedureId) => {
+            setSelectedAppointment(null);
+            setSelectedSlot({ date, time, procedureId });
+            setIsNewModalOpen(true);
+          }}
         />
       )}
 
@@ -727,15 +735,36 @@ function MiniCalendar({
 
 function AppointmentDetailModal({
   appointment,
+  allAppointments,
   onClose,
   onRefresh,
+  onAddToSession,
 }: {
   appointment: Appointment;
+  allAppointments: Appointment[];
   onClose: () => void;
   onRefresh: () => void;
+  onAddToSession: (date: string, time: string, procedureId: number) => void;
 }) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+
+  const maxCap = appointment.procedure?.maxCapacity ?? 1;
+  const isGroupSession = maxCap > 1;
+
+  const sessionSiblings = isGroupSession
+    ? allAppointments.filter(
+        (a) =>
+          a.id !== appointment.id &&
+          a.date === appointment.date &&
+          a.procedureId === appointment.procedureId &&
+          a.startTime === appointment.startTime &&
+          !["cancelado", "faltou"].includes(a.status)
+      )
+    : [];
+
+  const occupiedCount = sessionSiblings.length + 1;
+  const spotsLeft = maxCap - occupiedCount;
   const [editForm, setEditForm] = useState({
     status: appointment.status,
     notes: appointment.notes || "",
@@ -845,6 +874,64 @@ function AppointmentDetailModal({
               </>
             )}
           </div>
+
+          {/* Group session section */}
+          {isGroupSession && (
+            <div className="bg-violet-50 rounded-2xl p-4 space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-violet-500" />
+                  <span className="font-semibold text-violet-800 text-xs uppercase tracking-wide">Sessão em Grupo</span>
+                </div>
+                <span className={cn(
+                  "text-xs font-bold px-2 py-0.5 rounded-full",
+                  spotsLeft > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                )}>
+                  {occupiedCount}/{maxCap} vagas
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-violet-200 rounded-full h-1.5">
+                <div
+                  className={cn("h-1.5 rounded-full transition-all", spotsLeft > 0 ? "bg-violet-500" : "bg-red-500")}
+                  style={{ width: `${Math.min((occupiedCount / maxCap) * 100, 100)}%` }}
+                />
+              </div>
+
+              {/* Patients list */}
+              <div className="space-y-1.5">
+                {/* Current patient */}
+                <div className="flex items-center gap-2 text-xs text-violet-800">
+                  <div className="w-5 h-5 rounded-full bg-violet-200 flex items-center justify-center shrink-0">
+                    <User className="w-3 h-3 text-violet-600" />
+                  </div>
+                  <span className="font-medium">{appointment.patient?.name}</span>
+                  <span className="ml-auto opacity-60">(este)</span>
+                </div>
+                {sessionSiblings.map((sib) => (
+                  <div key={sib.id} className="flex items-center gap-2 text-xs text-violet-800">
+                    <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
+                      <User className="w-3 h-3 text-violet-400" />
+                    </div>
+                    <span>{sib.patient?.name}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add patient button */}
+              {spotsLeft > 0 && (
+                <Button
+                  size="sm"
+                  className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white mt-1"
+                  onClick={() => onAddToSession(appointment.date, appointment.startTime, appointment.procedureId)}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Adicionar paciente ({spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} restante{spotsLeft !== 1 ? "s" : ""})
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Status actions */}
           {!isEditing && appointment.status !== "concluido" && (
