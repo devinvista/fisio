@@ -10,6 +10,7 @@ import reportsRouter from "./reports.js";
 import dashboardRouter from "./dashboard.js";
 import usersRouter from "./users.js";
 import storageRouter from "./storage.js";
+import blockedSlotsRouter from "./blocked-slots.js";
 
 const router: IRouter = Router();
 
@@ -20,6 +21,7 @@ router.use("/patients", patientsRouter);
 router.use("/patients/:patientId", medicalRecordsRouter);
 router.use("/procedures", proceduresRouter);
 router.use("/appointments", appointmentsRouter);
+router.use("/blocked-slots", blockedSlotsRouter);
 router.use("/financial", financialRouter);
 router.use("/reports", reportsRouter);
 router.use("/dashboard", dashboardRouter);

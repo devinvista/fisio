@@ -46,6 +46,8 @@ import {
   Clock,
   Repeat,
   RefreshCw,
+  Lock,
+  Ban,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -73,7 +75,15 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
 };
 
 type Appointment = AppointmentWithDetails;
-type ViewMode = "day" | "fullweek";
+type ViewMode = "day" | "fullweek" | "month";
+
+interface BlockedSlot {
+  id: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason?: string | null;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +106,7 @@ export default function Agenda() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("fullweek");
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
@@ -106,14 +117,33 @@ export default function Agenda() {
     ? [currentDate]
     : Array.from({ length: 6 }).map((_, i) => addDays(weekStart, i));
 
-  const startDateStr = format(weekDays[0], "yyyy-MM-dd");
-  const endDateStr = format(weekDays[daysCount - 1], "yyyy-MM-dd");
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+
+  const startDateStr = view === "month"
+    ? format(startOfWeek(monthStart, { weekStartsOn: 1 }), "yyyy-MM-dd")
+    : format(weekDays[0], "yyyy-MM-dd");
+  const endDateStr = view === "month"
+    ? format(endOfWeek(monthEnd, { weekStartsOn: 1 }), "yyyy-MM-dd")
+    : format(weekDays[daysCount - 1], "yyyy-MM-dd");
 
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
+
+  const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
+    queryKey: ["blocked-slots", startDateStr, endDateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/blocked-slots?startDate=${startDateStr}&endDate=${endDateStr}`, { credentials: "include" });
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
 
   const hours = Array.from({ length: TOTAL_HOURS }).map((_, i) => HOUR_START + i);
 
   const weekLabel = useMemo(() => {
+    if (view === "month") {
+      return format(currentDate, "MMMM 'de' yyyy", { locale: ptBR });
+    }
     if (view === "day") {
       return format(currentDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR });
     }
@@ -127,12 +157,22 @@ export default function Agenda() {
 
   const goToday = () => { setCurrentDate(new Date()); setMiniCalMonth(new Date()); };
   const goPrev = () => {
-    const next = view === "day" ? addDays(currentDate, -1) : subWeeks(currentDate, 1);
+    const next = view === "day" ? addDays(currentDate, -1)
+      : view === "month" ? subMonths(currentDate, 1)
+      : subWeeks(currentDate, 1);
     setCurrentDate(next); setMiniCalMonth(next);
   };
   const goNext = () => {
-    const next = view === "day" ? addDays(currentDate, 1) : addWeeks(currentDate, 1);
+    const next = view === "day" ? addDays(currentDate, 1)
+      : view === "month" ? addMonths(currentDate, 1)
+      : addWeeks(currentDate, 1);
     setCurrentDate(next); setMiniCalMonth(next);
+  };
+
+  const handleRefreshAll = () => {
+    refetch();
+    refetchBlocked();
+    setSelectedAppointment(null);
   };
 
   const handleSlotClick = (date: Date, hour: number, half: 0 | 30 = 0) => {
@@ -143,13 +183,11 @@ export default function Agenda() {
     setIsNewModalOpen(true);
   };
 
-  const handleRefresh = () => {
-    refetch();
-    setSelectedAppointment(null);
-  };
-
   const getDayAppointments = (day: Date) =>
     appointments.filter((a) => a.date === format(day, "yyyy-MM-dd"));
+
+  const getDayBlockedSlots = (day: Date) =>
+    blockedSlots.filter((b) => b.date === format(day, "yyyy-MM-dd"));
 
   return (
     <AppLayout title="Agenda">
@@ -202,9 +240,25 @@ export default function Agenda() {
               className={cn("px-3 h-9 transition-colors border-l border-slate-200", view === "fullweek" ? "bg-primary text-white" : "hover:bg-slate-100 text-slate-600")}
               onClick={() => setView("fullweek")}
             >
-              Semana completa
+              Semana
+            </button>
+            <button
+              className={cn("px-3 h-9 transition-colors border-l border-slate-200", view === "month" ? "bg-primary text-white" : "hover:bg-slate-100 text-slate-600")}
+              onClick={() => setView("month")}
+            >
+              Mês
             </button>
           </div>
+
+          {/* Block button */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 px-3 rounded-lg border-slate-300 text-slate-600 hover:bg-slate-100"
+            onClick={() => setIsBlockModalOpen(true)}
+          >
+            <Lock className="w-3.5 h-3.5 mr-1.5" /> Bloquear
+          </Button>
 
           {/* New button */}
           <Button
@@ -239,14 +293,30 @@ export default function Agenda() {
                 <span className="text-xs text-slate-600">{cfg.label}</span>
               </div>
             ))}
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-slate-300" />
+              <span className="text-xs text-slate-600">Bloqueado</span>
+            </div>
           </div>
         </div>
 
         {/* ── RIGHT: Calendar grid ─────────────────────────────────────── */}
         <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
 
-          {/* Day headers */}
-          <div
+          {/* ── MONTH VIEW ─────────────────────────────────────────────── */}
+          {view === "month" && (
+            <MonthGrid
+              currentDate={currentDate}
+              appointments={appointments}
+              blockedSlots={blockedSlots}
+              onDayClick={(day) => { setCurrentDate(day); setMiniCalMonth(day); setView("day"); }}
+              onNewAppointment={(dateStr) => { setSelectedSlot({ date: dateStr, time: "" }); setIsNewModalOpen(true); }}
+            />
+          )}
+
+          {/* Day headers + time grid — only for week/day view */}
+          {view !== "month" && (
+          <><div
             className="grid border-b border-slate-200 bg-slate-50/70"
             style={{ gridTemplateColumns: `56px repeat(${daysCount}, 1fr)` }}
           >
@@ -285,7 +355,6 @@ export default function Agenda() {
             })}
           </div>
 
-          {/* Time grid */}
           {isLoading ? (
             <div className="h-96 flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -314,10 +383,9 @@ export default function Agenda() {
                 {/* Day columns */}
                 {weekDays.map((day, di) => {
                   const dayAppts = getDayAppointments(day);
+                  const dayBlocked = getDayBlockedSlots(day);
                   const today = isToday(day);
 
-                  // Simple column layout — place appointments without overlap detection
-                  // Group overlapping appointments into columns
                   const positioned = positionAppointments(dayAppts);
 
                   return (
@@ -368,6 +436,31 @@ export default function Agenda() {
                       {/* Current time line */}
                       {today && <CurrentTimeLine />}
 
+                      {/* Blocked slots overlays */}
+                      {dayBlocked.map((block) => {
+                        const startMin = timeToMinutes(block.startTime);
+                        const endMin = timeToMinutes(block.endTime);
+                        const top = minutesToTop(startMin);
+                        const height = Math.max(minutesToHeight(endMin - startMin), 20);
+                        const short = height < 40;
+                        return (
+                          <div
+                            key={block.id}
+                            className="absolute left-0 right-0 z-[5] bg-slate-200/80 border border-slate-300 border-dashed rounded overflow-hidden pointer-events-none"
+                            style={{ top: top + 1, height: height - 2 }}
+                          >
+                            <div className="flex items-center gap-1 px-1.5 py-0.5">
+                              <Ban className="w-3 h-3 text-slate-500 shrink-0" />
+                              {!short && (
+                                <span className="text-[9px] font-semibold text-slate-500 truncate">
+                                  {block.reason || "Bloqueado"} · {block.startTime}–{block.endTime}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
                       {/* Appointments */}
                       {positioned.map(({ appointment: apt, col, totalCols }) => {
                         const startMin = timeToMinutes(apt.startTime);
@@ -414,6 +507,7 @@ export default function Agenda() {
               </div>
             </div>
           )}
+          </>)}
         </div>
       </div>
 
@@ -435,9 +529,15 @@ export default function Agenda() {
         <AppointmentDetailModal
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
-          onRefresh={handleRefresh}
+          onRefresh={handleRefreshAll}
         />
       )}
+
+      <BlockedSlotModal
+        open={isBlockModalOpen}
+        onOpenChange={setIsBlockModalOpen}
+        onSuccess={() => { setIsBlockModalOpen(false); refetchBlocked(); }}
+      />
     </AppLayout>
   );
 }
@@ -1169,5 +1269,316 @@ function CreateAppointmentForm({
         )}
       </Button>
     </form>
+  );
+}
+
+// ─── Month Grid ───────────────────────────────────────────────────────────────
+
+function MonthGrid({
+  currentDate,
+  appointments,
+  blockedSlots,
+  onDayClick,
+  onNewAppointment,
+}: {
+  currentDate: Date;
+  appointments: Appointment[];
+  blockedSlots: BlockedSlot[];
+  onDayClick: (day: Date) => void;
+  onNewAppointment: (dateStr: string) => void;
+}) {
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+
+  const days: Date[] = [];
+  let d = calStart;
+  while (d <= calEnd) {
+    days.push(d);
+    d = addDays(d, 1);
+  }
+
+  const weekHeaders = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+  const getDayAppts = (day: Date) =>
+    appointments.filter((a) => a.date === format(day, "yyyy-MM-dd"));
+
+  const getDayBlocked = (day: Date) =>
+    blockedSlots.filter((b) => b.date === format(day, "yyyy-MM-dd"));
+
+  const STATUS_COLORS: Record<string, string> = {
+    agendado: "bg-blue-400",
+    confirmado: "bg-emerald-400",
+    concluido: "bg-slate-400",
+    cancelado: "bg-red-400",
+    faltou: "bg-orange-400",
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Week day headers */}
+      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70">
+        {weekHeaders.map((h) => (
+          <div key={h} className="py-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            {h}
+          </div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 flex-1" style={{ gridAutoRows: "minmax(100px, 1fr)" }}>
+        {days.map((day, i) => {
+          const dateStr = format(day, "yyyy-MM-dd");
+          const inMonth = isSameMonth(day, currentDate);
+          const today = isToday(day);
+          const dayAppts = getDayAppts(day);
+          const dayBlocked = getDayBlocked(day);
+          const hasBlock = dayBlocked.length > 0;
+          const visibleAppts = dayAppts.slice(0, 3);
+          const overflow = dayAppts.length - 3;
+
+          return (
+            <div
+              key={i}
+              className={cn(
+                "border-r border-b border-slate-100 p-1.5 cursor-pointer group transition-colors",
+                !inMonth && "bg-slate-50/60",
+                today && "bg-primary/[0.03]",
+                hasBlock && inMonth && "bg-slate-100/80",
+                "hover:bg-slate-50"
+              )}
+              onClick={() => inMonth && onDayClick(day)}
+            >
+              {/* Day number row */}
+              <div className="flex items-center justify-between mb-1">
+                <span
+                  className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors",
+                    !inMonth && "text-slate-300",
+                    inMonth && !today && "text-slate-700",
+                    today && "bg-primary text-white"
+                  )}
+                >
+                  {format(day, "d")}
+                </span>
+                <div className="flex items-center gap-1">
+                  {hasBlock && (
+                    <Lock className="w-3 h-3 text-slate-400" />
+                  )}
+                  {inMonth && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center hover:bg-primary/10 text-primary"
+                      onClick={(e) => { e.stopPropagation(); onNewAppointment(dateStr); }}
+                      title="Novo agendamento"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Appointment pills */}
+              <div className="space-y-0.5">
+                {visibleAppts.map((apt) => {
+                  const color = STATUS_COLORS[apt.status] || "bg-blue-400";
+                  return (
+                    <div
+                      key={apt.id}
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[9px] font-semibold text-white truncate leading-tight",
+                        color
+                      )}
+                      title={`${apt.startTime} · ${apt.patient?.name}`}
+                    >
+                      {apt.startTime} {apt.patient?.name?.split(" ")[0]}
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <div className="text-[9px] text-slate-500 font-medium px-1">
+                    +{overflow} mais
+                  </div>
+                )}
+                {hasBlock && dayAppts.length === 0 && (
+                  <div className="text-[9px] text-slate-400 font-medium px-1 flex items-center gap-0.5">
+                    <Ban className="w-2.5 h-2.5" />
+                    {dayBlocked[0].reason || "Bloqueado"}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Blocked Slot Modal ───────────────────────────────────────────────────────
+
+function BlockedSlotModal({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    date: format(new Date(), "yyyy-MM-dd"),
+    startTime: "08:00",
+    endTime: "09:00",
+    reason: "",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { data: existingBlocks = [], refetch: refetchList } = useQuery<BlockedSlot[]>({
+    queryKey: ["blocked-slots-modal", form.date],
+    queryFn: async () => {
+      const res = await fetch(`/api/blocked-slots?date=${form.date}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: open,
+    staleTime: 5_000,
+  });
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (form.startTime >= form.endTime) {
+      toast({ variant: "destructive", title: "Horário inválido", description: "O horário de início deve ser antes do término." });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/blocked-slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          date: form.date,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          reason: form.reason || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ variant: "destructive", title: "Erro ao bloquear", description: data.message || "Erro desconhecido." });
+      } else {
+        toast({ title: "Horário bloqueado!", description: `${form.date} · ${form.startTime}–${form.endTime}` });
+        refetchList();
+        onSuccess();
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao bloquear horário." });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await fetch(`/api/blocked-slots/${id}`, { method: "DELETE", credentials: "include" });
+      toast({ title: "Bloqueio removido." });
+      refetchList();
+      onSuccess();
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao remover bloqueio." });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px] border-none shadow-2xl rounded-3xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-slate-100">
+              <Lock className="w-4 h-4 text-slate-600" />
+            </div>
+            <DialogTitle className="font-display text-xl">Bloquear Horário</DialogTitle>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={handleSave} className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <Label>Data *</Label>
+            <DatePickerPTBR
+              value={form.date}
+              onChange={(v) => setForm({ ...form, date: v })}
+              className="h-11 rounded-xl"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Início *</Label>
+              <TimeInputPTBR
+                value={form.startTime}
+                onChange={(v) => setForm({ ...form, startTime: v })}
+                className="h-11 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Término *</Label>
+              <TimeInputPTBR
+                value={form.endTime}
+                onChange={(v) => setForm({ ...form, endTime: v })}
+                className="h-11 rounded-xl"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Motivo</Label>
+            <Input
+              placeholder="Ex: Almoço, Reunião, Feriado..."
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              className="h-11 rounded-xl"
+            />
+          </div>
+
+          <Button type="submit" className="w-full h-11 rounded-xl" disabled={isSaving}>
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
+            Bloquear horário
+          </Button>
+        </form>
+
+        {/* Existing blocks for the selected date */}
+        {existingBlocks.length > 0 && (
+          <div className="pt-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Bloqueios neste dia
+            </p>
+            <div className="space-y-1.5">
+              {existingBlocks.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-200"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Ban className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="text-sm font-medium text-slate-700">{b.startTime}–{b.endTime}</span>
+                    {b.reason && (
+                      <span className="text-xs text-slate-500 truncate">{b.reason}</span>
+                    )}
+                  </div>
+                  <button
+                    className="ml-2 p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                    onClick={() => handleDelete(b.id)}
+                    title="Remover bloqueio"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

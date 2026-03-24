@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -195,11 +195,25 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
         )
       );
 
+    const blockedSlots = await db
+      .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })
+      .from(blockedSlotsTable)
+      .where(eq(blockedSlotsTable.date, date as string));
+
     const slots: { time: string; available: boolean; spotsLeft: number }[] = [];
 
     for (let start = openMin; start + duration <= closeMin; start += 30) {
       const startTime = minutesToTime(start);
       const slotEnd = start + duration;
+
+      const isBlocked = blockedSlots.some(
+        (b) => timeToMinutes(b.startTime) < slotEnd && timeToMinutes(b.endTime) > start
+      );
+
+      if (isBlocked) {
+        slots.push({ time: startTime, available: false, spotsLeft: 0 });
+        continue;
+      }
 
       let spotsLeft: number;
 
