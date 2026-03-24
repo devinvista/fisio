@@ -1442,7 +1442,7 @@ const DISCHARGE_REASONS = [
   "Outro",
 ];
 
-function DischargeTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
+function DischargeTab({ patientId }: { patientId: number }) {
   const { data, isLoading } = useGetDischarge(patientId);
   const mutation = useSaveDischarge();
   const { toast } = useToast();
@@ -1590,10 +1590,6 @@ function DischargeTab({ patientId, patient }: { patientId: number; patient: Pati
           </CardContent>
         </Card>
       ) : null}
-
-      <div className="mt-6 pt-6 border-t border-slate-200">
-        <AtestadosTab patientId={patientId} patient={patient} />
-      </div>
     </div>
   );
 }
@@ -2446,13 +2442,19 @@ export default function PatientDetail() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {/* Alta tab — always full width, visually distinct */}
-              <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-dashed border-slate-300 h-auto">
+              {/* Atestados + Alta row — split 50/50, visually distinct */}
+              <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-dashed border-slate-300 h-auto flex gap-1">
+                <TabsTrigger
+                  value="atestados"
+                  className="flex-1 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                >
+                  <ScrollText className="w-3.5 h-3.5 shrink-0" /> Atestados
+                </TabsTrigger>
                 <TabsTrigger
                   value="discharge"
-                  className="w-full rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                  className="flex-1 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
                 >
-                  <LogOut className="w-3.5 h-3.5 shrink-0" /> Alta Fisioterapêutica (COFFITO)
+                  <LogOut className="w-3.5 h-3.5 shrink-0" /> Alta Fisioterapêutica
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -2465,8 +2467,11 @@ export default function PatientDetail() {
               <HistoryTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
             </TabsContent>
             <TabsContent value="financial"><FinancialTab patientId={patientId} /></TabsContent>
+            <TabsContent value="atestados">
+              <AtestadosTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
+            </TabsContent>
             <TabsContent value="discharge">
-              <DischargeTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
+              <DischargeTab patientId={patientId} />
             </TabsContent>
           </Tabs>
         </div>
