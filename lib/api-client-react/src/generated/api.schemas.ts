@@ -117,6 +117,7 @@ export interface Procedure {
   price: number;
   cost?: number;
   description?: string;
+  maxCapacity: number;
   createdAt: string;
 }
 

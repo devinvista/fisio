@@ -180,16 +180,31 @@ export default function Agenda() {
     const dayAppts = getDayAppointments(date);
     const dayBlocked = getDayBlockedSlots(date);
 
-    const isOccupied = dayAppts.some((apt) => {
+    const isBlocked = dayBlocked.some((b) =>
+      timeToMinutes(b.startTime) <= clickedMin && clickedMin < timeToMinutes(b.endTime)
+    );
+    if (isBlocked) return;
+
+    const overlapping = dayAppts.filter((apt) => {
       if (["cancelado", "faltou"].includes(apt.status)) return false;
       return timeToMinutes(apt.startTime) <= clickedMin && clickedMin < timeToMinutes(apt.endTime);
     });
 
-    const isBlocked = dayBlocked.some((b) =>
-      timeToMinutes(b.startTime) <= clickedMin && clickedMin < timeToMinutes(b.endTime)
-    );
-
-    if (isOccupied || isBlocked) return;
+    if (overlapping.length > 0) {
+      // Check if any overlapping procedure still has capacity (group sessions)
+      const hasCapacity = overlapping.some((apt) => {
+        const maxCap = apt.procedure?.maxCapacity ?? 1;
+        if (maxCap <= 1) return false;
+        const sameSession = dayAppts.filter(
+          (a) =>
+            !["cancelado", "faltou"].includes(a.status) &&
+            a.procedureId === apt.procedureId &&
+            a.startTime === apt.startTime
+        ).length;
+        return sameSession < maxCap;
+      });
+      if (!hasCapacity) return;
+    }
 
     setSelectedSlot({
       date: format(date, "yyyy-MM-dd"),
