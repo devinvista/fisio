@@ -545,11 +545,19 @@ export default function Agenda() {
                                   </div>
                                   <p className="text-[9px] opacity-70 mt-0.5">{startTime} – {endTime}</p>
                                   <div className="mt-1 space-y-0.5">
-                                    {grpApts.slice(0, 3).map((a) => (
-                                      <p key={a.id} className="text-[9px] opacity-90 truncate leading-tight flex items-center gap-0.5">
-                                        <span className="opacity-60">·</span> {a.patient?.name?.split(" ")[0]}
-                                      </p>
-                                    ))}
+                                    {grpApts.slice(0, 3).map((a) => {
+                                      const sCfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.agendado;
+                                      return (
+                                        <div
+                                          key={a.id}
+                                          className="text-[9px] truncate leading-tight flex items-center gap-1 hover:opacity-75 transition-opacity"
+                                          onClick={(e) => { e.stopPropagation(); setSelectedAppointment(a); }}
+                                        >
+                                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", sCfg.dot)} />
+                                          <span className="opacity-90 truncate">{a.patient?.name?.split(" ")[0]}</span>
+                                        </div>
+                                      );
+                                    })}
                                     {occupancy > 3 && (
                                       <p className="text-[9px] opacity-60">+{occupancy - 3} mais</p>
                                     )}
@@ -876,18 +884,25 @@ function AppointmentDetailModal({
   const maxCap = appointment.procedure?.maxCapacity ?? 1;
   const isGroupSession = maxCap > 1;
 
+  // All members of the session regardless of status, sorted by id for stable order
   const sessionSiblings = isGroupSession
     ? allAppointments.filter(
         (a) =>
           a.id !== appointment.id &&
           a.date === appointment.date &&
           a.procedureId === appointment.procedureId &&
-          a.startTime === appointment.startTime &&
-          !["cancelado", "faltou"].includes(a.status)
-      )
+          a.startTime === appointment.startTime
+      ).sort((a, b) => a.id - b.id)
     : [];
 
-  const occupiedCount = sessionSiblings.length + 1;
+  const allSessionMembers: Appointment[] = isGroupSession
+    ? [appointment, ...sessionSiblings].sort((a, b) => a.id - b.id)
+    : [appointment];
+
+  // Capacity: only count non-cancelled/faltou members
+  const occupiedCount = allSessionMembers.filter(
+    (a) => !["cancelado", "faltou"].includes(a.status)
+  ).length;
   const spotsLeft = maxCap - occupiedCount;
   const [editForm, setEditForm] = useState({
     status: appointment.status,
@@ -944,121 +959,241 @@ function AppointmentDetailModal({
     );
   };
 
+  // Per-member status/complete handlers (used for both group and single)
+  const handleMemberStatusChange = (aptId: number, newStatus: string) => {
+    updateMutation.mutate(
+      { id: aptId, data: { status: newStatus as UpdateAppointmentRequestStatus } },
+      {
+        onSuccess: () => { toast({ title: `Status: ${STATUS_CONFIG[newStatus]?.label}` }); onRefresh(); },
+        onError: () => toast({ variant: "destructive", title: "Erro ao alterar status." }),
+      }
+    );
+  };
+
+  const handleMemberComplete = (aptId: number) => {
+    completeMutation.mutate(
+      { id: aptId },
+      {
+        onSuccess: () => { toast({ title: "Consulta concluída!", description: "Lançamento financeiro gerado." }); onRefresh(); },
+        onError: () => toast({ variant: "destructive", title: "Erro ao concluir." }),
+      }
+    );
+  };
+
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[480px] border-none shadow-2xl rounded-3xl">
+      <DialogContent className={cn("border-none shadow-2xl rounded-3xl", isGroupSession ? "sm:max-w-[520px]" : "sm:max-w-[480px]")}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className={cn("p-2.5 rounded-xl", cfg.bg)}>
-              <CalIcon className="w-4 h-4 text-white" />
+            <div className={cn("p-2.5 rounded-xl", isGroupSession ? "bg-violet-500" : cfg.bg)}>
+              {isGroupSession
+                ? <Users className="w-4 h-4 text-white" />
+                : <CalIcon className="w-4 h-4 text-white" />
+              }
             </div>
             <div>
-              <DialogTitle className="font-display text-xl">Detalhes da Consulta</DialogTitle>
-              <span className={`inline-block mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${cfg.badge}`}>
-                {cfg.label}
-              </span>
+              <DialogTitle className="font-display text-xl">
+                {isGroupSession ? "Sessão em Grupo" : "Detalhes da Consulta"}
+              </DialogTitle>
+              {isGroupSession ? (
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {appointment.procedure?.name} · {appointment.startTime} – {appointment.endTime}
+                </p>
+              ) : (
+                <span className={`inline-block mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${cfg.badge}`}>
+                  {cfg.label}
+                </span>
+              )}
             </div>
           </div>
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* Info card */}
-          <div className="bg-slate-50 rounded-2xl p-4 space-y-3 text-sm">
-            <div className="flex items-center gap-3">
-              <User className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Paciente</p>
-                <p className="font-semibold text-slate-800">{appointment.patient?.name}</p>
+          {/* Info card — for single appointments only */}
+          {!isGroupSession && (
+            <div className="bg-slate-50 rounded-2xl p-4 space-y-3 text-sm">
+              <div className="flex items-center gap-3">
+                <User className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Paciente</p>
+                  <p className="font-semibold text-slate-800">{appointment.patient?.name}</p>
+                </div>
               </div>
-            </div>
-            <Separator />
-            <div className="flex items-center gap-3">
-              <Stethoscope className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Procedimento</p>
-                <p className="font-semibold text-slate-800">{appointment.procedure?.name}</p>
+              <Separator />
+              <div className="flex items-center gap-3">
+                <Stethoscope className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Procedimento</p>
+                  <p className="font-semibold text-slate-800">{appointment.procedure?.name}</p>
+                </div>
               </div>
-            </div>
-            <Separator />
-            <div className="flex items-center gap-3">
-              <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Data e Horário</p>
-                <p className="font-semibold text-slate-800">
-                  {appointment.date ? format(new Date(appointment.date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}
-                  {" "}&middot;{" "}{appointment.startTime} – {appointment.endTime}
-                </p>
+              <Separator />
+              <div className="flex items-center gap-3">
+                <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Data e Horário</p>
+                  <p className="font-semibold text-slate-800">
+                    {appointment.date ? format(new Date(appointment.date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                    {" "}&middot;{" "}{appointment.startTime} – {appointment.endTime}
+                  </p>
+                </div>
               </div>
+              {appointment.notes && (
+                <>
+                  <Separator />
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Observações</p>
+                  <p className="text-sm text-slate-700">{appointment.notes}</p>
+                </>
+              )}
             </div>
-            {appointment.notes && (
-              <>
-                <Separator />
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Observações</p>
-                <p className="text-sm text-slate-700">{appointment.notes}</p>
-              </>
-            )}
-          </div>
+          )}
 
-          {/* Group session section */}
+          {/* Info summary for group sessions */}
           {isGroupSession && (
-            <div className="bg-violet-50 rounded-2xl p-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-violet-500" />
-                  <span className="font-semibold text-violet-800 text-xs uppercase tracking-wide">Sessão em Grupo</span>
-                </div>
-                <span className={cn(
-                  "text-xs font-bold px-2 py-0.5 rounded-full",
-                  spotsLeft > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-                )}>
-                  {occupiedCount}/{maxCap} vagas
-                </span>
+            <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2 text-slate-600">
+                <CalIcon className="w-3.5 h-3.5 text-slate-400" />
+                <span>{appointment.date ? format(new Date(appointment.date + "T12:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>
               </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-violet-200 rounded-full h-1.5">
-                <div
-                  className={cn("h-1.5 rounded-full transition-all", spotsLeft > 0 ? "bg-violet-500" : "bg-red-500")}
-                  style={{ width: `${Math.min((occupiedCount / maxCap) * 100, 100)}%` }}
-                />
+              <div className="flex items-center gap-2 text-slate-600">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>{appointment.startTime} – {appointment.endTime}</span>
               </div>
+              <span className={cn(
+                "ml-auto text-xs font-bold px-2.5 py-1 rounded-full shrink-0",
+                spotsLeft > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+              )}>
+                {occupiedCount}/{maxCap} ativos
+              </span>
+            </div>
+          )}
 
-              {/* Patients list */}
-              <div className="space-y-1.5">
-                {/* Current patient */}
-                <div className="flex items-center gap-2 text-xs text-violet-800">
-                  <div className="w-5 h-5 rounded-full bg-violet-200 flex items-center justify-center shrink-0">
-                    <User className="w-3 h-3 text-violet-600" />
-                  </div>
-                  <span className="font-medium">{appointment.patient?.name}</span>
-                  <span className="ml-auto opacity-60">(este)</span>
-                </div>
-                {sessionSiblings.map((sib) => (
-                  <div key={sib.id} className="flex items-center gap-2 text-xs text-violet-800">
-                    <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
-                      <User className="w-3 h-3 text-violet-400" />
+          {/* Group session — per-patient status management */}
+          {isGroupSession && !isEditing && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pacientes da Sessão</p>
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-0.5">
+                {allSessionMembers.map((member) => {
+                  const mCfg = STATUS_CONFIG[member.status] || STATUS_CONFIG.agendado;
+                  const isCurrent = member.id === appointment.id;
+                  const isDone = member.status === "concluido";
+                  return (
+                    <div
+                      key={member.id}
+                      className={cn(
+                        "rounded-2xl border p-3 space-y-2.5 transition-colors",
+                        isCurrent ? "border-violet-200 bg-violet-50/60" : "border-slate-100 bg-white"
+                      )}
+                    >
+                      {/* Patient row */}
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0", mCfg.bg)}>
+                          <User className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{member.patient?.name}</p>
+                          {member.notes && (
+                            <p className="text-[10px] text-slate-400 truncate">{member.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isCurrent && (
+                            <span className="text-[9px] font-bold text-violet-500 bg-violet-100 px-1.5 py-0.5 rounded-full">você</span>
+                          )}
+                          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", mCfg.badge)}>
+                            {mCfg.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Per-patient actions */}
+                      {!isDone && (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {member.status !== "confirmado" && member.status !== "cancelado" && member.status !== "faltou" && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "confirmado")}
+                              disabled={isBusy}
+                            >
+                              <CheckCircle className="w-3 h-3 inline mr-0.5" /> Confirmar
+                            </button>
+                          )}
+                          {member.status === "confirmado" && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "agendado")}
+                              disabled={isBusy}
+                            >
+                              <RefreshCw className="w-3 h-3 inline mr-0.5" /> Desfazer
+                            </button>
+                          )}
+                          {member.status !== "faltou" && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-orange-200 text-orange-700 hover:bg-orange-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "faltou")}
+                              disabled={isBusy}
+                            >
+                              <AlertCircle className="w-3 h-3 inline mr-0.5" /> Faltou
+                            </button>
+                          )}
+                          {member.status !== "cancelado" && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "cancelado")}
+                              disabled={isBusy}
+                            >
+                              <XCircle className="w-3 h-3 inline mr-0.5" /> Cancelar
+                            </button>
+                          )}
+                          {(member.status === "faltou" || member.status === "cancelado") && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "agendado")}
+                              disabled={isBusy}
+                            >
+                              <RefreshCw className="w-3 h-3 inline mr-0.5" /> Reativar
+                            </button>
+                          )}
+                          <button
+                            className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors disabled:opacity-50 ml-auto"
+                            onClick={() => handleMemberComplete(member.id)}
+                            disabled={isBusy || member.status === "cancelado" || member.status === "faltou"}
+                          >
+                            {completeMutation.isPending ? (
+                              <Loader2 className="w-3 h-3 inline animate-spin mr-0.5" />
+                            ) : (
+                              <CheckCircle className="w-3 h-3 inline mr-0.5" />
+                            )}
+                            Concluir
+                          </button>
+                        </div>
+                      )}
+                      {isDone && (
+                        <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-slate-400" /> Sessão concluída
+                        </p>
+                      )}
                     </div>
-                    <span>{sib.patient?.name}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
-              {/* Add patient button */}
+              {/* Add patient */}
               {spotsLeft > 0 && (
                 <Button
                   size="sm"
-                  className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white mt-1"
+                  className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white"
                   onClick={() => onAddToSession(appointment.date, appointment.startTime, appointment.procedureId)}
                 >
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Adicionar paciente ({spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} restante{spotsLeft !== 1 ? "s" : ""})
+                  Adicionar paciente ({spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""})
                 </Button>
               )}
             </div>
           )}
 
-          {/* Status actions */}
-          {!isEditing && appointment.status !== "concluido" && (
+          {/* Status actions — ONLY for single (non-group) appointments */}
+          {!isGroupSession && !isEditing && appointment.status !== "concluido" && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Alterar Status</p>
               <div className="flex flex-wrap gap-2">
