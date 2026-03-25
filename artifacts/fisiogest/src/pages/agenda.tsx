@@ -50,6 +50,10 @@ import {
   Ban,
   Users,
   Globe,
+  Sparkles,
+  History,
+  ArrowRight,
+  ClipboardList,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1295,6 +1299,16 @@ const DAYS_OF_WEEK = [
   { label: "Sáb", value: 6 },
 ];
 
+interface TreatmentPlan {
+  id: number;
+  patientId: number;
+  objectives: string | null;
+  techniques: string | null;
+  frequency: string | null;
+  estimatedSessions: number | null;
+  status: string;
+}
+
 function CreateAppointmentForm({
   initialDate,
   initialTime,
@@ -1306,6 +1320,9 @@ function CreateAppointmentForm({
   initialProcedureId?: number;
   onSuccess: () => void;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [patientSearch, setPatientSearch] = useState("");
+
   const [formData, setFormData] = useState({
     patientId: "",
     procedureId: initialProcedureId ? String(initialProcedureId) : "",
@@ -1330,6 +1347,53 @@ function CreateAppointmentForm({
   const { data: procedures } = useListProcedures();
   const mutation = useCreateAppointment();
   const { toast } = useToast();
+
+  const selectedPatient = useMemo(
+    () => patients?.data?.find((p) => p.id === Number(formData.patientId)),
+    [patients, formData.patientId]
+  );
+
+  const filteredPatients = useMemo(() => {
+    if (!patients?.data) return [];
+    if (!patientSearch.trim()) return patients.data;
+    const q = patientSearch.toLowerCase();
+    return patients.data.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.phone && p.phone.includes(q)) ||
+        (p.cpf && p.cpf.includes(q))
+    );
+  }, [patients, patientSearch]);
+
+  const { data: treatmentPlan } = useQuery<TreatmentPlan | null>({
+    queryKey: ["treatment-plan", formData.patientId],
+    queryFn: async () => {
+      const res = await fetch(`/api/medical-records/${formData.patientId}/treatment-plan`, { credentials: "include" });
+      if (res.status === 404) return null;
+      return res.json();
+    },
+    enabled: !!formData.patientId,
+    staleTime: 60_000,
+  });
+
+  const { data: lastAppointments } = useQuery<{ appointment: { procedureId: number | null } }[]>({
+    queryKey: ["last-appointments", formData.patientId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/appointments?patientId=${formData.patientId}&limit=5`,
+        { credentials: "include" }
+      );
+      return res.json();
+    },
+    enabled: !!formData.patientId,
+    staleTime: 60_000,
+  });
+
+  const lastProcedureId = useMemo(() => {
+    if (!lastAppointments || !Array.isArray(lastAppointments)) return null;
+    const first = lastAppointments[0];
+    return first?.appointment?.procedureId ?? null;
+  }, [lastAppointments]);
 
   const selectedProcedure = useMemo(
     () => procedures?.find((p) => p.id === Number(formData.procedureId)),
@@ -1438,72 +1502,232 @@ function CreateAppointmentForm({
   };
 
   const isBusy = mutation.isPending || recurPending;
+  const hasActivePlan = treatmentPlan && treatmentPlan.status === "ativo";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-      {/* Paciente */}
-      <div className="space-y-1.5">
-        <Label>Paciente *</Label>
-        <Select value={formData.patientId} onValueChange={(v) => setFormData({ ...formData, patientId: v })}>
-          <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione o paciente..." /></SelectTrigger>
-          <SelectContent>
-            {patients?.data?.map((p) => (
-              <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Procedimento */}
-      <div className="space-y-1.5">
-        <Label>Procedimento *</Label>
-        <Select value={formData.procedureId} onValueChange={(v) => setFormData({ ...formData, procedureId: v })}>
-          <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione o procedimento..." /></SelectTrigger>
-          <SelectContent>
-            {procedures?.map((p) => (
-              <SelectItem key={p.id} value={p.id.toString()}>
-                {p.name} · {p.durationMinutes} min
-                {(p as any).maxCapacity > 1 ? ` · ${(p as any).maxCapacity} vagas` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selectedProcedure && (
-          <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
-            <Clock className="w-3 h-3" />
-            {selectedProcedure.durationMinutes} min
-            {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
-          </p>
-        )}
-      </div>
-
-      {/* Data + Horário */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Data *</Label>
-          <DatePickerPTBR
-            value={formData.date}
-            onChange={(v) => {
-              const dow = new Date(v + "T12:00:00").getDay();
-              setFormData({ ...formData, date: v, startTime: "" });
-              if (isRecurring && recurDays.length === 0) setRecurDays([dow]);
-            }}
-            className="h-11 rounded-xl"
-          />
+      {/* ── Step indicators ── */}
+      <div className="flex items-center gap-2 pb-1">
+        <div className={cn(
+          "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full transition-colors",
+          step === 1 ? "bg-primary text-white" : "bg-emerald-100 text-emerald-700"
+        )}>
+          {step === 1 ? <User className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
+          Paciente
         </div>
+        <div className="h-px flex-1 bg-slate-200" />
+        <div className={cn(
+          "flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full transition-colors",
+          step === 2 ? "bg-primary text-white" : "bg-slate-100 text-slate-400"
+        )}>
+          <Stethoscope className="w-3 h-3" />
+          Consulta
+        </div>
+      </div>
 
-        <div className="space-y-1.5">
-          <Label>Horário *</Label>
-          {canFetchSlots ? (
-            <div>
-              {slotsFetching ? (
-                <div className="h-11 rounded-xl border border-slate-200 flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+      {/* ══════════════════════════════════════ STEP 1: PACIENTE ══ */}
+      {step === 1 && (
+        <div className="space-y-3">
+          {/* Search */}
+          <div className="space-y-1.5">
+            <Label>Buscar paciente *</Label>
+            <Input
+              placeholder="Nome, telefone ou CPF..."
+              value={patientSearch}
+              onChange={(e) => setPatientSearch(e.target.value)}
+              className="h-11 rounded-xl"
+              autoFocus
+            />
+          </div>
+
+          {/* Patient list */}
+          <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-0.5">
+            {filteredPatients.length === 0 && (
+              <p className="text-sm text-slate-400 text-center py-6">Nenhum paciente encontrado.</p>
+            )}
+            {filteredPatients.map((p) => {
+              const isSelected = formData.patientId === p.id.toString();
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setFormData({ ...formData, patientId: p.id.toString(), procedureId: "" });
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
+                    isSelected
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold",
+                    isSelected ? "bg-primary text-white" : "bg-slate-100 text-slate-500"
+                  )}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{p.name}</p>
+                    {p.phone && <p className="text-xs text-slate-400 truncate">{p.phone}</p>}
+                  </div>
+                  {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selected patient summary + plan info */}
+          {selectedPatient && (
+            <div className="space-y-2">
+              {hasActivePlan && (
+                <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    <span className="text-xs font-bold text-teal-700">Plano de Tratamento Ativo</span>
+                  </div>
+                  {treatmentPlan?.frequency && (
+                    <p className="text-xs text-teal-600">
+                      <span className="font-semibold">Frequência:</span> {treatmentPlan.frequency}
+                    </p>
+                  )}
+                  {treatmentPlan?.objectives && (
+                    <p className="text-xs text-teal-600 line-clamp-2">
+                      <span className="font-semibold">Objetivos:</span> {treatmentPlan.objectives}
+                    </p>
+                  )}
+                  {treatmentPlan?.techniques && (
+                    <p className="text-xs text-teal-600 line-clamp-2">
+                      <span className="font-semibold">Técnicas:</span> {treatmentPlan.techniques}
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <Select value={formData.startTime} onValueChange={(v) => setFormData({ ...formData, startTime: v })}>
-                  <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
+              )}
+            </div>
+          )}
+
+          <Button
+            type="button"
+            className="w-full h-11 rounded-xl shadow-md shadow-primary/20"
+            disabled={!formData.patientId}
+            onClick={() => setStep(2)}
+          >
+            Continuar <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════ STEP 2: CONSULTA ══ */}
+      {step === 2 && (
+        <>
+          {/* Patient summary bar */}
+          <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0">
+              <span className="text-xs font-bold text-white">{selectedPatient?.name.charAt(0).toUpperCase()}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{selectedPatient?.name}</p>
+              {hasActivePlan && (
+                <p className="text-[10px] text-teal-600 font-semibold flex items-center gap-1">
+                  <ClipboardList className="w-3 h-3" /> Plano ativo
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="text-xs text-slate-400 hover:text-primary underline underline-offset-2 shrink-0"
+              onClick={() => setStep(1)}
+            >
+              Trocar
+            </button>
+          </div>
+
+          {/* Procedimento */}
+          <div className="space-y-1.5">
+            <Label>Procedimento *</Label>
+            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-0.5">
+              {procedures?.map((p) => {
+                const isSelected = formData.procedureId === p.id.toString();
+                const isLast = lastProcedureId === p.id;
+                const isGroup = (p as any).maxCapacity > 1;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, procedureId: p.id.toString() })}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                      isSelected ? "bg-primary text-white" : isGroup ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"
+                    )}>
+                      {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                        {isLast && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                            <History className="w-2.5 h-2.5" /> Última sessão
+                          </span>
+                        )}
+                        {hasActivePlan && isLast && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                            <Sparkles className="w-2.5 h-2.5" /> Recomendado
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {p.durationMinutes} min
+                        {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
+                      </p>
+                    </div>
+                    {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedProcedure && (
+              <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
+                <Clock className="w-3 h-3" />
+                {selectedProcedure.durationMinutes} min
+                {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
+              </p>
+            )}
+          </div>
+
+          {/* Data + Horário */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Data *</Label>
+              <DatePickerPTBR
+                value={formData.date}
+                onChange={(v) => {
+                  const dow = new Date(v + "T12:00:00").getDay();
+                  setFormData({ ...formData, date: v, startTime: "" });
+                  if (isRecurring && recurDays.length === 0) setRecurDays([dow]);
+                }}
+                className="h-11 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Horário *</Label>
+              {canFetchSlots ? (
+                <div>
+                  {slotsFetching ? (
+                    <div className="h-11 rounded-xl border border-slate-200 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                    </div>
+                  ) : (
+                    <Select value={formData.startTime} onValueChange={(v) => setFormData({ ...formData, startTime: v })}>
+                      <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
                     {availableSlots.filter(s => s.available).map((s) => (
                       <SelectItem key={s.time} value={s.time}>
                         {s.time}{s.spotsLeft < 99 ? ` · ${s.spotsLeft} vaga(s)` : ""}
@@ -1633,19 +1857,21 @@ function CreateAppointmentForm({
         )}
       </div>
 
-      <Button
-        type="submit"
-        className="w-full h-11 rounded-xl shadow-lg shadow-primary/20"
-        disabled={!formData.patientId || !formData.procedureId || !formData.startTime || isBusy}
-      >
-        {isBusy ? (
-          <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isRecurring ? "Criando recorrência..." : "Agendando..."}</>
-        ) : isRecurring ? (
-          <><Repeat className="w-4 h-4 mr-2" /> Criar {recurSessions} sessão(ões) recorrente(s)</>
-        ) : (
-          <><CalIcon className="w-4 h-4 mr-2" /> Confirmar Agendamento</>
-        )}
-      </Button>
+          <Button
+            type="submit"
+            className="w-full h-11 rounded-xl shadow-lg shadow-primary/20"
+            disabled={!formData.patientId || !formData.procedureId || !formData.startTime || isBusy}
+          >
+            {isBusy ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isRecurring ? "Criando recorrência..." : "Agendando..."}</>
+            ) : isRecurring ? (
+              <><Repeat className="w-4 h-4 mr-2" /> Criar {recurSessions} sessão(ões) recorrente(s)</>
+            ) : (
+              <><CalIcon className="w-4 h-4 mr-2" /> Confirmar Agendamento</>
+            )}
+          </Button>
+        </>
+      )}
     </form>
   );
 }
