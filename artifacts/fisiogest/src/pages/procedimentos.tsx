@@ -41,6 +41,7 @@ import {
   Stethoscope,
   BookOpen,
   Printer,
+  Globe,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,7 @@ interface Procedure {
   cost: string | number;
   description?: string;
   maxCapacity: number;
+  onlineBookingEnabled: boolean;
   createdAt: string;
 }
 
@@ -125,6 +127,7 @@ export default function Procedimentos() {
     cost: "",
     description: "",
     maxCapacity: 1,
+    onlineBookingEnabled: false,
   });
 
   const url = selectedCategory === "all"
@@ -200,7 +203,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1 });
+    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
   }
 
   function openEdit(proc: Procedure) {
@@ -213,6 +216,7 @@ export default function Procedimentos() {
       cost: String(proc.cost ?? "0"),
       description: proc.description ?? "",
       maxCapacity: proc.maxCapacity ?? 1,
+      onlineBookingEnabled: proc.onlineBookingEnabled ?? false,
     });
     setIsModalOpen(true);
   }
@@ -755,6 +759,25 @@ export default function Procedimentos() {
                 rows={3}
                 placeholder="Descrição do procedimento..."
                 className="rounded-xl resize-none"
+              />
+            </div>
+
+            <div className={cn(
+              "flex items-center justify-between p-3 rounded-xl border-2 transition-colors",
+              form.onlineBookingEnabled ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"
+            )}>
+              <div className="flex items-center gap-2.5">
+                <Globe className={cn("w-4 h-4", form.onlineBookingEnabled ? "text-primary" : "text-slate-400")} />
+                <div>
+                  <p className={cn("text-sm font-semibold", form.onlineBookingEnabled ? "text-primary" : "text-slate-700")}>
+                    Agendamento Online
+                  </p>
+                  <p className="text-xs text-slate-400">Disponível no portal público</p>
+                </div>
+              </div>
+              <Switch
+                checked={form.onlineBookingEnabled}
+                onCheckedChange={v => setForm(f => ({ ...f, onlineBookingEnabled: v }))}
               />
             </div>
           </div>

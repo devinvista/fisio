@@ -11,10 +11,12 @@ import dashboardRouter from "./dashboard.js";
 import usersRouter from "./users.js";
 import storageRouter from "./storage.js";
 import blockedSlotsRouter from "./blocked-slots.js";
+import publicRouter from "./public.js";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use("/public", publicRouter);
 router.use("/auth", authRouter);
 router.use("/users", usersRouter);
 router.use("/patients", patientsRouter);

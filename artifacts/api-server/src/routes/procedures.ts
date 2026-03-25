@@ -25,7 +25,7 @@ router.get("/", requirePermission("procedures.manage"), async (req, res) => {
 
 router.post("/", requirePermission("procedures.manage"), async (req, res) => {
   try {
-    const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
+    const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled } = req.body;
     if (!name || !category || !durationMinutes || !price) {
       res.status(400).json({
         error: "Bad Request",
@@ -43,6 +43,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
         cost: cost ? String(cost) : "0",
         description,
         maxCapacity: maxCapacity ? parseInt(maxCapacity) : 1,
+        onlineBookingEnabled: Boolean(onlineBookingEnabled),
       })
       .returning();
     res.status(201).json(procedure);
@@ -55,7 +56,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
 router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
+    const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled } = req.body;
     const [procedure] = await db
       .update(proceduresTable)
       .set({
@@ -66,6 +67,7 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
         cost: cost !== undefined ? String(cost) : undefined,
         description,
         maxCapacity: maxCapacity !== undefined ? parseInt(maxCapacity) : undefined,
+        onlineBookingEnabled: onlineBookingEnabled !== undefined ? Boolean(onlineBookingEnabled) : undefined,
       })
       .where(eq(proceduresTable.id, id))
       .returning();

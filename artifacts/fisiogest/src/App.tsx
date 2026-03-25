@@ -16,6 +16,7 @@ import Financial from "./pages/financial/index";
 import Procedimentos from "./pages/procedimentos";
 import Relatorios from "./pages/relatorios";
 import Usuarios from "./pages/usuarios";
+import Agendar from "./pages/agendar";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -120,6 +121,8 @@ function Router() {
       <Route path="/usuarios">
         {() => <PermissionRoute component={Usuarios} permission="users.manage" />}
       </Route>
+      <Route path="/agendar" component={Agendar} />
+      <Route path="/agendar/:token" component={Agendar} />
       <Route component={NotFound} />
     </Switch>
   );
