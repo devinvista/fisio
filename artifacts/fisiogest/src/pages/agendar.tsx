@@ -141,10 +141,10 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   const steps = [
+    { label: "Identificação", icon: <User className="w-4 h-4" /> },
     { label: "Procedimento", icon: <Dumbbell className="w-4 h-4" /> },
     { label: "Data e Hora", icon: <Calendar className="w-4 h-4" /> },
-    { label: "Seus Dados", icon: <User className="w-4 h-4" /> },
-    { label: "Confirmação", icon: <CheckCircle2 className="w-4 h-4" /> },
+    { label: "Seus Dados", icon: <FileText className="w-4 h-4" /> },
   ];
 
   return (
@@ -176,7 +176,174 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
   );
 }
 
-// ── Step 1: Selecionar Procedimento ──────────────────────────────────────────
+// ── Step 1: Identificação do Paciente ─────────────────────────────────────────
+
+function StepIdentificacao({
+  onNext,
+  initialValue,
+}: {
+  onNext: (result: PatientLookupResult | null, query: string) => void;
+  initialValue?: string;
+}) {
+  const [query, setQuery] = useState(initialValue ?? "");
+  const [lookupState, setLookupState] = useState<"idle" | "searching" | "found" | "new">("idle");
+  const [result, setResult] = useState<PatientLookupResult | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const runLookup = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const cleaned = q.replace(/\D/g, "");
+    if (cleaned.length < 8 && q.trim().length < 8) {
+      setLookupState("idle");
+      setResult(null);
+      return;
+    }
+    setLookupState("searching");
+    debounceRef.current = setTimeout(async () => {
+      const r = await lookupPatient(q);
+      setResult(r);
+      setLookupState(r.found ? "found" : "new");
+    }, 600);
+  }, []);
+
+  const handleChange = (val: string) => {
+    setQuery(val);
+    runLookup(val);
+  };
+
+  const handleNext = () => {
+    onNext(result?.found ? result : null, query);
+  };
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-slate-800 mb-1">Identificação</h2>
+        <p className="text-slate-500 text-sm">
+          Informe seu telefone ou CPF para agilizar o agendamento
+        </p>
+      </div>
+
+      {/* Input */}
+      <div className="relative mb-4">
+        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+        <Input
+          autoFocus
+          placeholder="Telefone (ex: 11 99999-0000) ou CPF"
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          className={`h-14 pl-12 pr-12 rounded-2xl text-base transition-all
+            ${lookupState === "found" ? "border-emerald-400 bg-emerald-50/40 focus-visible:ring-emerald-300" : ""}
+            ${lookupState === "new" ? "border-blue-300 focus-visible:ring-blue-200" : ""}`}
+        />
+        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+          {lookupState === "searching" && <Loader2 className="w-5 h-5 animate-spin text-slate-400" />}
+          {lookupState === "found" && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+          {lookupState === "new" && <UserPlus className="w-5 h-5 text-blue-400" />}
+        </div>
+      </div>
+
+      {/* Status banners */}
+      {lookupState === "found" && result?.patient && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+              <UserCheck className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-emerald-800">
+                Bem-vindo de volta, {result.patient.name.split(" ")[0]}!
+              </p>
+              <p className="text-sm text-emerald-700 mt-0.5">
+                Encontramos seu cadastro. Seus dados serão preenchidos automaticamente.
+              </p>
+              {result.activeTreatmentPlan && (
+                <div className="mt-3 bg-white border border-emerald-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5" /> Plano de tratamento ativo
+                  </p>
+                  {result.activeTreatmentPlan.frequency && (
+                    <p className="text-sm text-slate-700">
+                      <span className="font-medium">Frequência:</span> {result.activeTreatmentPlan.frequency}
+                    </p>
+                  )}
+                  {result.activeTreatmentPlan.estimatedSessions && (
+                    <p className="text-sm text-slate-700">
+                      <span className="font-medium">Sessões estimadas:</span> {result.activeTreatmentPlan.estimatedSessions}
+                    </p>
+                  )}
+                  {result.activeTreatmentPlan.objectives && (
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                      {result.activeTreatmentPlan.objectives}
+                    </p>
+                  )}
+                </div>
+              )}
+              {!result.activeTreatmentPlan && result.recommendedProcedureIds && result.recommendedProcedureIds.length > 0 && (
+                <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Seus procedimentos mais usados serão destacados na próxima etapa.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lookupState === "new" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-5 flex items-start gap-3">
+          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center shrink-0">
+            <UserPlus className="w-5 h-5 text-blue-500" />
+          </div>
+          <div>
+            <p className="font-semibold text-blue-800">Primeiro agendamento?</p>
+            <p className="text-sm text-blue-700 mt-0.5">
+              Não encontramos um cadastro com esses dados. Você poderá preencher suas informações na próxima etapa — faremos seu cadastro automaticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {lookupState === "idle" && query.trim().length === 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 flex items-start gap-3">
+          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+            <User className="w-5 h-5 text-slate-400" />
+          </div>
+          <div>
+            <p className="font-medium text-slate-700">Já é paciente aqui?</p>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Digite seu telefone ou CPF acima para identificar-se automaticamente e ver seus procedimentos recomendados.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row justify-between gap-3 pt-2">
+        <button
+          type="button"
+          onClick={() => onNext(null, "")}
+          className="text-sm text-slate-400 hover:text-slate-600 transition-colors text-center sm:text-left"
+        >
+          Continuar sem identificação →
+        </button>
+        <Button
+          onClick={handleNext}
+          className="rounded-xl h-11 px-8 gap-2"
+          disabled={lookupState === "searching"}
+        >
+          {lookupState === "found" ? (
+            <><UserCheck className="w-4 h-4" /> Continuar como {result?.patient?.name.split(" ")[0]}</>
+          ) : (
+            <>Próximo <ChevronRight className="w-4 h-4" /></>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 2: Selecionar Procedimento ──────────────────────────────────────────
 
 function ProcedureCard({
   proc,
@@ -522,6 +689,8 @@ function StepDataHora({
 
 // ── Step 3: Dados do Paciente ─────────────────────────────────────────────────
 
+// ── Step 4: Dados do Paciente ─────────────────────────────────────────────────
+
 function StepDados({
   procedure,
   date,
@@ -529,7 +698,7 @@ function StepDados({
   onSubmit,
   onBack,
   submitting,
-  onPatientFound,
+  foundPatient,
 }: {
   procedure: PublicProcedure;
   date: string;
@@ -537,51 +706,18 @@ function StepDados({
   onSubmit: (data: { name: string; phone: string; email: string; cpf: string; notes: string }) => void;
   onBack: () => void;
   submitting: boolean;
-  onPatientFound?: (result: PatientLookupResult) => void;
+  foundPatient: PatientLookupResult | null;
 }) {
-  const [form, setForm] = useState({ name: "", phone: "", email: "", cpf: "", notes: "" });
-  const [lookupState, setLookupState] = useState<"idle" | "searching" | "found" | "new">("idle");
-  const [foundResult, setFoundResult] = useState<PatientLookupResult | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pre = foundPatient?.patient;
+  const [form, setForm] = useState({
+    name: pre?.name ?? "",
+    phone: pre?.phone ?? "",
+    email: pre?.email ?? "",
+    cpf: pre?.cpf ?? "",
+    notes: "",
+  });
 
-  const triggerLookup = useCallback((q: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const cleaned = q.replace(/\D/g, "");
-    if (cleaned.length < 8) {
-      setLookupState("idle");
-      return;
-    }
-    setLookupState("searching");
-    debounceRef.current = setTimeout(async () => {
-      const result = await lookupPatient(q);
-      setFoundResult(result);
-      if (result.found && result.patient) {
-        setLookupState("found");
-        setForm((prev) => ({
-          ...prev,
-          name: result.patient!.name,
-          phone: result.patient!.phone,
-          email: result.patient!.email ?? prev.email,
-          cpf: result.patient!.cpf ?? prev.cpf,
-        }));
-        onPatientFound?.(result);
-      } else {
-        setLookupState("new");
-      }
-    }, 600);
-  }, [onPatientFound]);
-
-  const handleCpfChange = (val: string) => {
-    setForm((prev) => ({ ...prev, cpf: val }));
-    triggerLookup(val);
-  };
-
-  const handlePhoneChange = (val: string) => {
-    setForm((prev) => ({ ...prev, phone: val }));
-    if (form.cpf.replace(/\D/g, "").length < 8) {
-      triggerLookup(val);
-    }
-  };
+  const isPreFilled = !!pre;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -591,11 +727,39 @@ function StepDados({
   return (
     <div>
       <h2 className="text-xl font-bold text-slate-800 mb-1">Seus Dados</h2>
-      <p className="text-slate-500 text-sm mb-1">
-        Preencha suas informações para confirmar o agendamento
+      <p className="text-slate-500 text-sm mb-4">
+        {isPreFilled ? "Confirme seus dados abaixo para finalizar o agendamento" : "Preencha suas informações para confirmar o agendamento"}
       </p>
 
-      {/* Summary card */}
+      {/* Returning patient banner */}
+      {isPreFilled && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 flex items-center gap-3">
+          <UserCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-emerald-800">
+              Dados preenchidos automaticamente
+            </p>
+            {foundPatient?.activeTreatmentPlan && (
+              <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1">
+                <ClipboardList className="w-3 h-3" />
+                Plano de tratamento ativo — {foundPatient.activeTreatmentPlan.frequency ?? "em andamento"}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* New patient banner */}
+      {!isPreFilled && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 flex items-center gap-3">
+          <UserPlus className="w-5 h-5 text-blue-500 shrink-0" />
+          <p className="text-sm text-blue-700">
+            <span className="font-semibold">Novo paciente:</span> seus dados serão pré-cadastrados ao confirmar o agendamento.
+          </p>
+        </div>
+      )}
+
+      {/* Booking summary */}
       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-5 flex flex-wrap gap-4">
         <div className="flex items-center gap-2 text-sm">
           <Dumbbell className="w-4 h-4 text-primary" />
@@ -611,48 +775,6 @@ function StepDados({
         </div>
       </div>
 
-      {/* Patient lookup status banners */}
-      {lookupState === "searching" && (
-        <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-4">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Verificando se você já é paciente...
-        </div>
-      )}
-
-      {lookupState === "found" && foundResult?.patient && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4">
-          <div className="flex items-start gap-3">
-            <UserCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-emerald-800 mb-0.5">
-                Bem-vindo de volta, {foundResult.patient.name.split(" ")[0]}!
-              </p>
-              <p className="text-xs text-emerald-700 mb-2">
-                Encontramos seu cadastro. Seus dados foram preenchidos automaticamente.
-              </p>
-              {foundResult.activeTreatmentPlan && (
-                <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 rounded-lg px-2.5 py-1 text-xs font-medium">
-                  <ClipboardList className="w-3 h-3" />
-                  Plano de tratamento ativo: {foundResult.activeTreatmentPlan.frequency ?? "Em andamento"}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {lookupState === "new" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
-          <UserPlus className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-blue-800">Primeiro agendamento na clínica?</p>
-            <p className="text-xs text-blue-700 mt-0.5">
-              Não encontramos seu cadastro. Preencha seus dados abaixo — faremos seu pré-cadastro automaticamente.
-            </p>
-          </div>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -663,22 +785,18 @@ function StepDados({
                 required
                 placeholder="(11) 99999-0000"
                 value={form.phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                className="h-11 rounded-xl pl-9"
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className={`h-11 rounded-xl pl-9 ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}`}
               />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-              CPF
-              {lookupState === "searching" && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
-              {lookupState === "found" && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-            </Label>
+            <Label className="text-sm font-medium text-slate-700">CPF</Label>
             <Input
-              placeholder="000.000.000-00 (para busca automática)"
+              placeholder="000.000.000-00 (opcional)"
               value={form.cpf}
-              onChange={(e) => handleCpfChange(e.target.value)}
-              className={`h-11 rounded-xl ${lookupState === "found" ? "border-emerald-300 bg-emerald-50/40" : ""}`}
+              onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+              className={`h-11 rounded-xl ${isPreFilled && form.cpf ? "border-emerald-300 bg-emerald-50/30" : ""}`}
             />
           </div>
         </div>
@@ -693,7 +811,7 @@ function StepDados({
                 placeholder="Seu nome completo"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className={`h-11 rounded-xl pl-9 ${lookupState === "found" ? "border-emerald-300 bg-emerald-50/40" : ""}`}
+                className={`h-11 rounded-xl pl-9 ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}`}
               />
             </div>
           </div>
@@ -706,7 +824,7 @@ function StepDados({
                 placeholder="seu@email.com (opcional)"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className={`h-11 rounded-xl pl-9 ${lookupState === "found" && form.email ? "border-emerald-300 bg-emerald-50/40" : ""}`}
+                className={`h-11 rounded-xl pl-9 ${isPreFilled && form.email ? "border-emerald-300 bg-emerald-50/30" : ""}`}
               />
             </div>
           </div>
