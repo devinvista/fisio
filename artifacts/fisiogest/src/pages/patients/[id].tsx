@@ -49,6 +49,159 @@ import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/auth-context";
 
+// ─── Print utilities ─────────────────────────────────────────────────────────
+
+type PatientBasic = { name: string; cpf?: string | null; birthDate?: string | null; phone?: string | null };
+
+function printDocument(html: string, title: string) {
+  const w = window.open("", "_blank", "width=900,height=700");
+  if (!w) { alert("Permita pop-ups para gerar o documento."); return; }
+  w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><title>${title}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Times New Roman',Times,serif;font-size:11pt;color:#111;background:#fff;padding:2cm 2.5cm}
+    h1{font-size:15pt;font-weight:bold;text-align:center;margin-bottom:4px}
+    .header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:18px}
+    .subtitle{font-size:10pt;color:#333;text-align:center;margin-bottom:4px}
+    .patient-box{border:1px solid #999;border-radius:4px;padding:10px 14px;margin-bottom:16px;background:#fafafa}
+    .row{display:flex;gap:24px;flex-wrap:wrap;margin-top:4px}
+    .field{flex:1;min-width:140px}
+    .label{font-size:8.5pt;text-transform:uppercase;color:#555;font-weight:bold;margin-bottom:1px}
+    .value{font-size:10.5pt}
+    .section{margin-bottom:14px}
+    .section-title{font-size:10pt;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;color:#333;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:8px}
+    .content-box{background:#f5f5f5;border-radius:3px;padding:8px 12px;line-height:1.6;white-space:pre-wrap;font-size:10.5pt}
+    .evo-card{border:1px solid #ddd;border-radius:4px;padding:10px 12px;margin-bottom:10px;page-break-inside:avoid}
+    .evo-num{display:inline-flex;align-items:center;justify-content:center;background:#1d4ed8;color:#fff;border-radius:50%;width:22px;height:22px;font-size:9pt;font-weight:bold;margin-right:8px;flex-shrink:0}
+    .evo-date{font-size:9pt;color:#666}
+    .evo-field{margin-top:6px}
+    .fl{font-size:8.5pt;font-weight:bold;color:#555;margin-bottom:1px}
+    .fv{font-size:10pt;line-height:1.5}
+    .progress-bar{background:#e5e7eb;height:10px;border-radius:5px;margin:6px 0}
+    .progress-fill{background:#1d4ed8;height:10px;border-radius:5px}
+    .sessions-table{width:100%;border-collapse:collapse;margin-top:8px}
+    .sessions-table th{background:#1d4ed8;color:#fff;font-size:9pt;padding:5px 8px;text-align:left}
+    .sessions-table td{border:1px solid #e5e7eb;font-size:10pt;padding:5px 8px}
+    .sessions-table tr:nth-child(even) td{background:#f9fafb}
+    .signature{margin-top:40px;text-align:center}
+    .sig-line{border-top:1px solid #000;display:inline-block;width:220px;margin-bottom:4px}
+    .sig-label{font-size:9.5pt;color:#444}
+    .footer{margin-top:28px;border-top:1px solid #ccc;padding-top:8px;font-size:8pt;color:#888;text-align:center}
+    p{margin-bottom:6px;line-height:1.5}
+    @media print{@page{margin:1.5cm}body{padding:0}}
+  </style></head>
+  <body>${html}<script>window.onload=function(){setTimeout(function(){window.print();},400);}</script></body></html>`);
+  w.document.close();
+}
+
+function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, string>, professional?: { name?: string; council?: string }) {
+  const age = patient.birthDate ? differenceInYears(new Date(), parseISO(patient.birthDate)) : null;
+  const ageStr = age ? `, ${age} anos` : "";
+  const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
+  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const dischargeDate = discharge.dischargeDate
+    ? format(parseISO(discharge.dischargeDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+    : today;
+  return `
+    <div class="header"><h1>ALTA FISIOTERAPÊUTICA</h1><div class="subtitle">Documento Clínico — Requisito COFFITO</div></div>
+    <div class="patient-box">
+      <div class="row">
+        <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}${ageStr}</strong></div></div>
+        <div class="field"><div class="label">CPF</div><div class="value">${cpfFmt}</div></div>
+        ${patient.phone ? `<div class="field"><div class="label">Telefone</div><div class="value">${patient.phone}</div></div>` : ""}
+      </div>
+      ${patient.birthDate ? `<div class="row"><div class="field"><div class="label">Data de Nascimento</div><div class="value">${format(parseISO(patient.birthDate), "dd/MM/yyyy")}</div></div></div>` : ""}
+    </div>
+    <div class="section"><div class="section-title">Data da Alta</div><p>${dischargeDate}</p></div>
+    <div class="section"><div class="section-title">Motivo da Alta</div><div class="content-box">${discharge.dischargeReason || "—"}</div></div>
+    ${discharge.achievedResults ? `<div class="section"><div class="section-title">Resultados Alcançados</div><div class="content-box">${discharge.achievedResults}</div></div>` : ""}
+    ${discharge.recommendations ? `<div class="section"><div class="section-title">Recomendações ao Paciente</div><div class="content-box">${discharge.recommendations}</div></div>` : ""}
+    <div class="signature">
+      <div><div class="sig-line"></div></div>
+      <div class="sig-label">${professional?.name || "Fisioterapeuta Responsável"}</div>
+      ${professional?.council ? `<div class="sig-label">CREFITO: ${professional.council}</div>` : ""}
+    </div>
+    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+  `;
+}
+
+function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appointments: any[]) {
+  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
+  const sortedAppts = [...appointments].sort((a, b) =>
+    new Date(a.date + "T" + (a.startTime || "00:00")).getTime() - new Date(b.date + "T" + (b.startTime || "00:00")).getTime()
+  );
+  const cards = evolutions.map((ev, idx) => {
+    const linkedAppt = appointments.find((a) => a.id === ev.appointmentId);
+    let sessionNum = evolutions.length - idx;
+    if (ev.appointmentId) { const pos = sortedAppts.findIndex((a) => a.id === ev.appointmentId); if (pos !== -1) sessionNum = pos + 1; }
+    const dateStr = ev.createdAt ? format(new Date(ev.createdAt), "dd/MM/yyyy HH:mm") : "";
+    const apptInfo = linkedAppt ? `📅 Consulta: ${format(parseISO(linkedAppt.date), "dd/MM/yyyy")} — ${linkedAppt.startTime || ""}` : "";
+    return `<div class="evo-card">
+      <div style="display:flex;align-items:center;margin-bottom:8px">
+        <span class="evo-num">${sessionNum}</span>
+        <strong>Sessão ${sessionNum}</strong>
+        <span class="evo-date" style="margin-left:auto">${dateStr}</span>
+      </div>
+      ${apptInfo ? `<div style="font-size:9pt;color:#1d4ed8;margin-bottom:6px">${apptInfo}</div>` : ""}
+      ${ev.description ? `<div class="evo-field"><div class="fl">Descrição da Sessão</div><div class="fv">${ev.description}</div></div>` : ""}
+      ${ev.patientResponse ? `<div class="evo-field"><div class="fl">Resposta do Paciente</div><div class="fv">${ev.patientResponse}</div></div>` : ""}
+      ${ev.clinicalNotes ? `<div class="evo-field"><div class="fl">Notas Clínicas</div><div class="fv">${ev.clinicalNotes}</div></div>` : ""}
+      ${ev.complications ? `<div class="evo-field"><div class="fl">Intercorrências</div><div class="fv">${ev.complications}</div></div>` : ""}
+    </div>`;
+  }).join("");
+  return `
+    <div class="header"><h1>EVOLUÇÕES FISIOTERAPÊUTICAS</h1><div class="subtitle">Prontuário de Evoluções de Sessão</div></div>
+    <div class="patient-box">
+      <div class="row">
+        <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}</strong></div></div>
+        <div class="field"><div class="label">CPF</div><div class="value">${cpfFmt}</div></div>
+        <div class="field"><div class="label">Total de Evoluções</div><div class="value">${evolutions.length}</div></div>
+      </div>
+    </div>
+    ${cards}
+    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+  `;
+}
+
+function generatePlanHTML(patient: PatientBasic, plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string }, appointments: any[]) {
+  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const completedAppts = [...appointments].filter((a) => a.status === "concluido")
+    .sort((a, b) => new Date(b.date + "T" + (b.startTime || "00:00")).getTime() - new Date(a.date + "T" + (a.startTime || "00:00")).getTime());
+  const totalCompleted = completedAppts.length;
+  const estimated = plan.estimatedSessions ? Number(plan.estimatedSessions) : 0;
+  const pct = estimated > 0 ? Math.min(100, (totalCompleted / estimated) * 100) : 0;
+  const statusLabel: Record<string, string> = { ativo: "Ativo", concluido: "Concluído", suspenso: "Suspenso" };
+  const rows = completedAppts.map((a, i) => `<tr>
+    <td>${totalCompleted - i}</td>
+    <td>${format(parseISO(a.date), "dd/MM/yyyy")}</td>
+    <td>${a.startTime || "—"}</td>
+    <td>${a.procedure?.name || "—"}</td>
+  </tr>`).join("");
+  return `
+    <div class="header"><h1>PLANO DE TRATAMENTO</h1><div class="subtitle">Progresso de Sessões</div></div>
+    <div class="patient-box">
+      <div class="row">
+        <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}</strong></div></div>
+        <div class="field"><div class="label">Status</div><div class="value">${statusLabel[plan.status || "ativo"] || "Ativo"}</div></div>
+        ${plan.frequency ? `<div class="field"><div class="label">Frequência</div><div class="value">${plan.frequency}</div></div>` : ""}
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">Progresso de Sessões</div>
+      <p><strong>${totalCompleted}</strong> sessão(ões) concluída(s) de <strong>${estimated || "—"}</strong> estimada(s)</p>
+      ${estimated > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct.toFixed(0)}%"></div></div><p style="font-size:9pt;color:#555">${pct.toFixed(1)}% concluído</p>` : ""}
+    </div>
+    ${plan.objectives ? `<div class="section"><div class="section-title">Objetivos</div><div class="content-box">${plan.objectives}</div></div>` : ""}
+    ${plan.techniques ? `<div class="section"><div class="section-title">Técnicas e Recursos</div><div class="content-box">${plan.techniques}</div></div>` : ""}
+    ${rows ? `<div class="section"><div class="section-title">Histórico de Sessões</div>
+      <table class="sessions-table"><thead><tr><th>#</th><th>Data</th><th>Horário</th><th>Procedimento</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : ""}
+    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+  `;
+}
+
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   agendado: { label: "Agendado", color: "bg-blue-100 text-blue-700", icon: <Clock className="w-3 h-3" /> },
   confirmado: { label: "Confirmado", color: "bg-green-100 text-green-700", icon: <CheckCircle className="w-3 h-3" /> },
@@ -752,7 +905,7 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
 
 // ─── Treatment Plan Tab ─────────────────────────────────────────────────────────
 
-function TreatmentPlanTab({ patientId }: { patientId: number }) {
+function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
   const { data, isLoading } = useGetTreatmentPlan(patientId);
   const mutation = useSaveTreatmentPlan();
   const { toast } = useToast();
@@ -766,7 +919,13 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
     enabled: !!patientId,
   });
 
-  const completedSessions = appointments.filter((a: any) => a.status === "concluido").length;
+  const completedAppts = [...appointments]
+    .filter((a: any) => a.status === "concluido")
+    .sort((a: any, b: any) =>
+      new Date(b.date + "T" + (b.startTime || "00:00")).getTime() -
+      new Date(a.date + "T" + (a.startTime || "00:00")).getTime()
+    );
+  const completedSessions = completedAppts.length;
 
   const [form, setForm] = useState({
     objectives: "", techniques: "", frequency: "",
@@ -810,14 +969,22 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
   return (
     <Card className="border-none shadow-md">
       <CardHeader className="border-b border-slate-100 pb-4">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
             <CardTitle className="text-xl">Plano de Tratamento</CardTitle>
             <CardDescription>Objetivos, técnicas e frequência do tratamento</CardDescription>
           </div>
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status]}`}>
-            {form.status === "ativo" ? "Ativo" : form.status === "concluido" ? "Concluído" : "Suspenso"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status]}`}>
+              {form.status === "ativo" ? "Ativo" : form.status === "concluido" ? "Concluído" : "Suspenso"}
+            </span>
+            {patient && (
+              <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
+                onClick={() => printDocument(generatePlanHTML(patient, form, appointments), `Plano de Tratamento — ${patient.name}`)}>
+                <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-6 space-y-5">
@@ -904,6 +1071,31 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
           </div>
         )}
 
+        {/* Últimas sessões concluídas */}
+        {completedAppts.length > 0 && (
+          <div className="pt-2 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+              Últimas sessões concluídas
+            </p>
+            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              {completedAppts.slice(0, 10).map((a: any, i: number) => (
+                <div key={a.id} className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 rounded-lg text-xs border border-slate-100">
+                  <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {completedAppts.length - i}
+                  </span>
+                  <span className="font-medium text-slate-700">{formatDate(a.date)}</span>
+                  {a.startTime && <span className="text-slate-400">{a.startTime}</span>}
+                  <span className="text-slate-500 ml-auto truncate max-w-[120px]">{a.procedure?.name || "Sessão"}</span>
+                </div>
+              ))}
+            </div>
+            {completedAppts.length > 10 && (
+              <p className="text-xs text-slate-400 text-center">+{completedAppts.length - 10} sessão(ões) anteriores</p>
+            )}
+          </div>
+        )}
+
         <div className="pt-3 flex justify-end">
           <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
@@ -919,7 +1111,7 @@ function TreatmentPlanTab({ patientId }: { patientId: number }) {
 
 const emptyEvoForm = { appointmentId: "" as string | number, description: "", patientResponse: "", clinicalNotes: "", complications: "" };
 
-function EvolutionsTab({ patientId }: { patientId: number }) {
+function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
   const { data: evolutions = [], isLoading } = useListEvolutions(patientId);
   const createMutation = useCreateEvolution();
   const updateMutation = useUpdateEvolution();
@@ -1068,14 +1260,22 @@ function EvolutionsTab({ patientId }: { patientId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-lg font-semibold text-slate-800">Evoluções de Sessão</h3>
           <p className="text-sm text-slate-500">{evolutions.length} evolução(ões) registrada(s)</p>
         </div>
-        <Button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyEvoForm); }} className="h-10 px-5 rounded-xl">
-          <Plus className="w-4 h-4 mr-2" /> Nova Evolução
-        </Button>
+        <div className="flex items-center gap-2">
+          {patient && evolutions.length > 0 && (
+            <Button variant="outline" size="sm" className="h-9 px-3 rounded-xl text-xs gap-1.5"
+              onClick={() => printDocument(generateEvolutionsHTML(patient, evolutions, appointments), `Evoluções — ${patient.name}`)}>
+              <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+            </Button>
+          )}
+          <Button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyEvoForm); }} className="h-10 px-5 rounded-xl">
+            <Plus className="w-4 h-4 mr-2" /> Nova Evolução
+          </Button>
+        </div>
       </div>
 
       {showForm && !editingId && (
@@ -1442,8 +1642,9 @@ const DISCHARGE_REASONS = [
   "Outro",
 ];
 
-function DischargeTab({ patientId }: { patientId: number }) {
+function DischargeTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
   const { data, isLoading } = useGetDischarge(patientId);
+  const { user } = useAuth();
   const mutation = useSaveDischarge();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1487,9 +1688,20 @@ function DischargeTab({ patientId }: { patientId: number }) {
           <p className="text-sm text-slate-500">Exigência regulatória COFFITO — finalização formal do tratamento</p>
         </div>
         {data && !editing && (
-          <Button variant="outline" onClick={() => setEditing(true)} className="h-9 px-4 rounded-xl text-sm">
-            Editar Alta
-          </Button>
+          <div className="flex items-center gap-2">
+            {patient && (
+              <Button variant="outline" size="sm" className="h-9 px-3 rounded-xl text-xs gap-1.5"
+                onClick={() => printDocument(
+                  generateDischargeHTML(patient, data as unknown as Record<string, string>, { name: (user as any)?.name }),
+                  `Alta Fisioterapêutica — ${patient.name}`
+                )}>
+                <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setEditing(true)} className="h-9 px-4 rounded-xl text-sm">
+              Editar Alta
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1712,7 +1924,7 @@ interface AtestadoDialogProps {
   open: boolean;
   onClose: () => void;
   patientId: number;
-  patient: { name: string; cpf: string; birthDate?: string | null };
+  patient: PatientBasic;
   onCreated?: () => void;
   appointmentDate?: string;
   defaultType?: AtestadoType;
@@ -1745,7 +1957,7 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
 
   useEffect(() => {
     if (type === "personalizado") { setContent(""); return; }
-    setContent(buildAtestadoTemplate({ type, name: patient.name, cpf: patient.cpf, age, dateStr, daysOff: parseInt(daysOff)||0, purpose }));
+    setContent(buildAtestadoTemplate({ type, name: patient.name, cpf: patient.cpf ?? "", age, dateStr, daysOff: parseInt(daysOff)||0, purpose }));
   }, [type, patient.name, patient.cpf, age, dateStr, daysOff, purpose]);
 
   const handleEmit = async () => {
@@ -1791,7 +2003,7 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
               <ScrollText className="w-5 h-5 text-primary" /> Emitir Atestado
             </DialogTitle>
             <DialogDescription>
-              Paciente: <strong>{patient.name}</strong> &bull; CPF: {patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}
+              Paciente: <strong>{patient.name}</strong> &bull; CPF: {(patient.cpf ?? "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}
               {appointmentDate && <> &bull; Consulta: <strong>{format(parseISO(appointmentDate),"dd/MM/yyyy",{locale:ptBR})}</strong></>}
             </DialogDescription>
           </DialogHeader>
@@ -1891,8 +2103,6 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
     </Dialog>
   );
 }
-
-type PatientBasic = { name: string; cpf: string; birthDate?: string | null };
 
 function AtestadosTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
   const { toast } = useToast();
@@ -2461,8 +2671,8 @@ export default function PatientDetail() {
 
             <TabsContent value="anamnesis"><AnamnesisTab patientId={patientId} /></TabsContent>
             <TabsContent value="evaluations"><EvaluationsTab patientId={patientId} /></TabsContent>
-            <TabsContent value="treatment"><TreatmentPlanTab patientId={patientId} /></TabsContent>
-            <TabsContent value="evolutions"><EvolutionsTab patientId={patientId} /></TabsContent>
+            <TabsContent value="treatment"><TreatmentPlanTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} /></TabsContent>
+            <TabsContent value="evolutions"><EvolutionsTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} /></TabsContent>
             <TabsContent value="history">
               <HistoryTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
             </TabsContent>
@@ -2471,7 +2681,7 @@ export default function PatientDetail() {
               <AtestadosTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf || "", birthDate: patient.birthDate } : { name: "", cpf: "" }} />
             </TabsContent>
             <TabsContent value="discharge">
-              <DischargeTab patientId={patientId} />
+              <DischargeTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} />
             </TabsContent>
           </Tabs>
         </div>
