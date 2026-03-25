@@ -71,7 +71,7 @@ router.post("/", requirePermission("patients.create"), async (req, res) => {
 
 router.get("/:id", requirePermission("patients.read"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [patient] = await db
       .select()
       .from(patientsTable)
@@ -117,7 +117,7 @@ router.get("/:id", requirePermission("patients.read"), async (req, res) => {
 
 router.put("/:id", requirePermission("patients.update"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
 
     const [patient] = await db
@@ -139,7 +139,7 @@ router.put("/:id", requirePermission("patients.update"), async (req, res) => {
 
 router.delete("/:id", requirePermission("patients.delete"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(patientsTable).where(eq(patientsTable.id, id));
     res.status(204).send();
   } catch (err) {

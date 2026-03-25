@@ -54,7 +54,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
 
 router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, category, durationMinutes, price, cost, description, maxCapacity } = req.body;
     const [procedure] = await db
       .update(proceduresTable)
@@ -83,7 +83,7 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
 
 router.delete("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(proceduresTable).where(eq(proceduresTable.id, id));
     res.status(204).send();
   } catch (err) {

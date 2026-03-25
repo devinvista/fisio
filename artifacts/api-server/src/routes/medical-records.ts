@@ -467,8 +467,10 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
     }
 
     try {
-      const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
-      await objectFile.delete();
+      if (existing.objectPath) {
+        const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
+        await objectFile.delete();
+      }
     } catch {
       // If GCS delete fails, still remove from DB
     }

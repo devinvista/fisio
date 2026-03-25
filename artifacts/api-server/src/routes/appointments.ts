@@ -334,7 +334,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 
 router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const details = await getWithDetails(id);
     if (!details) {
       res.status(404).json({ error: "Not Found" });
@@ -349,7 +349,7 @@ router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
 
 router.put("/:id", requirePermission("appointments.update"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { patientId, procedureId, date, startTime, status, notes } = req.body;
 
     let endTime: string | undefined;
@@ -416,7 +416,7 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
 
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(appointmentsTable).where(eq(appointmentsTable.id, id));
     res.status(204).send();
   } catch (err) {
@@ -497,7 +497,7 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
 
 router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
 
     const details = await getWithDetails(id);
     if (!details) {

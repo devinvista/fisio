@@ -106,7 +106,7 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
 
 router.put("/:id", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, email, roles, password } = req.body;
 
     const updateData: Record<string, unknown> = {};
@@ -144,7 +144,7 @@ router.put("/:id", requirePermission("users.manage"), async (req: AuthRequest, r
 
 router.delete("/:id", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
 
     if (id === req.userId) {
       res.status(400).json({ error: "Bad Request", message: "Você não pode excluir sua própria conta" });

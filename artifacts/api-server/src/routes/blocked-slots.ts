@@ -56,7 +56,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
     res.status(204).send();
   } catch (err) {
