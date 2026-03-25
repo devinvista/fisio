@@ -1,16 +1,20 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell,
 } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Users } from "lucide-react";
 
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
+
+const CATEGORY_COLORS = ["#3b82f6", "#22c55e", "#f97316", "#a855f7", "#ec4899", "#06b6d4", "#eab308", "#ef4444"];
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -39,7 +43,15 @@ interface ScheduleOccupation {
   occupationRate: number;
   canceledCount: number;
   noShowCount: number;
+  noShowRate: number;
+  activePatients: number;
   byDayOfWeek: { dayOfWeek: string; count: number }[];
+}
+
+interface CategoryRevenue {
+  category: string;
+  revenue: number;
+  sessions: number;
 }
 
 export default function Relatorios() {
@@ -64,6 +76,23 @@ export default function Relatorios() {
     queryKey: ["reports-schedule-occupation", selectedMonth, selectedYear],
     queryFn: () => fetch(`/api/reports/schedule-occupation?month=${selectedMonth}&year=${selectedYear}`).then(r => r.json()),
   });
+
+  // Group procedure revenue by category
+  const categoryRevenue = useMemo<CategoryRevenue[]>(() => {
+    const map = new Map<string, CategoryRevenue>();
+    for (const p of procedureRevenue.filter(p => Number(p.totalSessions) > 0)) {
+      const cat = p.category || "Outros";
+      const existing = map.get(cat) ?? { category: cat, revenue: 0, sessions: 0 };
+      existing.revenue += Number(p.totalRevenue);
+      existing.sessions += Number(p.totalSessions);
+      map.set(cat, existing);
+    }
+    return [...map.values()].sort((a, b) => b.revenue - a.revenue);
+  }, [procedureRevenue]);
+
+  const totalCategoryRevenue = categoryRevenue.reduce((s, c) => s + c.revenue, 0);
+
+  const monthLabel = MONTH_NAMES[parseInt(selectedMonth) - 1];
 
   return (
     <AppLayout title="Relatórios">
@@ -116,26 +145,111 @@ export default function Relatorios() {
           </ResponsiveContainer>
         </div>
 
+        {/* Faturamento por Categoria */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-1">Faturamento por Categoria — {monthLabel}/{selectedYear}</h2>
+          <p className="text-sm text-muted-foreground mb-5">Distribuição da receita por tipo de procedimento</p>
+
+          {categoryRevenue.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Sem dados para o período selecionado.</p>
+          ) : (
+            <div className="flex flex-col lg:flex-row items-center gap-8">
+              {/* Donut chart */}
+              <div className="shrink-0">
+                <ResponsiveContainer width={220} height={220}>
+                  <PieChart>
+                    <Pie
+                      data={categoryRevenue}
+                      dataKey="revenue"
+                      nameKey="category"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                    >
+                      {categoryRevenue.map((_, i) => (
+                        <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Category breakdown table */}
+              <div className="flex-1 min-w-0 w-full">
+                <div className="space-y-3">
+                  {categoryRevenue.map((cat, i) => {
+                    const pct = totalCategoryRevenue > 0 ? (cat.revenue / totalCategoryRevenue) * 100 : 0;
+                    const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+                    return (
+                      <div key={cat.category}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <span className="text-sm font-medium capitalize">{cat.category}</span>
+                            <span className="text-xs text-muted-foreground">{cat.sessions} sessão(ões)</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-medium text-muted-foreground">{pct.toFixed(1)}%</span>
+                            <span className="text-sm font-semibold">{formatCurrency(cat.revenue)}</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5">
+                          <div
+                            className="h-1.5 rounded-full transition-all"
+                            style={{ width: `${pct}%`, backgroundColor: color }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Total row */}
+                <div className="mt-4 pt-3 border-t border-border flex justify-between items-center">
+                  <span className="text-sm font-semibold text-muted-foreground">Total do período</span>
+                  <span className="text-base font-bold text-primary">{formatCurrency(totalCategoryRevenue)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Schedule Occupation */}
         {scheduleOccupation && (
           <div className="bg-card border border-border rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4">Ocupação da Agenda — {MONTH_NAMES[parseInt(selectedMonth) - 1]}/{selectedYear}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Ocupação da Agenda — {monthLabel}/{selectedYear}</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
               <div className="text-center">
                 <div className="text-3xl font-bold text-primary">{scheduleOccupation.occupationRate.toFixed(0)}%</div>
-                <div className="text-sm text-muted-foreground mt-1">Taxa de Ocupação</div>
+                <div className="text-xs text-muted-foreground mt-1">Taxa de Ocupação</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold">{scheduleOccupation.totalSlots}</div>
-                <div className="text-sm text-muted-foreground mt-1">Total Agendamentos</div>
+                <div className="text-xs text-muted-foreground mt-1">Total Agendamentos</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-destructive">{scheduleOccupation.canceledCount}</div>
-                <div className="text-sm text-muted-foreground mt-1">Cancelamentos</div>
+                <div className="text-3xl font-bold text-orange-500">
+                  {scheduleOccupation.noShowRate?.toFixed(0) ?? "0"}%
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">Taxa de Faltas</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-yellow-600">{scheduleOccupation.noShowCount}</div>
-                <div className="text-sm text-muted-foreground mt-1">Faltas</div>
+                <div className="text-xs text-muted-foreground mt-1">Faltas</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-destructive">{scheduleOccupation.canceledCount}</div>
+                <div className="text-xs text-muted-foreground mt-1">Cancelamentos</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-emerald-600 flex items-center justify-center gap-1">
+                  <Users className="w-6 h-6" />
+                  {scheduleOccupation.activePatients ?? 0}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">Pacientes Ativos</div>
               </div>
             </div>
             <div>
@@ -155,7 +269,7 @@ export default function Relatorios() {
 
         {/* Procedure Revenue Table */}
         <div className="bg-card border border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Receita por Procedimento — {MONTH_NAMES[parseInt(selectedMonth) - 1]}/{selectedYear}</h2>
+          <h2 className="text-lg font-semibold mb-4">Receita por Procedimento — {monthLabel}/{selectedYear}</h2>
           {procedureRevenue.length === 0 ? (
             <p className="text-muted-foreground text-sm">Sem dados para o período selecionado.</p>
           ) : (

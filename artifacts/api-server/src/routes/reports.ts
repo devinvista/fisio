@@ -131,12 +131,22 @@ router.get("/schedule-occupation", requirePermission("reports.read"), async (req
       byDayOfWeek[dayNames[dayOfWeek]]++;
     }
 
+    const activePatients = new Set(
+      appointments
+        .filter((a) => !["cancelado"].includes(a.status))
+        .map((a) => a.patientId)
+    ).size;
+
+    const noShowRate = totalSlots > 0 ? (noShowCount / totalSlots) * 100 : 0;
+
     res.json({
       totalSlots,
       occupiedSlots,
       occupationRate: totalSlots > 0 ? (occupiedSlots / totalSlots) * 100 : 0,
       canceledCount,
       noShowCount,
+      noShowRate,
+      activePatients,
       byDayOfWeek: dayNames.map((d) => ({ dayOfWeek: d, count: byDayOfWeek[d] })),
     });
   } catch (err) {

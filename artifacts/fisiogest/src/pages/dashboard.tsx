@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useGetDashboard } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity } from "lucide-react";
+import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -32,9 +32,11 @@ export default function Dashboard() {
   };
   const statusLabel = (s: string) => STATUS_LABELS[s] ?? s;
 
+  const d = data as any;
+
   return (
     <AppLayout title="Dashboard Geral">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
         <Card className="border-none shadow-md bg-gradient-to-br from-primary to-primary/80 text-white hover:-translate-y-1 transition-transform duration-300">
           <CardContent className="p-6">
             <div className="flex justify-between items-start">
@@ -100,6 +102,24 @@ export default function Dashboard() {
             </div>
             <div className="mt-4 w-full bg-slate-100 rounded-full h-2">
               <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(data?.occupationRate || 0, 100)}%` }}></div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-md bg-white hover:-translate-y-1 transition-transform duration-300">
+          <CardContent className="p-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-muted-foreground font-medium mb-1">Taxa de Faltas</p>
+                <h3 className="font-display text-3xl font-bold text-foreground">{(d?.noShowRate || 0).toFixed(1)}%</h3>
+              </div>
+              <div className="p-3 bg-orange-50 text-orange-500 rounded-xl">
+                <UserX className="w-6 h-6" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-center text-sm text-muted-foreground gap-1">
+              <AlertCircle className="w-3.5 h-3.5 text-orange-400" />
+              <span>{d?.noShowCount || 0} falta{(d?.noShowCount || 0) !== 1 ? "s" : ""} no mês</span>
             </div>
           </CardContent>
         </Card>

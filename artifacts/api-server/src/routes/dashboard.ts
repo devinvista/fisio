@@ -96,8 +96,17 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
         )
       );
 
+    const noShowMonthAppts = await db.select({ count: sql<number>`count(*)` })
+      .from(appointmentsTable)
+      .where(and(
+        eq(appointmentsTable.status, "faltou"),
+        gte(appointmentsTable.date, startDate),
+        lte(appointmentsTable.date, endDate)
+      ));
+
     const totalMonth = Number(totalMonthAppts[0]?.count ?? 0);
     const completedMonth = Number(completedMonthAppts[0]?.count ?? 0);
+    const noShowMonth = Number(noShowMonthAppts[0]?.count ?? 0);
 
     res.json({
       todayAppointments: todayAppts.map(({ appointment, patient, procedure }) => ({ ...appointment, patient, procedure })),
@@ -105,7 +114,9 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       monthlyRevenue: Number(revenueResult[0]?.total ?? 0),
       totalPatients: Number(totalPatientsResult[0]?.count ?? 0),
       todayTotal: todayAppts.length,
-      occupationRate: totalMonth > 0 ? (completedMonth / totalMonth) * 100 : 0
+      occupationRate: totalMonth > 0 ? (completedMonth / totalMonth) * 100 : 0,
+      noShowCount: noShowMonth,
+      noShowRate: totalMonth > 0 ? (noShowMonth / totalMonth) * 100 : 0,
     });
   } catch (err) {
     console.error(err);
