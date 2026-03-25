@@ -85,3 +85,35 @@ export const dischargeSummariesTable = pgTable("discharge_summaries", {
 export const insertDischargeSummarySchema = createInsertSchema(dischargeSummariesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDischargeSummary = z.infer<typeof insertDischargeSummarySchema>;
 export type DischargeSummary = typeof dischargeSummariesTable.$inferSelect;
+
+export const examAttachmentsTable = pgTable("exam_attachments", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id, { onDelete: "cascade" }),
+  examTitle: text("exam_title"),
+  originalFilename: text("original_filename"),
+  contentType: text("content_type"),
+  fileSize: integer("file_size"),
+  objectPath: text("object_path"),
+  description: text("description"),
+  resultText: text("result_text"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertExamAttachmentSchema = createInsertSchema(examAttachmentsTable).omit({ id: true, uploadedAt: true });
+export type InsertExamAttachment = z.infer<typeof insertExamAttachmentSchema>;
+export type ExamAttachment = typeof examAttachmentsTable.$inferSelect;
+
+export const atestadosTable = pgTable("atestados", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  professionalName: text("professional_name").notNull(),
+  professionalSpecialty: text("professional_specialty"),
+  professionalCouncil: text("professional_council"),
+  content: text("content").notNull(),
+  cid: text("cid"),
+  daysOff: integer("days_off"),
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+});
+
+export type Atestado = typeof atestadosTable.$inferSelect;

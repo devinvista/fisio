@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -11,6 +11,10 @@ export const proceduresTable = pgTable("procedures", {
   cost: numeric("cost", { precision: 10, scale: 2 }).default("0"),
   description: text("description"),
   maxCapacity: integer("max_capacity").notNull().default(1),
+  onlineBookingEnabled: boolean("online_booking_enabled").notNull().default(false),
+  billingType: text("billing_type").notNull().default("por_sessao"),
+  monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }),
+  billingDay: integer("billing_day"),
   clinicId: integer("clinic_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
