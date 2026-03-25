@@ -12,6 +12,7 @@ import usersRouter from "./users.js";
 import storageRouter from "./storage.js";
 import blockedSlotsRouter from "./blocked-slots.js";
 import publicRouter from "./public.js";
+import subscriptionsRouter from "./subscriptions.js";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.use("/procedures", proceduresRouter);
 router.use("/appointments", appointmentsRouter);
 router.use("/blocked-slots", blockedSlotsRouter);
 router.use("/financial", financialRouter);
+router.use("/subscriptions", subscriptionsRouter);
 router.use("/reports", reportsRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/storage", storageRouter);

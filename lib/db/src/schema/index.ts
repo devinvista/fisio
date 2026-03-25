@@ -6,3 +6,5 @@ export * from "./medical-records";
 export * from "./financial";
 export * from "./rbac";
 export * from "./blocked-slots";
+export * from "./subscriptions";
+export * from "./session-credits";

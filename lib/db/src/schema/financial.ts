@@ -17,6 +17,10 @@ export const financialRecordsTable = pgTable("financial_records", {
   clinicId: integer("clinic_id"),
   paymentDate: date("payment_date"),
   paymentMethod: text("payment_method"),
+  transactionType: text("transaction_type"),
+  status: text("status").notNull().default("pendente"),
+  dueDate: date("due_date"),
+  subscriptionId: integer("subscription_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

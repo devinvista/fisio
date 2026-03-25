@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { financialRecordsTable, appointmentsTable, proceduresTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
+import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
+import { eq, and, sql, gte, lte, lt, gt } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -196,6 +196,120 @@ router.post("/records", requirePermission("financial.write"), async (req, res) =
     }
 
     res.status(201).json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/patients/:patientId/history", requirePermission("financial.read"), async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId as string);
+
+    const records = await db
+      .select({
+        id: financialRecordsTable.id,
+        type: financialRecordsTable.type,
+        amount: financialRecordsTable.amount,
+        description: financialRecordsTable.description,
+        category: financialRecordsTable.category,
+        transactionType: financialRecordsTable.transactionType,
+        status: financialRecordsTable.status,
+        dueDate: financialRecordsTable.dueDate,
+        paymentDate: financialRecordsTable.paymentDate,
+        paymentMethod: financialRecordsTable.paymentMethod,
+        appointmentId: financialRecordsTable.appointmentId,
+        procedureId: financialRecordsTable.procedureId,
+        subscriptionId: financialRecordsTable.subscriptionId,
+        procedureName: proceduresTable.name,
+        createdAt: financialRecordsTable.createdAt,
+      })
+      .from(financialRecordsTable)
+      .leftJoin(proceduresTable, eq(financialRecordsTable.procedureId, proceduresTable.id))
+      .where(eq(financialRecordsTable.patientId, patientId))
+      .orderBy(financialRecordsTable.createdAt);
+
+    res.json(records);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/patients/:patientId/credits", requirePermission("financial.read"), async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId as string);
+
+    const credits = await db
+      .select({
+        credit: sessionCreditsTable,
+        procedure: proceduresTable,
+      })
+      .from(sessionCreditsTable)
+      .leftJoin(proceduresTable, eq(sessionCreditsTable.procedureId, proceduresTable.id))
+      .where(eq(sessionCreditsTable.patientId, patientId));
+
+    const withBalance = credits.map(({ credit, procedure }) => ({
+      ...credit,
+      procedure,
+      availableCount: credit.quantity - credit.usedQuantity,
+    }));
+
+    const totalAvailable = withBalance.reduce((s, c) => s + c.availableCount, 0);
+    res.json({ credits: withBalance, totalAvailable });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/patients/:patientId/subscriptions", requirePermission("financial.read"), async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId as string);
+
+    const subs = await db
+      .select({
+        subscription: patientSubscriptionsTable,
+        procedure: proceduresTable,
+      })
+      .from(patientSubscriptionsTable)
+      .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id))
+      .where(eq(patientSubscriptionsTable.patientId, patientId))
+      .orderBy(patientSubscriptionsTable.createdAt);
+
+    res.json(subs.map(({ subscription, procedure }) => ({ ...subscription, procedure })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/records/:id/status", requirePermission("financial.write"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { status, paymentDate, paymentMethod } = req.body;
+
+    if (!status) {
+      res.status(400).json({ error: "Bad Request", message: "status é obrigatório" });
+      return;
+    }
+
+    const [record] = await db
+      .update(financialRecordsTable)
+      .set({
+        status,
+        paymentDate: paymentDate || undefined,
+        paymentMethod: paymentMethod || undefined,
+      })
+      .where(eq(financialRecordsTable.id, id))
+      .returning();
+
+    if (!record) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    res.json(record);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

@@ -1440,20 +1440,257 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
 
 const emptyPayForm = { type: "receita" as "receita" | "despesa", amount: "", description: "", category: "" };
 
+function txTypeLabel(transactionType: string | null | undefined): { label: string; color: string } {
+  switch (transactionType) {
+    case "cobranca_sessao": return { label: "Cobrança / Sessão", color: "border-blue-200 text-blue-700" };
+    case "cobranca_mensal": return { label: "Mensalidade", color: "border-violet-200 text-violet-700" };
+    case "uso_credito": return { label: "Uso de Crédito", color: "border-amber-200 text-amber-700" };
+    case "credito_sessao": return { label: "Crédito Gerado", color: "border-teal-200 text-teal-700" };
+    default: return { label: "Transação", color: "border-slate-200 text-slate-600" };
+  }
+}
+
+function statusLabel(status: string | null | undefined): { label: string; dot: string } {
+  switch (status) {
+    case "pago": return { label: "Pago", dot: "bg-green-500" };
+    case "cancelado": return { label: "Cancelado", dot: "bg-red-400" };
+    default: return { label: "Pendente", dot: "bg-amber-400" };
+  }
+}
+
+function subscriptionStatusStyle(status: string) {
+  switch (status) {
+    case "ativa": return "bg-green-50 text-green-700 border-green-200";
+    case "pausada": return "bg-amber-50 text-amber-700 border-amber-200";
+    default: return "bg-red-50 text-red-600 border-red-200";
+  }
+}
+
+function SubscriptionsSection({ patientId }: { patientId: number }) {
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: subscriptions = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/financial/patients/${patientId}/subscriptions`],
+    queryFn: () => fetch(`/api/financial/patients/${patientId}/subscriptions`, { headers: authHeader() }).then(r => r.json()),
+    enabled: !!patientId,
+  });
+
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ procedureId: "", startDate: "", billingDay: "", monthlyAmount: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+
+  const { data: procedures = [] } = useQuery<any[]>({
+    queryKey: ["procedures", "all"],
+    queryFn: () => fetch("/api/procedures", { headers: authHeader() }).then(r => r.json()),
+  });
+
+  const handleCreate = async () => {
+    if (!form.procedureId || !form.startDate || !form.billingDay || !form.monthlyAmount) {
+      toast({ title: "Preencha todos os campos obrigatórios", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ ...form, patientId, procedureId: parseInt(form.procedureId), billingDay: parseInt(form.billingDay), monthlyAmount: Number(form.monthlyAmount) }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Assinatura criada com sucesso" });
+      queryClient.invalidateQueries({ queryKey: [`/api/financial/patients/${patientId}/subscriptions`] });
+      setForm({ procedureId: "", startDate: "", billingDay: "", monthlyAmount: "", notes: "" });
+      setShowForm(false);
+    } catch {
+      toast({ title: "Erro ao criar assinatura", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatusChange = async (id: number, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/subscriptions/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Status atualizado" });
+      queryClient.invalidateQueries({ queryKey: [`/api/financial/patients/${patientId}/subscriptions`] });
+    } catch {
+      toast({ title: "Erro ao atualizar status", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-base font-semibold text-slate-800">Assinaturas / Mensalidades</h4>
+          <p className="text-xs text-slate-500">{subscriptions.length} assinatura(s) vinculada(s)</p>
+        </div>
+        <Button size="sm" className="h-8 rounded-xl" onClick={() => setShowForm(!showForm)}>
+          <Plus className="w-3.5 h-3.5 mr-1" />{showForm ? "Cancelar" : "Nova Assinatura"}
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="border-2 border-primary/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Procedimento *</Label>
+                <Select value={form.procedureId} onValueChange={v => setForm(f => ({ ...f, procedureId: v }))}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {procedures.filter((p: any) => p.billingType === "mensal").map((p: any) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Início *</Label>
+                <Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Valor Mensal (R$) *</Label>
+                <Input type="number" step="0.01" value={form.monthlyAmount} onChange={e => setForm(f => ({ ...f, monthlyAmount: e.target.value }))} placeholder="Ex: 350,00" className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Dia de Cobrança *</Label>
+                <Input type="number" min="1" max="31" value={form.billingDay} onChange={e => setForm(f => ({ ...f, billingDay: e.target.value }))} placeholder="Ex: 5" className="text-sm" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Observações</Label>
+              <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Opcional..." className="text-sm" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button size="sm" className="rounded-xl" disabled={saving} onClick={handleCreate}>
+                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />} Criar Assinatura
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="p-6 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" /></div>
+      ) : subscriptions.length === 0 ? (
+        <Card className="border-dashed border-2 border-slate-200">
+          <CardContent className="p-8 text-center text-slate-400 text-sm">Nenhuma assinatura ativa para este paciente</CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {subscriptions.map((sub: any) => (
+            <Card key={sub.id} className="border border-slate-200">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-slate-800 text-sm">{sub.procedure?.name ?? "Procedimento"}</p>
+                      <Badge variant="outline" className={`text-[10px] border ${subscriptionStatusStyle(sub.status)}`}>
+                        {sub.status === "ativa" ? "Ativa" : sub.status === "pausada" ? "Pausada" : "Cancelada"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Cobrança todo dia <strong>{sub.billingDay}</strong> · Valor: <strong>{formatCurrency(sub.monthlyAmount)}</strong>
+                      {sub.startDate && ` · Desde ${format(parseISO(sub.startDate), "dd/MM/yyyy")}`}
+                    </p>
+                    {sub.notes && <p className="text-xs text-slate-400 mt-0.5 italic">{sub.notes}</p>}
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    {sub.status === "ativa" && (
+                      <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => handleStatusChange(sub.id, "pausada")}>
+                        Pausar
+                      </Button>
+                    )}
+                    {sub.status === "pausada" && (
+                      <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => handleStatusChange(sub.id, "ativa")}>
+                        Reativar
+                      </Button>
+                    )}
+                    {sub.status !== "cancelada" && (
+                      <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px] text-red-500 border-red-200 hover:bg-red-50" onClick={() => handleStatusChange(sub.id, "cancelada")}>
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreditsSection({ patientId }: { patientId: number }) {
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` });
+  const { data, isLoading } = useQuery<{ credits: any[]; totalAvailable: number }>({
+    queryKey: [`/api/financial/patients/${patientId}/credits`],
+    queryFn: () => fetch(`/api/financial/patients/${patientId}/credits`, { headers: authHeader() }).then(r => r.json()),
+    enabled: !!patientId,
+  });
+
+  const credits = data?.credits ?? [];
+  const totalAvailable = data?.totalAvailable ?? 0;
+  const creditsWithBalance = credits.filter((c: any) => c.availableCount > 0);
+
+  if (isLoading) return <div className="p-4 text-center"><Loader2 className="w-4 h-4 animate-spin mx-auto text-primary" /></div>;
+  if (credits.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h4 className="text-base font-semibold text-slate-800">Créditos de Sessão</h4>
+        <Badge className={`${totalAvailable > 0 ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-500"} border-none text-xs font-semibold`}>
+          {totalAvailable} crédito{totalAvailable !== 1 ? "s" : ""} disponível{totalAvailable !== 1 ? "eis" : ""}
+        </Badge>
+      </div>
+      {creditsWithBalance.length === 0 ? (
+        <p className="text-xs text-slate-400">Nenhum crédito disponível no momento.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {creditsWithBalance.map((credit: any) => (
+            <div key={credit.id} className="flex items-center justify-between p-3 rounded-xl bg-teal-50 border border-teal-100">
+              <div>
+                <p className="text-sm font-semibold text-teal-800">{credit.procedure?.name ?? "Procedimento"}</p>
+                <p className="text-xs text-teal-600">{credit.notes}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-teal-700">{credit.availableCount}</p>
+                <p className="text-[10px] text-teal-500">crédito{credit.availableCount !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FinancialTab({ patientId }: { patientId: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` });
+
   const { data: records = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/financial`],
-    queryFn: () => fetch(`/api/patients/${patientId}/financial`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` }
-    }).then(r => r.json()),
+    queryFn: () => fetch(`/api/patients/${patientId}/financial`, { headers: authHeader() }).then(r => r.json()),
     enabled: !!patientId,
   });
 
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState(emptyPayForm);
   const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<"history" | "subscriptions">("history");
 
   const handleRegisterPayment = async () => {
     if (!payForm.amount || !payForm.description) {
@@ -1464,16 +1701,12 @@ function FinancialTab({ patientId }: { patientId: number }) {
     try {
       const res = await fetch("/api/financial/records", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}`,
-        },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({ ...payForm, amount: Number(payForm.amount), patientId }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "Registro salvo", description: "Transação registrada com sucesso." });
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/financial`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}`] });
       setPayForm(emptyPayForm);
       setShowPayForm(false);
     } catch {
@@ -1485,146 +1718,163 @@ function FinancialTab({ patientId }: { patientId: number }) {
 
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
-  const totalReceitas = records.filter((r: any) => r.type === "receita").reduce((s: number, r: any) => s + Number(r.amount), 0);
+  const paidRecords = records.filter((r: any) => r.type === "receita" && r.transactionType !== "uso_credito" && r.transactionType !== "credito_sessao");
+  const totalReceitas = paidRecords.reduce((s: number, r: any) => s + Number(r.amount), 0);
   const totalDespesas = records.filter((r: any) => r.type === "despesa").reduce((s: number, r: any) => s + Number(r.amount), 0);
+  const pendingCount = records.filter((r: any) => r.status === "pendente" && r.type === "receita").length;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h3 className="text-lg font-semibold text-slate-800">Histórico Financeiro</h3>
-          <p className="text-sm text-slate-500">{records.length} transação(ões) registrada(s)</p>
+          <h3 className="text-lg font-semibold text-slate-800">Financeiro do Paciente</h3>
+          <p className="text-sm text-slate-500">{records.length} transação(ões) · {pendingCount} pendente(s)</p>
         </div>
-        <Button
-          onClick={() => { setShowPayForm(!showPayForm); setPayForm(emptyPayForm); }}
-          className="h-10 px-4 rounded-xl text-sm"
-          variant={showPayForm ? "outline" : "default"}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          {showPayForm ? "Cancelar" : "Registrar Transação"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs">
+            <button
+              onClick={() => setActiveSection("history")}
+              className={`px-3 h-8 transition-colors ${activeSection === "history" ? "bg-primary text-white" : "hover:bg-slate-50 text-slate-600"}`}
+            >
+              Histórico
+            </button>
+            <button
+              onClick={() => setActiveSection("subscriptions")}
+              className={`px-3 h-8 transition-colors border-l border-slate-200 ${activeSection === "subscriptions" ? "bg-primary text-white" : "hover:bg-slate-50 text-slate-600"}`}
+            >
+              Assinaturas
+            </button>
+          </div>
+          {activeSection === "history" && (
+            <Button
+              onClick={() => { setShowPayForm(!showPayForm); setPayForm(emptyPayForm); }}
+              className="h-8 px-3 rounded-xl text-xs"
+              variant={showPayForm ? "outline" : "default"}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              {showPayForm ? "Cancelar" : "Registrar"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {showPayForm && (
-        <Card className="border-2 border-primary/20 shadow-md">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-primary" /> Nova Transação Financeira
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Tipo</Label>
-                <Select value={payForm.type} onValueChange={(v: "receita" | "despesa") => setPayForm({ ...payForm, type: v })}>
-                  <SelectTrigger className="bg-slate-50 border-slate-200">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="receita">Receita (pagamento recebido)</SelectItem>
-                    <SelectItem value="despesa">Despesa</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Valor (R$) <span className="text-red-500">*</span></Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="bg-slate-50 border-slate-200 focus:bg-white"
-                  value={payForm.amount}
-                  onChange={e => setPayForm({ ...payForm, amount: e.target.value })}
-                  placeholder="Ex: 150.00"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">Descrição <span className="text-red-500">*</span></Label>
-              <Input
-                className="bg-slate-50 border-slate-200 focus:bg-white"
-                value={payForm.description}
-                onChange={e => setPayForm({ ...payForm, description: e.target.value })}
-                placeholder="Ex: Pagamento de sessão, Avaliação inicial…"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">Categoria <span className="text-slate-400 font-normal">(opcional)</span></Label>
-              <Input
-                className="bg-slate-50 border-slate-200 focus:bg-white"
-                value={payForm.category}
-                onChange={e => setPayForm({ ...payForm, category: e.target.value })}
-                placeholder="Ex: Fisioterapia, Pilates…"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-1">
-              <Button variant="outline" onClick={() => setShowPayForm(false)} className="rounded-xl">Cancelar</Button>
-              <Button onClick={handleRegisterPayment} disabled={saving} className="rounded-xl">
-                {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                Salvar Transação
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="border-none bg-gradient-to-br from-green-50 to-emerald-50 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Total Recebido</p>
-            <p className="text-xl font-bold text-green-700">{formatCurrency(totalReceitas)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-none bg-gradient-to-br from-red-50 to-rose-50 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Total Despesas</p>
-            <p className="text-xl font-bold text-red-700">{formatCurrency(totalDespesas)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-none bg-gradient-to-br from-slate-50 to-slate-100 shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold text-slate-600 uppercase mb-1">Saldo</p>
-            <p className={`text-xl font-bold ${totalReceitas - totalDespesas >= 0 ? "text-slate-800" : "text-red-600"}`}>
-              {formatCurrency(totalReceitas - totalDespesas)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {records.length === 0 ? (
-        <Card className="border-dashed border-2 border-slate-200">
-          <CardContent className="p-12 text-center text-slate-400">
-            <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Nenhuma transação registrada</p>
-          </CardContent>
-        </Card>
+      {activeSection === "subscriptions" ? (
+        <div className="space-y-6">
+          <SubscriptionsSection patientId={patientId} />
+          <CreditsSection patientId={patientId} />
+        </div>
       ) : (
-        <div className="space-y-3">
-          {records.map((record: any) => (
-            <Card key={record.id} className="border border-slate-200 shadow-sm">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${record.type === "receita" ? "bg-green-100" : "bg-red-100"}`}>
-                  <DollarSign className={`w-5 h-5 ${record.type === "receita" ? "text-green-600" : "text-red-600"}`} />
+        <div className="space-y-4">
+          {showPayForm && (
+            <Card className="border-2 border-primary/20 shadow-md">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-primary" /> Nova Transação Manual
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Tipo</Label>
+                    <Select value={payForm.type} onValueChange={(v: "receita" | "despesa") => setPayForm({ ...payForm, type: v })}>
+                      <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="receita">Receita (pagamento recebido)</SelectItem>
+                        <SelectItem value="despesa">Despesa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Valor (R$) <span className="text-red-500">*</span></Label>
+                    <Input type="number" min="0" step="0.01" className="bg-slate-50 border-slate-200 focus:bg-white" value={payForm.amount} onChange={e => setPayForm({ ...payForm, amount: e.target.value })} placeholder="Ex: 150.00" />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800 truncate">{record.description}</p>
-                  <p className="text-xs text-slate-500">
-                    {record.procedure?.name && `${record.procedure.name} • `}
-                    {formatDateTime(record.createdAt)}
-                    {record.category && ` • ${record.category}`}
-                  </p>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Descrição <span className="text-red-500">*</span></Label>
+                  <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={payForm.description} onChange={e => setPayForm({ ...payForm, description: e.target.value })} placeholder="Ex: Pagamento de sessão, Avaliação inicial…" />
                 </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-base font-bold ${record.type === "receita" ? "text-green-600" : "text-red-600"}`}>
-                    {record.type === "receita" ? "+" : "-"}{formatCurrency(record.amount)}
-                  </p>
-                  <Badge variant="outline" className={`text-[10px] mt-0.5 ${record.type === "receita" ? "border-green-200 text-green-700" : "border-red-200 text-red-700"}`}>
-                    {record.type === "receita" ? "Receita" : "Despesa"}
-                  </Badge>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Categoria <span className="text-slate-400 font-normal">(opcional)</span></Label>
+                  <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={payForm.category} onChange={e => setPayForm({ ...payForm, category: e.target.value })} placeholder="Ex: Fisioterapia, Pilates…" />
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button variant="outline" onClick={() => setShowPayForm(false)} className="rounded-xl">Cancelar</Button>
+                  <Button onClick={handleRegisterPayment} disabled={saving} className="rounded-xl">
+                    {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Salvar Transação
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="border-none bg-gradient-to-br from-green-50 to-emerald-50 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Total Recebido</p>
+                <p className="text-xl font-bold text-green-700">{formatCurrency(totalReceitas)}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-none bg-gradient-to-br from-red-50 to-rose-50 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Total Despesas</p>
+                <p className="text-xl font-bold text-red-700">{formatCurrency(totalDespesas)}</p>
+              </CardContent>
+            </Card>
+            <Card className={`border-none shadow-sm ${pendingCount > 0 ? "bg-gradient-to-br from-amber-50 to-yellow-50" : "bg-gradient-to-br from-slate-50 to-slate-100"}`}>
+              <CardContent className="p-4">
+                <p className={`text-[10px] font-bold uppercase mb-1 ${pendingCount > 0 ? "text-amber-600" : "text-slate-600"}`}>Pendentes</p>
+                <p className={`text-xl font-bold ${pendingCount > 0 ? "text-amber-700" : "text-slate-800"}`}>{pendingCount}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {records.length === 0 ? (
+            <Card className="border-dashed border-2 border-slate-200">
+              <CardContent className="p-12 text-center text-slate-400">
+                <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="font-medium">Nenhuma transação registrada</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {records.map((record: any) => {
+                const txInfo = txTypeLabel(record.transactionType);
+                const stInfo = statusLabel(record.status);
+                const isCreditUse = record.transactionType === "uso_credito" || record.transactionType === "credito_sessao";
+                return (
+                  <Card key={record.id} className={`border shadow-sm ${isCreditUse ? "border-teal-100 bg-teal-50/30" : "border-slate-200"}`}>
+                    <CardContent className="p-3.5 flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isCreditUse ? "bg-teal-100" : record.type === "receita" ? "bg-green-100" : "bg-red-100"}`}>
+                        <DollarSign className={`w-4 h-4 ${isCreditUse ? "text-teal-600" : record.type === "receita" ? "text-green-600" : "text-red-600"}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{record.description}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {record.transactionType && (
+                            <Badge variant="outline" className={`text-[9px] border ${txInfo.color} py-0`}>{txInfo.label}</Badge>
+                          )}
+                          <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                            <span className={`w-1.5 h-1.5 rounded-full ${stInfo.dot}`} />{stInfo.label}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{formatDateTime(record.createdAt)}</span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-sm font-bold ${isCreditUse ? "text-teal-600" : record.type === "receita" ? "text-green-600" : "text-red-600"}`}>
+                          {isCreditUse ? "—" : record.type === "receita" ? "+" : "-"}{isCreditUse ? "Crédito" : formatCurrency(record.amount)}
+                        </p>
+                        {record.dueDate && (
+                          <p className="text-[10px] text-slate-400">
+                            Venc. {format(parseISO(record.dueDate), "dd/MM")}
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

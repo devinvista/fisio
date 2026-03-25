@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql, ne } from "drizzle-orm";
+import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
@@ -41,6 +41,106 @@ async function getWithDetails(id: number) {
   if (!result[0]) return null;
   const { appointment, patient, procedure } = result[0];
   return { ...appointment, patient, procedure };
+}
+
+async function applyBillingRules(
+  appointmentId: number,
+  newStatus: string,
+  oldStatus: string
+): Promise<void> {
+  if (newStatus === oldStatus) return;
+
+  const details = await getWithDetails(appointmentId);
+  if (!details || !details.procedure) return;
+
+  const procedure = details.procedure as any;
+  const billingType: string = procedure.billingType ?? "por_sessao";
+  const patientId = details.patientId;
+  const procedureId = details.procedureId;
+  const patientName = details.patient?.name ?? "Paciente";
+  const today = new Date().toISOString().slice(0, 10);
+
+  const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
+  const canceledStatuses = ["cancelado"];
+
+  if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
+    if (billingType === "por_sessao") {
+      const availableCredit = await db
+        .select()
+        .from(sessionCreditsTable)
+        .where(
+          and(
+            eq(sessionCreditsTable.patientId, patientId),
+            eq(sessionCreditsTable.procedureId, procedureId),
+            gt(sql`${sessionCreditsTable.quantity} - ${sessionCreditsTable.usedQuantity}`, 0)
+          )
+        )
+        .limit(1);
+
+      if (availableCredit.length > 0) {
+        const credit = availableCredit[0];
+        await db
+          .update(sessionCreditsTable)
+          .set({ usedQuantity: credit.usedQuantity + 1 })
+          .where(eq(sessionCreditsTable.id, credit.id));
+
+        await db.insert(financialRecordsTable).values({
+          type: "receita",
+          amount: "0",
+          description: `Uso de crédito — ${procedure.name} - ${patientName}`,
+          category: procedure.category,
+          appointmentId,
+          patientId,
+          procedureId,
+          transactionType: "uso_credito",
+          status: "pago",
+          dueDate: today,
+        });
+      } else {
+        await db.insert(financialRecordsTable).values({
+          type: "receita",
+          amount: String(procedure.price),
+          description: `${procedure.name} - ${patientName}`,
+          category: procedure.category,
+          appointmentId,
+          patientId,
+          procedureId,
+          transactionType: "cobranca_sessao",
+          status: "pendente",
+          dueDate: today,
+        });
+      }
+    }
+  }
+
+  if (canceledStatuses.includes(newStatus) && !canceledStatuses.includes(oldStatus)) {
+    if (billingType === "mensal") {
+      const [credit] = await db
+        .insert(sessionCreditsTable)
+        .values({
+          patientId,
+          procedureId,
+          quantity: 1,
+          usedQuantity: 0,
+          sourceAppointmentId: appointmentId,
+          notes: `Crédito por cancelamento — ${procedure.name}`,
+        })
+        .returning();
+
+      await db.insert(financialRecordsTable).values({
+        type: "receita",
+        amount: "0",
+        description: `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
+        category: procedure.category,
+        appointmentId,
+        patientId,
+        procedureId,
+        transactionType: "credito_sessao",
+        status: "pago",
+        dueDate: today,
+      });
+    }
+  }
 }
 
 async function checkConflict(
@@ -395,6 +495,9 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
       }
     }
 
+    const currentAppt = await getWithDetails(id);
+    const oldStatus = currentAppt?.status ?? "agendado";
+
     const [appointment] = await db
       .update(appointmentsTable)
       .set({ patientId, procedureId, date, startTime, endTime, status, notes })
@@ -404,6 +507,10 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     if (!appointment) {
       res.status(404).json({ error: "Not Found" });
       return;
+    }
+
+    if (status && status !== oldStatus) {
+      await applyBillingRules(appointment.id, status, oldStatus);
     }
 
     const details = await getWithDetails(appointment.id);
@@ -505,21 +612,15 @@ router.post("/:id/complete", requirePermission("appointments.update"), async (re
       return;
     }
 
+    const oldStatus = details.status;
+
     const [appointment] = await db
       .update(appointmentsTable)
       .set({ status: "concluido" })
       .where(eq(appointmentsTable.id, id))
       .returning();
 
-    if (details.procedure) {
-      await db.insert(financialRecordsTable).values({
-        type: "receita",
-        amount: String(details.procedure.price),
-        description: `${details.procedure.name} - ${details.patient?.name ?? "Paciente"}`,
-        category: details.procedure.category,
-        appointmentId: id,
-      });
-    }
+    await applyBillingRules(id, "concluido", oldStatus);
 
     const updatedDetails = await getWithDetails(appointment.id);
     res.json(updatedDetails);

@@ -12,6 +12,9 @@ export const proceduresTable = pgTable("procedures", {
   description: text("description"),
   maxCapacity: integer("max_capacity").notNull().default(1),
   onlineBookingEnabled: boolean("online_booking_enabled").notNull().default(false),
+  billingType: text("billing_type").notNull().default("por_sessao"),
+  monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }),
+  billingDay: integer("billing_day"),
   clinicId: integer("clinic_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

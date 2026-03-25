@@ -1,0 +1,35 @@
+Segue **um texto único, completo e descritivo**, exatamente no formato ideal para colar no Replit AI para que ele **analise o sistema atual e gere as alterações necessárias** no módulo financeiro e de procedimentos.
+
+---
+
+Implemente melhorias no sistema de cobrança dos procedimentos da clínica, permitindo maior flexibilidade e controle financeiro, garantindo consistência, previsibilidade e escalabilidade.
+
+O objetivo é permitir que cada procedimento tenha um modelo de cobrança configurável, definido no momento do cadastro pelo administrador, podendo ser cobrado por sessão/consulta ou por valor mensal fixo. O comportamento da cobrança deve ser automático e baseado no tipo de cobrança definido no procedimento, sem necessidade de intervenção manual da equipe.
+
+O sistema deve suportar dois modelos principais de cobrança: cobrança por sessão ou consulta e cobrança mensal fixa. Esses modelos devem funcionar de forma independente e previsível, respeitando as regras financeiras e mantendo histórico completo de todas as transações.
+
+Quando o procedimento for configurado como cobrança por sessão ou consulta, o paciente deve ser cobrado somente quando a sessão ou consulta for confirmada ou concluída. Sessões canceladas não devem gerar cobrança. Sessões reagendadas devem manter o vínculo com o atendimento e não devem gerar cobranças duplicadas. Cada sessão confirmada deve gerar um registro financeiro independente, com o valor definido no cadastro do procedimento. Esse valor pode variar entre procedimentos diferentes.
+
+Quando o procedimento for configurado como cobrança mensal fixa, o paciente deve pagar um valor fixo todos os meses, independentemente da quantidade de sessões realizadas. O valor mensal não deve ser alterado com base no consumo do paciente. Esse modelo representa planos, pacotes ou mensalidades recorrentes. A cobrança deve ocorrer automaticamente todos os meses, no dia de cobrança definido na assinatura do paciente. O sistema deve possuir um processo automático que execute diariamente e verifique se existem assinaturas com cobrança programada para o dia atual. Se existir, deve gerar automaticamente a cobrança mensal correspondente.
+
+No modelo de cobrança mensal, quando uma sessão for cancelada pelo paciente ou pela clínica, o sistema deve gerar um crédito correspondente a uma sessão. Esse crédito representa o direito de realizar uma nova sessão no futuro e não representa desconto financeiro. O valor da mensalidade não deve ser reduzido, alterado ou recalculado por causa de cancelamentos. O crédito deve ser armazenado no sistema e permanecer disponível até ser utilizado.
+
+O crédito gerado deve poder ser utilizado no mesmo mês ou em meses futuros, sem alterar o valor da mensalidade. Quando o paciente realizar um novo agendamento, o sistema deve verificar automaticamente se existem créditos disponíveis para aquele paciente e procedimento. Se existir crédito disponível, o sistema deve utilizar automaticamente um crédito antes de considerar qualquer nova cobrança. O uso do crédito deve ser registrado no histórico financeiro, mas com valor zero, apenas para controle e auditoria.
+
+No cadastro do procedimento, o administrador deve poder definir o tipo de cobrança. Deve existir um campo chamado tipo de cobrança, com as opções cobrança por sessão ou cobrança mensal. Se o tipo for cobrança por sessão, o sistema deve exigir o preenchimento do valor por sessão. Se o tipo for cobrança mensal, o sistema deve exigir o preenchimento do valor mensal e do dia de cobrança. O sistema deve garantir que apenas os campos relevantes sejam obrigatórios conforme o tipo de cobrança selecionado.
+
+O sistema deve permitir que um paciente tenha uma assinatura ativa vinculada a um procedimento mensal. Essa assinatura representa o contrato financeiro entre o paciente e a clínica. A assinatura deve conter a data de início, o dia de cobrança, o valor mensal e o status da assinatura. O status deve permitir os estados ativa, pausada ou cancelada. Apenas assinaturas ativas devem gerar cobranças automáticas.
+
+Sempre que o status de um agendamento for alterado, o sistema deve executar automaticamente as regras financeiras correspondentes. Se o status mudar para confirmado ou concluído em um procedimento cobrado por sessão, deve ser gerada uma cobrança. Se o status mudar para cancelado em um procedimento mensal, deve ser gerado um crédito. Essas regras devem ser executadas automaticamente pelo sistema, sem necessidade de ação manual do usuário.
+
+O sistema deve manter um histórico financeiro completo e auditável. Nenhum registro financeiro deve ser excluído permanentemente. Caso seja necessário cancelar uma cobrança, o registro deve ser marcado como cancelado, mantendo o histórico. Todas as operações financeiras devem registrar a data, o usuário responsável e a origem da ação.
+
+O sistema deve possuir uma estrutura clara de registros financeiros, onde cada cobrança, pagamento, uso de crédito ou reembolso seja armazenado como uma transação financeira independente. Cada transação deve conter o paciente, o procedimento, o valor, o tipo da transação, o status e a data de vencimento. Isso permitirá controle financeiro preciso e geração futura de relatórios e integração com gateways de pagamento.
+
+O sistema também deve possuir um mecanismo automático responsável por gerar cobranças mensais recorrentes. Esse mecanismo deve ser executado diariamente em horário programado e verificar todas as assinaturas ativas. Se o dia atual for igual ao dia de cobrança definido na assinatura, o sistema deve gerar automaticamente a cobrança mensal correspondente. Esse processo deve funcionar de forma silenciosa e confiável, sem necessidade de intervenção manual.
+
+A interface do sistema deve refletir essas regras de forma clara. Na tela do procedimento, deve ser exibido o tipo de cobrança definido e o valor correspondente. Na tela do paciente, deve ser possível visualizar a assinatura ativa, a próxima cobrança, os créditos disponíveis e o histórico financeiro completo. O sistema deve permitir que a equipe da clínica compreenda facilmente a situação financeira do paciente.
+
+O sistema deve ser desenvolvido de forma escalável, preparado para suportar múltiplas clínicas, múltiplos pacientes e grande volume de atendimentos simultâneos. A arquitetura deve garantir consistência dos dados financeiros e permitir evolução futura do sistema, incluindo funcionalidades como pacotes de sessões, planos ilimitados, recorrência automática por cartão de crédito e integração com sistemas de pagamento.
+
+O objetivo final dessas alterações é garantir que o sistema suporte corretamente cobranças por sessão e cobranças mensais fixas, gere cobranças automaticamente, gere créditos quando necessário, utilize créditos de forma automática e mantenha histórico financeiro completo, seguro e auditável.

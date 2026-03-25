@@ -57,6 +57,9 @@ interface Procedure {
   description?: string;
   maxCapacity: number;
   onlineBookingEnabled: boolean;
+  billingType: "por_sessao" | "mensal";
+  monthlyPrice?: string | number | null;
+  billingDay?: number | null;
   createdAt: string;
 }
 
@@ -128,6 +131,9 @@ export default function Procedimentos() {
     description: "",
     maxCapacity: 1,
     onlineBookingEnabled: false,
+    billingType: "por_sessao" as "por_sessao" | "mensal",
+    monthlyPrice: "",
+    billingDay: "",
   });
 
   const url = selectedCategory === "all"
@@ -158,7 +164,13 @@ export default function Procedimentos() {
       apiFetch<Procedure>("/api/procedures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
+        body: JSON.stringify({
+          ...data,
+          price: Number(data.price),
+          cost: Number(data.cost),
+          monthlyPrice: data.monthlyPrice ? Number(data.monthlyPrice) : undefined,
+          billingDay: data.billingDay ? Number(data.billingDay) : undefined,
+        }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
@@ -176,7 +188,13 @@ export default function Procedimentos() {
       apiFetch<Procedure>(`/api/procedures/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, price: Number(data.price), cost: Number(data.cost) }),
+        body: JSON.stringify({
+          ...data,
+          price: Number(data.price),
+          cost: Number(data.cost),
+          monthlyPrice: data.monthlyPrice ? Number(data.monthlyPrice) : undefined,
+          billingDay: data.billingDay ? Number(data.billingDay) : undefined,
+        }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] });
@@ -203,7 +221,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
+    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "por_sessao", monthlyPrice: "", billingDay: "" });
   }
 
   function openEdit(proc: Procedure) {
@@ -217,6 +235,9 @@ export default function Procedimentos() {
       description: proc.description ?? "",
       maxCapacity: proc.maxCapacity ?? 1,
       onlineBookingEnabled: proc.onlineBookingEnabled ?? false,
+      billingType: (proc.billingType ?? "por_sessao") as "por_sessao" | "mensal",
+      monthlyPrice: proc.monthlyPrice ? String(proc.monthlyPrice) : "",
+      billingDay: proc.billingDay ? String(proc.billingDay) : "",
     });
     setIsModalOpen(true);
   }
@@ -762,6 +783,61 @@ export default function Procedimentos() {
               />
             </div>
 
+            <div className="space-y-3 p-3 rounded-xl border-2 border-slate-200 bg-slate-50">
+              <div className="space-y-1">
+                <Label className="text-sm font-semibold">Tipo de Cobrança</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { value: "por_sessao", label: "Por Sessão", desc: "Cobrado a cada atendimento confirmado" },
+                    { value: "mensal", label: "Mensal Fixo", desc: "Mensalidade recorrente independente de sessões" },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, billingType: opt.value }))}
+                      className={cn(
+                        "text-left p-3 rounded-xl border-2 transition-all",
+                        form.billingType === opt.value
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      )}
+                    >
+                      <p className="text-xs font-bold">{opt.label}</p>
+                      <p className="text-[10px] mt-0.5 opacity-70">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {form.billingType === "mensal" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Valor Mensal (R$) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.monthlyPrice}
+                      onChange={e => setForm(f => ({ ...f, monthlyPrice: e.target.value }))}
+                      placeholder="Ex: 350,00"
+                      className="rounded-xl text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dia de Cobrança *</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={form.billingDay}
+                      onChange={e => setForm(f => ({ ...f, billingDay: e.target.value }))}
+                      placeholder="Ex: 5"
+                      className="rounded-xl text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className={cn(
               "flex items-center justify-between p-3 rounded-xl border-2 transition-colors",
               form.onlineBookingEnabled ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"
@@ -981,12 +1057,31 @@ function CardView({ procedures, onEdit, onDelete }: {
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1 border-t border-slate-100">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Preço</p>
-                  <p className="text-sm font-bold text-slate-800">{formatCurrency(proc.price)}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                    {proc.billingType === "mensal" ? "Mensalidade" : "Preço / Sessão"}
+                  </p>
+                  <p className="text-sm font-bold text-slate-800">
+                    {proc.billingType === "mensal" && proc.monthlyPrice
+                      ? formatCurrency(proc.monthlyPrice)
+                      : formatCurrency(proc.price)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide">Margem</p>
                   <MarginBadge margin={margin} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Cobrança</p>
+                  <span className={cn(
+                    "inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                    proc.billingType === "mensal"
+                      ? "bg-violet-50 text-violet-700"
+                      : "bg-sky-50 text-sky-700"
+                  )}>
+                    {proc.billingType === "mensal"
+                      ? `Mensal · dia ${proc.billingDay ?? "?"}`
+                      : "Por sessão"}
+                  </span>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide">Duração</p>
