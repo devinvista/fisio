@@ -141,10 +141,9 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   const steps = [
-    { label: "Identificação", icon: <User className="w-4 h-4" /> },
+    { label: "Seus Dados", icon: <FileText className="w-4 h-4" /> },
     { label: "Procedimento", icon: <Dumbbell className="w-4 h-4" /> },
     { label: "Data e Hora", icon: <Calendar className="w-4 h-4" /> },
-    { label: "Seus Dados", icon: <FileText className="w-4 h-4" /> },
   ];
 
   return (
@@ -176,18 +175,33 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
   );
 }
 
-// ── Step 1: Identificação do Paciente ─────────────────────────────────────────
+// ── Step 1: Seus Dados (identificação + dados do paciente) ────────────────────
 
-function StepIdentificacao({
+interface PatientFormData {
+  name: string;
+  phone: string;
+  email: string;
+  cpf: string;
+  notes: string;
+}
+
+function StepSeusDados({
   onNext,
-  initialValue,
+  initialForm,
 }: {
-  onNext: (result: PatientLookupResult | null, query: string) => void;
-  initialValue?: string;
+  onNext: (data: PatientFormData, patient: PatientLookupResult | null) => void;
+  initialForm?: Partial<PatientFormData>;
 }) {
-  const [query, setQuery] = useState(initialValue ?? "");
+  const [form, setForm] = useState<PatientFormData>({
+    name: initialForm?.name ?? "",
+    phone: initialForm?.phone ?? "",
+    email: initialForm?.email ?? "",
+    cpf: initialForm?.cpf ?? "",
+    notes: initialForm?.notes ?? "",
+  });
+
   const [lookupState, setLookupState] = useState<"idle" | "searching" | "found" | "new">("idle");
-  const [result, setResult] = useState<PatientLookupResult | null>(null);
+  const [foundPatient, setFoundPatient] = useState<PatientLookupResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runLookup = useCallback((q: string) => {
@@ -195,56 +209,58 @@ function StepIdentificacao({
     const cleaned = q.replace(/\D/g, "");
     if (cleaned.length < 8 && q.trim().length < 8) {
       setLookupState("idle");
-      setResult(null);
+      setFoundPatient(null);
       return;
     }
     setLookupState("searching");
     debounceRef.current = setTimeout(async () => {
       const r = await lookupPatient(q);
-      setResult(r);
-      setLookupState(r.found ? "found" : "new");
+      if (r.found && r.patient) {
+        setFoundPatient(r);
+        setLookupState("found");
+        setForm((prev) => ({
+          ...prev,
+          name: r.patient!.name,
+          email: r.patient!.email ?? prev.email,
+          cpf: r.patient!.cpf ?? prev.cpf,
+        }));
+      } else {
+        setFoundPatient(null);
+        setLookupState("new");
+      }
     }, 600);
   }, []);
 
-  const handleChange = (val: string) => {
-    setQuery(val);
+  const handlePhoneChange = (val: string) => {
+    setForm((prev) => ({ ...prev, phone: val }));
     runLookup(val);
   };
 
-  const handleNext = () => {
-    onNext(result?.found ? result : null, query);
+  const handleCpfChange = (val: string) => {
+    setForm((prev) => ({ ...prev, cpf: val }));
+    if (!form.phone || form.phone.replace(/\D/g, "").length < 8) {
+      runLookup(val);
+    }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onNext(form, foundPatient);
+  };
+
+  const isPreFilled = lookupState === "found" && !!foundPatient?.patient;
+
   return (
-    <div>
+    <form onSubmit={handleSubmit}>
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-slate-800 mb-1">Identificação</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-1">Seus Dados</h2>
         <p className="text-slate-500 text-sm">
-          Informe seu telefone ou CPF para agilizar o agendamento
+          Preencha seus dados para agendar. Se já for paciente, suas informações serão preenchidas automaticamente.
         </p>
       </div>
 
-      {/* Input */}
-      <div className="relative mb-4">
-        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-        <Input
-          autoFocus
-          placeholder="Telefone (ex: 11 99999-0000) ou CPF"
-          value={query}
-          onChange={(e) => handleChange(e.target.value)}
-          className={`h-14 pl-12 pr-12 rounded-2xl text-base transition-all
-            ${lookupState === "found" ? "border-emerald-400 bg-emerald-50/40 focus-visible:ring-emerald-300" : ""}
-            ${lookupState === "new" ? "border-blue-300 focus-visible:ring-blue-200" : ""}`}
-        />
-        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-          {lookupState === "searching" && <Loader2 className="w-5 h-5 animate-spin text-slate-400" />}
-          {lookupState === "found" && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-          {lookupState === "new" && <UserPlus className="w-5 h-5 text-blue-400" />}
-        </div>
-      </div>
-
-      {/* Status banners */}
-      {lookupState === "found" && result?.patient && (
+      {/* Lookup status banners */}
+      {isPreFilled && foundPatient?.patient && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
@@ -252,34 +268,29 @@ function StepIdentificacao({
             </div>
             <div className="flex-1">
               <p className="font-semibold text-emerald-800">
-                Bem-vindo de volta, {result.patient.name.split(" ")[0]}!
+                Bem-vindo de volta, {foundPatient.patient.name.split(" ")[0]}!
               </p>
               <p className="text-sm text-emerald-700 mt-0.5">
-                Encontramos seu cadastro. Seus dados serão preenchidos automaticamente.
+                Cadastro encontrado — dados preenchidos automaticamente.
               </p>
-              {result.activeTreatmentPlan && (
+              {foundPatient.activeTreatmentPlan && (
                 <div className="mt-3 bg-white border border-emerald-200 rounded-xl p-3">
                   <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
                     <ClipboardList className="w-3.5 h-3.5" /> Plano de tratamento ativo
                   </p>
-                  {result.activeTreatmentPlan.frequency && (
+                  {foundPatient.activeTreatmentPlan.frequency && (
                     <p className="text-sm text-slate-700">
-                      <span className="font-medium">Frequência:</span> {result.activeTreatmentPlan.frequency}
+                      <span className="font-medium">Frequência:</span> {foundPatient.activeTreatmentPlan.frequency}
                     </p>
                   )}
-                  {result.activeTreatmentPlan.estimatedSessions && (
-                    <p className="text-sm text-slate-700">
-                      <span className="font-medium">Sessões estimadas:</span> {result.activeTreatmentPlan.estimatedSessions}
-                    </p>
-                  )}
-                  {result.activeTreatmentPlan.objectives && (
+                  {foundPatient.activeTreatmentPlan.objectives && (
                     <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                      {result.activeTreatmentPlan.objectives}
+                      {foundPatient.activeTreatmentPlan.objectives}
                     </p>
                   )}
                 </div>
               )}
-              {!result.activeTreatmentPlan && result.recommendedProcedureIds && result.recommendedProcedureIds.length > 0 && (
+              {!foundPatient.activeTreatmentPlan && (foundPatient.recommendedProcedureIds?.length ?? 0) > 0 && (
                 <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" />
                   Seus procedimentos mais usados serão destacados na próxima etapa.
@@ -298,48 +309,117 @@ function StepIdentificacao({
           <div>
             <p className="font-semibold text-blue-800">Primeiro agendamento?</p>
             <p className="text-sm text-blue-700 mt-0.5">
-              Não encontramos um cadastro com esses dados. Você poderá preencher suas informações na próxima etapa — faremos seu cadastro automaticamente.
+              Não encontramos um cadastro com esses dados. Preencha as informações abaixo — faremos seu cadastro automaticamente.
             </p>
           </div>
         </div>
       )}
 
-      {lookupState === "idle" && query.trim().length === 0 && (
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 flex items-start gap-3">
-          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
-            <User className="w-5 h-5 text-slate-400" />
+      {/* Form fields */}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Telefone — triggers lookup */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
+                autoFocus
+                required
+                placeholder="(11) 99999-0000"
+                value={form.phone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                className={`h-11 rounded-xl pl-9 pr-10 transition-all
+                  ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}
+                  ${lookupState === "new" ? "border-blue-300" : ""}`}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                {lookupState === "searching" && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                {lookupState === "found" && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                {lookupState === "new" && <UserPlus className="w-4 h-4 text-blue-400" />}
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-slate-700">Já é paciente aqui?</p>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Digite seu telefone ou CPF acima para identificar-se automaticamente e ver seus procedimentos recomendados.
-            </p>
+
+          {/* CPF — also triggers lookup if phone is empty */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700">CPF</Label>
+            <Input
+              placeholder="000.000.000-00 (opcional)"
+              value={form.cpf}
+              onChange={(e) => handleCpfChange(e.target.value)}
+              className={`h-11 rounded-xl transition-all
+                ${isPreFilled && form.cpf ? "border-emerald-300 bg-emerald-50/30" : ""}
+                ${lookupState === "new" ? "border-blue-300" : ""}`}
+            />
           </div>
         </div>
-      )}
 
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row justify-between gap-3 pt-2">
-        <button
-          type="button"
-          onClick={() => onNext(null, "")}
-          className="text-sm text-slate-400 hover:text-slate-600 transition-colors text-center sm:text-left"
-        >
-          Continuar sem identificação →
-        </button>
-        <Button
-          onClick={handleNext}
-          className="rounded-xl h-11 px-8 gap-2"
-          disabled={lookupState === "searching"}
-        >
-          {lookupState === "found" ? (
-            <><UserCheck className="w-4 h-4" /> Continuar como {result?.patient?.name.split(" ")[0]}</>
-          ) : (
-            <>Próximo <ChevronRight className="w-4 h-4" /></>
-          )}
-        </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Nome */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700">Nome completo *</Label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
+                required
+                placeholder="Seu nome completo"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                className={`h-11 rounded-xl pl-9 ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}`}
+              />
+            </div>
+          </div>
+
+          {/* E-mail */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-slate-700">E-mail</Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
+                type="email"
+                placeholder="seu@email.com (opcional)"
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                className={`h-11 rounded-xl pl-9 ${isPreFilled && form.email ? "border-emerald-300 bg-emerald-50/30" : ""}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Observações */}
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-slate-400" /> Observações
+          </Label>
+          <Textarea
+            placeholder="Alguma informação adicional para a clínica? (opcional)"
+            value={form.notes}
+            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+            className="rounded-xl resize-none"
+            rows={3}
+          />
+        </div>
+
+        <p className="text-xs text-slate-400">
+          * campos obrigatórios. Seus dados são utilizados apenas para gestão do seu agendamento.
+        </p>
+
+        <div className="flex justify-end pt-2">
+          <Button
+            type="submit"
+            className="rounded-xl h-11 px-8 gap-2"
+            disabled={lookupState === "searching"}
+          >
+            {isPreFilled ? (
+              <><UserCheck className="w-4 h-4" /> Continuar como {foundPatient?.patient?.name.split(" ")[0]}</>
+            ) : (
+              <>Próximo <ChevronRight className="w-4 h-4" /></>
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -396,9 +476,11 @@ function ProcedureCard({
 function StepProcedimento({
   onSelect,
   foundPatient,
+  onBack,
 }: {
   onSelect: (procedure: PublicProcedure) => void;
   foundPatient: PatientLookupResult | null;
+  onBack?: () => void;
 }) {
   const [procedures, setProcedures] = useState<PublicProcedure[]>([]);
   const [loading, setLoading] = useState(true);
@@ -530,7 +612,12 @@ function StepProcedimento({
         );
       })}
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-6 flex justify-between">
+        {onBack ? (
+          <Button variant="outline" onClick={onBack} className="rounded-xl h-11 gap-2">
+            <ChevronLeft className="w-4 h-4" /> Voltar
+          </Button>
+        ) : <div />}
         <Button
           disabled={!selected || !selectedProc}
           onClick={() => selectedProc && onSelect(selectedProc)}
@@ -549,10 +636,12 @@ function StepDataHora({
   procedure,
   onSelect,
   onBack,
+  submitting,
 }: {
   procedure: PublicProcedure;
   onSelect: (date: string, time: string) => void;
   onBack: () => void;
+  submitting?: boolean;
 }) {
   const today = startOfToday();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -672,199 +761,26 @@ function StepDataHora({
       )}
 
       <div className="mt-8 flex justify-between">
-        <Button variant="outline" onClick={onBack} className="rounded-xl h-11 gap-2">
+        <Button variant="outline" onClick={onBack} disabled={submitting} className="rounded-xl h-11 gap-2">
           <ChevronLeft className="w-4 h-4" /> Voltar
         </Button>
         <Button
-          disabled={!selectedDate || !selectedTime}
+          disabled={!selectedDate || !selectedTime || submitting}
           onClick={() => selectedDate && selectedTime && onSelect(format(selectedDate, "yyyy-MM-dd"), selectedTime)}
           className="rounded-xl h-11 px-8 gap-2"
         >
-          Próximo <ChevronRight className="w-4 h-4" />
+          {submitting ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Confirmando...</>
+          ) : (
+            <><CheckCircle2 className="w-4 h-4" /> Confirmar Agendamento</>
+          )}
         </Button>
       </div>
     </div>
   );
 }
 
-// ── Step 3: Dados do Paciente ─────────────────────────────────────────────────
-
-// ── Step 4: Dados do Paciente ─────────────────────────────────────────────────
-
-function StepDados({
-  procedure,
-  date,
-  time,
-  onSubmit,
-  onBack,
-  submitting,
-  foundPatient,
-}: {
-  procedure: PublicProcedure;
-  date: string;
-  time: string;
-  onSubmit: (data: { name: string; phone: string; email: string; cpf: string; notes: string }) => void;
-  onBack: () => void;
-  submitting: boolean;
-  foundPatient: PatientLookupResult | null;
-}) {
-  const pre = foundPatient?.patient;
-  const [form, setForm] = useState({
-    name: pre?.name ?? "",
-    phone: pre?.phone ?? "",
-    email: pre?.email ?? "",
-    cpf: pre?.cpf ?? "",
-    notes: "",
-  });
-
-  const isPreFilled = !!pre;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(form);
-  };
-
-  return (
-    <div>
-      <h2 className="text-xl font-bold text-slate-800 mb-1">Seus Dados</h2>
-      <p className="text-slate-500 text-sm mb-4">
-        {isPreFilled ? "Confirme seus dados abaixo para finalizar o agendamento" : "Preencha suas informações para confirmar o agendamento"}
-      </p>
-
-      {/* Returning patient banner */}
-      {isPreFilled && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-4 flex items-center gap-3">
-          <UserCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-emerald-800">
-              Dados preenchidos automaticamente
-            </p>
-            {foundPatient?.activeTreatmentPlan && (
-              <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1">
-                <ClipboardList className="w-3 h-3" />
-                Plano de tratamento ativo — {foundPatient.activeTreatmentPlan.frequency ?? "em andamento"}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* New patient banner */}
-      {!isPreFilled && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 flex items-center gap-3">
-          <UserPlus className="w-5 h-5 text-blue-500 shrink-0" />
-          <p className="text-sm text-blue-700">
-            <span className="font-semibold">Novo paciente:</span> seus dados serão pré-cadastrados ao confirmar o agendamento.
-          </p>
-        </div>
-      )}
-
-      {/* Booking summary */}
-      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-5 flex flex-wrap gap-4">
-        <div className="flex items-center gap-2 text-sm">
-          <Dumbbell className="w-4 h-4 text-primary" />
-          <span className="font-semibold text-slate-700">{procedure.name}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Calendar className="w-4 h-4 text-primary" />
-          <span className="text-slate-700">{formatDateBR(date)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Clock className="w-4 h-4 text-primary" />
-          <span className="text-slate-700">às {time}</span>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                required
-                placeholder="(11) 99999-0000"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className={`h-11 rounded-xl pl-9 ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}`}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">CPF</Label>
-            <Input
-              placeholder="000.000.000-00 (opcional)"
-              value={form.cpf}
-              onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-              className={`h-11 rounded-xl ${isPreFilled && form.cpf ? "border-emerald-300 bg-emerald-50/30" : ""}`}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">Nome completo *</Label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                required
-                placeholder="Seu nome completo"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className={`h-11 rounded-xl pl-9 ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}`}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">E-mail</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                type="email"
-                placeholder="seu@email.com (opcional)"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className={`h-11 rounded-xl pl-9 ${isPreFilled && form.email ? "border-emerald-300 bg-emerald-50/30" : ""}`}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5 text-slate-400" /> Observações
-          </Label>
-          <Textarea
-            placeholder="Alguma informação adicional para a clínica? (opcional)"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            className="rounded-xl resize-none"
-            rows={3}
-          />
-        </div>
-
-        <p className="text-xs text-slate-400">
-          * campos obrigatórios. Seus dados são utilizados apenas para gestão do seu agendamento.
-        </p>
-
-        <div className="flex justify-between pt-2">
-          <Button type="button" variant="outline" onClick={onBack} className="rounded-xl h-11 gap-2" disabled={submitting}>
-            <ChevronLeft className="w-4 h-4" /> Voltar
-          </Button>
-          <Button type="submit" disabled={submitting} className="rounded-xl h-11 px-8 gap-2">
-            {submitting ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Confirmando...</>
-            ) : (
-              <><CheckCircle2 className="w-4 h-4" /> Confirmar Agendamento</>
-            )}
-          </Button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-// ── Step 4: Confirmação ───────────────────────────────────────────────────────
+// ── Step 3: Confirmação ───────────────────────────────────────────────────────
 
 function StepConfirmacao({
   confirmation,
@@ -1134,32 +1050,35 @@ export default function Agendar() {
   const [matchToken, paramsToken] = useRoute("/agendar/:token");
   const token = matchToken ? (paramsToken as any).token : null;
 
+  // Wizard state — 3 steps: Seus Dados → Procedimento → Data e Hora → Confirmação
   const [step, setStep] = useState(1);
+  const [patientFormData, setPatientFormData] = useState<PatientFormData | null>(null);
+  const [foundPatient, setFoundPatient] = useState<PatientLookupResult | null>(null);
   const [procedure, setProcedure] = useState<PublicProcedure | null>(null);
-  const [date, setDate] = useState<string | null>(null);
-  const [time, setTime] = useState<string | null>(null);
   const [patientName, setPatientName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [foundPatient, setFoundPatient] = useState<PatientLookupResult | null>(null);
 
-  const handleProcedureSelect = (proc: PublicProcedure) => {
-    setProcedure(proc);
+  // Step 1: Seus Dados — collect patient info + auto-lookup
+  const handlePatientNext = (data: PatientFormData, patient: PatientLookupResult | null) => {
+    setPatientFormData(data);
+    setFoundPatient(patient);
     setStep(2);
   };
 
-  const handleDateTimeSelect = (d: string, t: string) => {
-    setDate(d);
-    setTime(t);
+  // Step 2: Procedimento — choose procedure filtered by active plan
+  const handleProcedureSelect = (proc: PublicProcedure) => {
+    setProcedure(proc);
     setStep(3);
   };
 
-  const handleSubmit = async (data: { name: string; phone: string; email: string; cpf: string; notes: string }) => {
-    if (!procedure || !date || !time) return;
+  // Step 3: Data e Hora — select date/time and submit booking
+  const handleDateTimeSelect = async (d: string, t: string) => {
+    if (!procedure || !patientFormData) return;
     setSubmitting(true);
     setSubmitError(null);
-    setPatientName(data.name);
+    setPatientName(patientFormData.name);
 
     try {
       const r = await fetch(`${BASE}/api/public/book`, {
@@ -1167,13 +1086,13 @@ export default function Agendar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           procedureId: procedure.id,
-          date,
-          startTime: time,
-          patientName: data.name,
-          patientPhone: data.phone,
-          patientEmail: data.email || undefined,
-          patientCpf: data.cpf || undefined,
-          notes: data.notes || undefined,
+          date: d,
+          startTime: t,
+          patientName: patientFormData.name,
+          patientPhone: patientFormData.phone,
+          patientEmail: patientFormData.email || undefined,
+          patientCpf: patientFormData.cpf || undefined,
+          notes: patientFormData.notes || undefined,
         }),
       });
 
@@ -1193,12 +1112,11 @@ export default function Agendar() {
   };
 
   const handleNew = () => {
+    setPatientFormData(null);
+    setFoundPatient(null);
     setProcedure(null);
-    setDate(null);
-    setTime(null);
     setConfirmation(null);
     setSubmitError(null);
-    setFoundPatient(null);
     setStep(1);
   };
 
@@ -1238,7 +1156,7 @@ export default function Agendar() {
         ) : (
           <Card className="border-none shadow-xl bg-white rounded-3xl overflow-hidden">
             <CardContent className="p-6 sm:p-8">
-              {step < 4 && <StepIndicator step={step} total={4} />}
+              {step < 4 && <StepIndicator step={step} total={3} />}
 
               {submitError && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-center gap-3">
@@ -1250,30 +1168,34 @@ export default function Agendar() {
                 </div>
               )}
 
+              {/* Step 1: Seus Dados */}
               {step === 1 && (
+                <StepSeusDados
+                  onNext={handlePatientNext}
+                  initialForm={patientFormData ?? undefined}
+                />
+              )}
+
+              {/* Step 2: Procedimento */}
+              {step === 2 && (
                 <StepProcedimento
                   onSelect={handleProcedureSelect}
                   foundPatient={foundPatient}
-                />
-              )}
-              {step === 2 && procedure && (
-                <StepDataHora
-                  procedure={procedure}
-                  onSelect={handleDateTimeSelect}
                   onBack={() => setStep(1)}
                 />
               )}
-              {step === 3 && procedure && date && time && (
-                <StepDados
+
+              {/* Step 3: Data e Hora (submits on confirm) */}
+              {step === 3 && procedure && (
+                <StepDataHora
                   procedure={procedure}
-                  date={date}
-                  time={time}
-                  onSubmit={handleSubmit}
+                  onSelect={handleDateTimeSelect}
                   onBack={() => setStep(2)}
                   submitting={submitting}
-                  onPatientFound={(result) => setFoundPatient(result)}
                 />
               )}
+
+              {/* Confirmação */}
               {step === 4 && confirmation && (
                 <StepConfirmacao
                   confirmation={confirmation}
