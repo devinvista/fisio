@@ -1442,10 +1442,10 @@ const emptyPayForm = { type: "receita" as "receita" | "despesa", amount: "", des
 
 function txTypeLabel(transactionType: string | null | undefined): { label: string; color: string } {
   switch (transactionType) {
-    case "cobranca_sessao": return { label: "Cobrança / Sessão", color: "border-blue-200 text-blue-700" };
-    case "cobranca_mensal": return { label: "Mensalidade", color: "border-violet-200 text-violet-700" };
-    case "uso_credito": return { label: "Uso de Crédito", color: "border-amber-200 text-amber-700" };
-    case "credito_sessao": return { label: "Crédito Gerado", color: "border-teal-200 text-teal-700" };
+    case "cobrancaSessao": return { label: "Cobrança / Sessão", color: "border-blue-200 text-blue-700" };
+    case "cobrancaMensal": return { label: "Mensalidade", color: "border-violet-200 text-violet-700" };
+    case "usoCredito": return { label: "Uso de Crédito", color: "border-amber-200 text-amber-700" };
+    case "creditoSessao": return { label: "Crédito Gerado", color: "border-teal-200 text-teal-700" };
     default: return { label: "Transação", color: "border-slate-200 text-slate-600" };
   }
 }
@@ -1718,7 +1718,7 @@ function FinancialTab({ patientId }: { patientId: number }) {
 
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
-  const paidRecords = records.filter((r: any) => r.type === "receita" && r.transactionType !== "uso_credito" && r.transactionType !== "credito_sessao");
+  const paidRecords = records.filter((r: any) => r.type === "receita" && r.transactionType !== "usoCredito" && r.transactionType !== "creditoSessao");
   const totalReceitas = paidRecords.reduce((s: number, r: any) => s + Number(r.amount), 0);
   const totalDespesas = records.filter((r: any) => r.type === "despesa").reduce((s: number, r: any) => s + Number(r.amount), 0);
   const pendingCount = records.filter((r: any) => r.status === "pendente" && r.type === "receita").length;
@@ -1840,7 +1840,7 @@ function FinancialTab({ patientId }: { patientId: number }) {
               {records.map((record: any) => {
                 const txInfo = txTypeLabel(record.transactionType);
                 const stInfo = statusLabel(record.status);
-                const isCreditUse = record.transactionType === "uso_credito" || record.transactionType === "credito_sessao";
+                const isCreditUse = record.transactionType === "usoCredito" || record.transactionType === "creditoSessao";
                 return (
                   <Card key={record.id} className={`border shadow-sm ${isCreditUse ? "border-teal-100 bg-teal-50/30" : "border-slate-200"}`}>
                     <CardContent className="p-3.5 flex items-center gap-3">

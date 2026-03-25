@@ -33,7 +33,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
       });
       return;
     }
-    const resolvedBillingType = billingType || "por_sessao";
+    const resolvedBillingType = billingType || "porSessao";
     if (resolvedBillingType === "mensal" && (!monthlyPrice || !billingDay)) {
       res.status(400).json({
         error: "Bad Request",

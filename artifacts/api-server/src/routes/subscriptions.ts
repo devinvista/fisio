@@ -215,7 +215,7 @@ router.post("/run-billing", requirePermission("financial.write"), async (req, re
           category: row.procedure?.category ?? null,
           patientId: sub.patientId,
           procedureId: sub.procedureId,
-          transactionType: "cobranca_mensal",
+          transactionType: "cobrancaMensal",
           status: "pendente",
           dueDate: todayDate,
           subscriptionId: sub.id,

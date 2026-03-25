@@ -57,7 +57,7 @@ interface Procedure {
   description?: string;
   maxCapacity: number;
   onlineBookingEnabled: boolean;
-  billingType: "por_sessao" | "mensal";
+  billingType: "porSessao" | "mensal";
   monthlyPrice?: string | number | null;
   billingDay?: number | null;
   createdAt: string;
@@ -131,7 +131,7 @@ export default function Procedimentos() {
     description: "",
     maxCapacity: 1,
     onlineBookingEnabled: false,
-    billingType: "por_sessao" as "por_sessao" | "mensal",
+    billingType: "porSessao" as "porSessao" | "mensal",
     monthlyPrice: "",
     billingDay: "",
   });
@@ -221,7 +221,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "por_sessao", monthlyPrice: "", billingDay: "" });
+    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "porSessao", monthlyPrice: "", billingDay: "" });
   }
 
   function openEdit(proc: Procedure) {
@@ -235,7 +235,7 @@ export default function Procedimentos() {
       description: proc.description ?? "",
       maxCapacity: proc.maxCapacity ?? 1,
       onlineBookingEnabled: proc.onlineBookingEnabled ?? false,
-      billingType: (proc.billingType ?? "por_sessao") as "por_sessao" | "mensal",
+      billingType: (proc.billingType ?? "porSessao") as "porSessao" | "mensal",
       monthlyPrice: proc.monthlyPrice ? String(proc.monthlyPrice) : "",
       billingDay: proc.billingDay ? String(proc.billingDay) : "",
     });
@@ -788,7 +788,7 @@ export default function Procedimentos() {
                 <Label className="text-sm font-semibold">Tipo de Cobrança</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {([
-                    { value: "por_sessao", label: "Por Sessão", desc: "Cobrado a cada atendimento confirmado" },
+                    { value: "porSessao", label: "Por Sessão", desc: "Cobrado a cada atendimento confirmado" },
                     { value: "mensal", label: "Mensal Fixo", desc: "Mensalidade recorrente independente de sessões" },
                   ] as const).map(opt => (
                     <button

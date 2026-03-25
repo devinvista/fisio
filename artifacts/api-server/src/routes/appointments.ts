@@ -54,7 +54,7 @@ async function applyBillingRules(
   if (!details || !details.procedure) return;
 
   const procedure = details.procedure as any;
-  const billingType: string = procedure.billingType ?? "por_sessao";
+  const billingType: string = procedure.billingType ?? "porSessao";
   const patientId = details.patientId;
   const procedureId = details.procedureId;
   const patientName = details.patient?.name ?? "Paciente";
@@ -64,7 +64,7 @@ async function applyBillingRules(
   const canceledStatuses = ["cancelado"];
 
   if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
-    if (billingType === "por_sessao") {
+    if (billingType === "porSessao") {
       const availableCredit = await db
         .select()
         .from(sessionCreditsTable)
@@ -92,7 +92,7 @@ async function applyBillingRules(
           appointmentId,
           patientId,
           procedureId,
-          transactionType: "uso_credito",
+          transactionType: "usoCredito",
           status: "pago",
           dueDate: today,
         });
@@ -105,7 +105,7 @@ async function applyBillingRules(
           appointmentId,
           patientId,
           procedureId,
-          transactionType: "cobranca_sessao",
+          transactionType: "cobrancaSessao",
           status: "pendente",
           dueDate: today,
         });
@@ -135,7 +135,7 @@ async function applyBillingRules(
         appointmentId,
         patientId,
         procedureId,
-        transactionType: "credito_sessao",
+        transactionType: "creditoSessao",
         status: "pago",
         dueDate: today,
       });

@@ -15,6 +15,13 @@
       "when": 1742930000000,
       "tag": "0001_full_schema_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1742931000000,
+      "tag": "0002_enum_values_to_camelcase",
+      "breakpoints": true
     }
   ]
 }
