@@ -49,6 +49,7 @@ import {
   Lock,
   Ban,
   Users,
+  Globe,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -585,12 +586,20 @@ export default function Agenda() {
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
                             {short ? (
-                              <p className="text-[10px] font-semibold truncate leading-tight">
-                                {apt.patient?.name?.split(" ")[0]} · {apt.startTime}
-                              </p>
+                              <div className="flex items-center gap-1">
+                                {(apt as any).source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-90" />}
+                                <p className="text-[10px] font-semibold truncate leading-tight">
+                                  {apt.patient?.name?.split(" ")[0]} · {apt.startTime}
+                                </p>
+                              </div>
                             ) : (
                               <>
-                                <p className="text-[11px] font-bold truncate leading-tight">{apt.patient?.name}</p>
+                                <div className="flex items-start justify-between gap-1">
+                                  <p className="text-[11px] font-bold truncate leading-tight flex-1">{apt.patient?.name}</p>
+                                  {(apt as any).source === "online" && (
+                                    <Globe className="w-3 h-3 shrink-0 opacity-80 mt-0.5" />
+                                  )}
+                                </div>
                                 <p className="text-[10px] opacity-80 truncate leading-tight mt-0.5">{apt.procedure?.name}</p>
                                 <p className="text-[9px] opacity-70 mt-0.5">{apt.startTime} – {apt.endTime}</p>
                               </>
@@ -1028,6 +1037,17 @@ function AppointmentDetailModal({
                   <Separator />
                   <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Observações</p>
                   <p className="text-sm text-slate-700">{appointment.notes}</p>
+                </>
+              )}
+              {(appointment as any).source === "online" && (
+                <>
+                  <Separator />
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-teal-500 shrink-0" />
+                    <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                      Agendado pelo portal online
+                    </span>
+                  </div>
                 </>
               )}
             </div>
@@ -1738,15 +1758,17 @@ function MonthGrid({
               <div className="space-y-0.5">
                 {visibleAppts.map((apt) => {
                   const color = STATUS_COLORS[apt.status] || "bg-blue-400";
+                  const isOnline = (apt as any).source === "online";
                   return (
                     <div
                       key={apt.id}
                       className={cn(
-                        "rounded px-1.5 py-0.5 text-[9px] font-semibold text-white truncate leading-tight",
+                        "rounded px-1.5 py-0.5 text-[9px] font-semibold text-white truncate leading-tight flex items-center gap-0.5",
                         color
                       )}
-                      title={`${apt.startTime} · ${apt.patient?.name}`}
+                      title={`${apt.startTime} · ${apt.patient?.name}${isOnline ? " · Online" : ""}`}
                     >
+                      {isOnline && <Globe className="w-2 h-2 shrink-0 opacity-90" />}
                       {apt.startTime} {apt.patient?.name?.split(" ")[0]}
                     </div>
                   );

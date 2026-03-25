@@ -1,12 +1,25 @@
+import { useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useGetDashboard } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function Dashboard() {
   const { data, isLoading } = useGetDashboard();
+  const [copied, setCopied] = useState(false);
+
+  const bookingUrl = `${window.location.origin}${BASE}/agendar`;
+
+  const copyBookingUrl = async () => {
+    await navigator.clipboard.writeText(bookingUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (isLoading) {
     return (
@@ -125,6 +138,48 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Online Booking Portal Card */}
+      <Card className="border-none shadow-md bg-gradient-to-br from-teal-600 to-teal-500 text-white mb-8">
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="p-3 bg-white/20 rounded-xl shrink-0">
+                <Globe className="w-6 h-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-white text-base leading-tight">Portal de Agendamento Online</p>
+                <p className="text-teal-100 text-xs mt-0.5 truncate">{bookingUrl}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="bg-white/20 hover:bg-white/30 text-white border-0 h-9 rounded-xl gap-1.5"
+                onClick={copyBookingUrl}
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copied ? "Copiado!" : "Copiar Link"}
+              </Button>
+              <a
+                href={bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-white/20 hover:bg-white/30 text-white border-0 h-9 rounded-xl gap-1.5"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir
+                </Button>
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card className="border-none shadow-lg">
           <div className="p-6 border-b border-border flex justify-between items-center">
@@ -144,7 +199,14 @@ export default function Dashboard() {
                         <span className="text-lg font-bold text-slate-700">{apt.startTime}</span>
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground text-lg">{apt.patient?.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-foreground text-lg">{apt.patient?.name}</p>
+                          {(apt as any).source === "online" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
+                              <Globe className="w-2.5 h-2.5" /> Online
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-primary inline-block"></span>
                           {apt.procedure?.name}
@@ -188,6 +250,11 @@ export default function Dashboard() {
                           {format(parseISO(apt.date), "dd/MM (EEE)", { locale: ptBR })}
                         </span>
                         <span className="text-sm font-bold text-slate-700">{apt.startTime}</span>
+                        {(apt as any).source === "online" && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
+                            <Globe className="w-2.5 h-2.5" /> Online
+                          </span>
+                        )}
                       </div>
                       <p className="font-semibold text-foreground">{apt.patient?.name}</p>
                       <p className="text-sm text-muted-foreground line-clamp-1">{apt.procedure?.name}</p>
