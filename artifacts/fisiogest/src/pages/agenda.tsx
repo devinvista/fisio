@@ -544,26 +544,14 @@ export default function Agenda() {
                                     </span>
                                   </div>
                                   <p className="text-[9px] opacity-70 mt-0.5">{startTime} – {endTime}</p>
-                                  <div className="mt-1 space-y-0.5">
-                                    {grpApts.map((a) => {
-                                      const sCfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.agendado;
-                                      return (
-                                        <div
-                                          key={a.id}
-                                          className="text-[9px] truncate leading-tight flex items-center gap-1 hover:opacity-75 transition-opacity"
-                                          onClick={(e) => { e.stopPropagation(); setSelectedAppointment(a); }}
-                                        >
-                                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", sCfg.dot)} />
-                                          <span className="opacity-90 truncate">{a.patient?.name?.split(" ")[0]}</span>
-                                        </div>
-                                      );
-                                    })}
-                                    {spotsLeft > 0 && height >= 80 && (
-                                      <p className="text-[9px] opacity-60 flex items-center gap-0.5 mt-0.5">
-                                        <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
-                                      </p>
-                                    )}
-                                  </div>
+                                  <p className="text-[9px] opacity-90 truncate leading-tight mt-1">
+                                    {grpApts.map((a) => a.patient?.name?.split(" ")[0]).join(" · ")}
+                                  </p>
+                                  {spotsLeft > 0 && height >= 80 && (
+                                    <p className="text-[9px] opacity-60 flex items-center gap-0.5 mt-0.5">
+                                      <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
+                                    </p>
+                                  )}
                                 </>
                               )}
                             </div>
