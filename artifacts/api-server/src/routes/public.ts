@@ -5,8 +5,9 @@ import {
   patientsTable,
   proceduresTable,
   blockedSlotsTable,
+  treatmentPlansTable,
 } from "@workspace/db";
-import { eq, and, sql, ne } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -31,6 +32,116 @@ function minutesToTime(minutes: number): string {
   const m = minutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+
+// ── GET /api/public/patient-lookup ───────────────────────────────────────────
+// Busca paciente por CPF ou telefone (sem autenticação)
+router.get("/patient-lookup", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== "string" || q.trim().length < 4) {
+      res.json({ found: false });
+      return;
+    }
+
+    const cleaned = q.replace(/\D/g, "");
+    let patient: typeof patientsTable.$inferSelect | undefined;
+
+    // Try CPF (formatted or raw 11 digits)
+    if (cleaned.length === 11) {
+      const cpfFormatted = cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+      const rows = await db
+        .select()
+        .from(patientsTable)
+        .where(eq(patientsTable.cpf, cpfFormatted))
+        .limit(1);
+      patient = rows[0];
+    }
+
+    // Try phone (exact match on cleaned digits, last 9 or 10 chars)
+    if (!patient && cleaned.length >= 8) {
+      const allByPhone = await db
+        .select()
+        .from(patientsTable)
+        .where(sql`regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + cleaned.slice(-9)}`)
+        .limit(1);
+      patient = allByPhone[0];
+    }
+
+    // Try phone (original string)
+    if (!patient) {
+      const rows = await db
+        .select()
+        .from(patientsTable)
+        .where(eq(patientsTable.phone, q.trim()))
+        .limit(1);
+      patient = rows[0];
+    }
+
+    if (!patient) {
+      res.json({ found: false });
+      return;
+    }
+
+    // Active treatment plan
+    const plans = await db
+      .select()
+      .from(treatmentPlansTable)
+      .where(
+        and(
+          eq(treatmentPlansTable.patientId, patient.id),
+          eq(treatmentPlansTable.status, "ativo")
+        )
+      )
+      .limit(1);
+    const activePlan = plans[0] ?? null;
+
+    // Most frequently used procedure IDs (from appointment history)
+    const recentAppts = await db
+      .select({ procedureId: appointmentsTable.procedureId })
+      .from(appointmentsTable)
+      .where(
+        and(
+          eq(appointmentsTable.patientId, patient.id),
+          sql`${appointmentsTable.status} NOT IN ('cancelado', 'faltou')`
+        )
+      )
+      .orderBy(desc(appointmentsTable.createdAt))
+      .limit(20);
+
+    const freq: Record<number, number> = {};
+    recentAppts.forEach((a) => {
+      if (a.procedureId) freq[a.procedureId] = (freq[a.procedureId] ?? 0) + 1;
+    });
+    const recommendedProcedureIds = Object.entries(freq)
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .map(([id]) => Number(id));
+
+    res.json({
+      found: true,
+      patient: {
+        id: patient.id,
+        name: patient.name,
+        phone: patient.phone,
+        email: patient.email ?? null,
+        cpf: patient.cpf,
+      },
+      activeTreatmentPlan: activePlan
+        ? {
+            id: activePlan.id,
+            objectives: activePlan.objectives,
+            techniques: activePlan.techniques,
+            frequency: activePlan.frequency,
+            estimatedSessions: activePlan.estimatedSessions,
+            status: activePlan.status,
+          }
+        : null,
+      recommendedProcedureIds,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 // ── GET /api/public/procedures ────────────────────────────────────────────────
 // Lista procedimentos disponíveis para agendamento online

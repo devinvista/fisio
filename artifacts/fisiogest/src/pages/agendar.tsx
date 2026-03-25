@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -23,6 +23,11 @@ import {
   Link2,
   Copy,
   Check,
+  Star,
+  Sparkles,
+  UserCheck,
+  UserPlus,
+  ClipboardList,
 } from "lucide-react";
 import { format, addDays, isBefore, startOfToday, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -88,6 +93,33 @@ interface BookingDetails {
   procedure: { id: number; name: string; durationMinutes: number; price: string } | null;
 }
 
+interface PatientLookupResult {
+  found: boolean;
+  patient?: {
+    id: number;
+    name: string;
+    phone: string;
+    email: string | null;
+    cpf: string;
+  };
+  activeTreatmentPlan?: {
+    id: number;
+    objectives: string | null;
+    techniques: string | null;
+    frequency: string | null;
+    estimatedSessions: number | null;
+    status: string;
+  } | null;
+  recommendedProcedureIds?: number[];
+}
+
+async function lookupPatient(q: string): Promise<PatientLookupResult> {
+  if (q.trim().length < 4) return { found: false };
+  const res = await fetch(`${BASE}/api/public/patient-lookup?q=${encodeURIComponent(q.trim())}`);
+  if (!res.ok) return { found: false };
+  return res.json();
+}
+
 const CATEGORY_ICONS: Record<string, string> = {
   "Fisioterapia": "🦴",
   "Pilates": "🤸",
@@ -146,10 +178,60 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
 
 // ── Step 1: Selecionar Procedimento ──────────────────────────────────────────
 
-function StepProcedimento({
+function ProcedureCard({
+  proc,
+  selected,
+  recommended,
   onSelect,
 }: {
+  proc: PublicProcedure;
+  selected: boolean;
+  recommended: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`text-left p-4 rounded-2xl border-2 transition-all hover:shadow-md relative
+        ${selected
+          ? "border-primary bg-primary/5 shadow-md"
+          : recommended
+          ? "border-amber-300 bg-amber-50/60 hover:border-amber-400"
+          : "border-slate-200 bg-white hover:border-primary/40"}`}
+    >
+      {recommended && !selected && (
+        <span className="absolute -top-2 left-3 inline-flex items-center gap-1 text-[9px] font-bold bg-amber-400 text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+          <Star className="w-2.5 h-2.5" /> Recomendado
+        </span>
+      )}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <span className="font-semibold text-slate-800 text-sm leading-tight">{proc.name}</span>
+        {selected && <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="flex items-center gap-1 text-xs text-slate-500">
+          <Clock className="w-3 h-3" /> {proc.durationMinutes} min
+        </span>
+        <span className="text-sm font-bold text-primary">{formatCurrency(proc.price)}</span>
+        {proc.maxCapacity > 1 && (
+          <Badge variant="secondary" className="text-[10px] h-4">
+            Grupo • até {proc.maxCapacity} pessoas
+          </Badge>
+        )}
+      </div>
+      {proc.description && (
+        <p className="text-xs text-slate-400 mt-2 line-clamp-2">{proc.description}</p>
+      )}
+    </button>
+  );
+}
+
+function StepProcedimento({
+  onSelect,
+  foundPatient,
+}: {
   onSelect: (procedure: PublicProcedure) => void;
+  foundPatient: PatientLookupResult | null;
 }) {
   const [procedures, setProcedures] = useState<PublicProcedure[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,11 +253,31 @@ function StepProcedimento({
       .finally(() => setLoading(false));
   }, []);
 
-  const grouped = procedures.reduce<Record<string, PublicProcedure[]>>((acc, p) => {
-    if (!acc[p.category]) acc[p.category] = [];
-    acc[p.category].push(p);
+  const recommendedIds = foundPatient?.recommendedProcedureIds ?? [];
+  const hasPlan = !!foundPatient?.activeTreatmentPlan;
+
+  // Sort: recommended first, then by category/name
+  const sortedProcedures = [...procedures].sort((a, b) => {
+    const aRank = recommendedIds.indexOf(a.id);
+    const bRank = recommendedIds.indexOf(b.id);
+    if (aRank !== -1 && bRank === -1) return -1;
+    if (bRank !== -1 && aRank === -1) return 1;
+    if (aRank !== -1 && bRank !== -1) return aRank - bRank;
+    return 0;
+  });
+
+  const grouped = sortedProcedures.reduce<Record<string, PublicProcedure[]>>((acc, p) => {
+    const key = recommendedIds.includes(p.id) ? "__recomendados__" : p.category;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
     return acc;
   }, {});
+
+  // Build ordered category list: recommended first, then the rest
+  const categoryOrder = [
+    ...(grouped["__recomendados__"] ? ["__recomendados__"] : []),
+    ...Object.keys(grouped).filter((k) => k !== "__recomendados__"),
+  ];
 
   if (loading) {
     return (
@@ -208,47 +310,58 @@ function StepProcedimento({
   return (
     <div>
       <h2 className="text-xl font-bold text-slate-800 mb-1">Escolha o Procedimento</h2>
-      <p className="text-slate-500 text-sm mb-6">Selecione o serviço que deseja agendar</p>
+      <p className="text-slate-500 text-sm mb-4">Selecione o serviço que deseja agendar</p>
 
-      {Object.entries(grouped).map(([category, procs]) => (
-        <div key={category} className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
-            <span>{CATEGORY_ICONS[category] ?? CATEGORY_ICONS["default"]}</span>
-            {category}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {procs.map((proc) => (
-              <button
-                key={proc.id}
-                onClick={() => { setSelected(proc.id); setSelectedProc(proc); }}
-                className={`text-left p-4 rounded-2xl border-2 transition-all hover:shadow-md
-                  ${selected === proc.id
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-slate-200 bg-white hover:border-primary/40"}`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="font-semibold text-slate-800 text-sm leading-tight">{proc.name}</span>
-                  {selected === proc.id && <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />}
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
-                    <Clock className="w-3 h-3" /> {proc.durationMinutes} min
-                  </span>
-                  <span className="text-sm font-bold text-primary">{formatCurrency(proc.price)}</span>
-                  {proc.maxCapacity > 1 && (
-                    <Badge variant="secondary" className="text-[10px] h-4">
-                      Grupo • até {proc.maxCapacity} pessoas
-                    </Badge>
-                  )}
-                </div>
-                {proc.description && (
-                  <p className="text-xs text-slate-400 mt-2 line-clamp-2">{proc.description}</p>
-                )}
-              </button>
-            ))}
+      {/* Patient welcome banner */}
+      {foundPatient?.found && foundPatient.patient && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 mb-5 flex items-start gap-3">
+          <UserCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">
+              Bem-vindo de volta, {foundPatient.patient.name.split(" ")[0]}!
+            </p>
+            {hasPlan ? (
+              <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1">
+                <ClipboardList className="w-3 h-3" />
+                Você tem um plano de tratamento ativo — procedimentos recomendados estão destacados abaixo.
+              </p>
+            ) : (
+              <p className="text-xs text-emerald-700 mt-0.5">
+                {recommendedIds.length > 0
+                  ? "Seus procedimentos mais usados estão destacados abaixo."
+                  : "Seus dados serão preenchidos automaticamente na próxima etapa."}
+              </p>
+            )}
           </div>
         </div>
-      ))}
+      )}
+
+      {categoryOrder.map((category) => {
+        const procs = grouped[category];
+        const isRecommended = category === "__recomendados__";
+        return (
+          <div key={category} className="mb-6">
+            <p className={`text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5 ${isRecommended ? "text-amber-600" : "text-slate-400"}`}>
+              {isRecommended ? (
+                <><Sparkles className="w-3.5 h-3.5" /> {hasPlan ? "Do seu plano de tratamento" : "Usados recentemente"}</>
+              ) : (
+                <><span>{CATEGORY_ICONS[category] ?? CATEGORY_ICONS["default"]}</span>{category}</>
+              )}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {procs.map((proc) => (
+                <ProcedureCard
+                  key={proc.id}
+                  proc={proc}
+                  selected={selected === proc.id}
+                  recommended={isRecommended}
+                  onSelect={() => { setSelected(proc.id); setSelectedProc(proc); }}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       <div className="mt-6 flex justify-end">
         <Button
@@ -416,6 +529,7 @@ function StepDados({
   onSubmit,
   onBack,
   submitting,
+  onPatientFound,
 }: {
   procedure: PublicProcedure;
   date: string;
@@ -423,8 +537,51 @@ function StepDados({
   onSubmit: (data: { name: string; phone: string; email: string; cpf: string; notes: string }) => void;
   onBack: () => void;
   submitting: boolean;
+  onPatientFound?: (result: PatientLookupResult) => void;
 }) {
   const [form, setForm] = useState({ name: "", phone: "", email: "", cpf: "", notes: "" });
+  const [lookupState, setLookupState] = useState<"idle" | "searching" | "found" | "new">("idle");
+  const [foundResult, setFoundResult] = useState<PatientLookupResult | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerLookup = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const cleaned = q.replace(/\D/g, "");
+    if (cleaned.length < 8) {
+      setLookupState("idle");
+      return;
+    }
+    setLookupState("searching");
+    debounceRef.current = setTimeout(async () => {
+      const result = await lookupPatient(q);
+      setFoundResult(result);
+      if (result.found && result.patient) {
+        setLookupState("found");
+        setForm((prev) => ({
+          ...prev,
+          name: result.patient!.name,
+          phone: result.patient!.phone,
+          email: result.patient!.email ?? prev.email,
+          cpf: result.patient!.cpf ?? prev.cpf,
+        }));
+        onPatientFound?.(result);
+      } else {
+        setLookupState("new");
+      }
+    }, 600);
+  }, [onPatientFound]);
+
+  const handleCpfChange = (val: string) => {
+    setForm((prev) => ({ ...prev, cpf: val }));
+    triggerLookup(val);
+  };
+
+  const handlePhoneChange = (val: string) => {
+    setForm((prev) => ({ ...prev, phone: val }));
+    if (form.cpf.replace(/\D/g, "").length < 8) {
+      triggerLookup(val);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -439,7 +596,7 @@ function StepDados({
       </p>
 
       {/* Summary card */}
-      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex flex-wrap gap-4">
+      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-5 flex flex-wrap gap-4">
         <div className="flex items-center gap-2 text-sm">
           <Dumbbell className="w-4 h-4 text-primary" />
           <span className="font-semibold text-slate-700">{procedure.name}</span>
@@ -454,54 +611,111 @@ function StepDados({
         </div>
       </div>
 
+      {/* Patient lookup status banners */}
+      {lookupState === "searching" && (
+        <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-4">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Verificando se você já é paciente...
+        </div>
+      )}
+
+      {lookupState === "found" && foundResult?.patient && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <UserCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-emerald-800 mb-0.5">
+                Bem-vindo de volta, {foundResult.patient.name.split(" ")[0]}!
+              </p>
+              <p className="text-xs text-emerald-700 mb-2">
+                Encontramos seu cadastro. Seus dados foram preenchidos automaticamente.
+              </p>
+              {foundResult.activeTreatmentPlan && (
+                <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 rounded-lg px-2.5 py-1 text-xs font-medium">
+                  <ClipboardList className="w-3 h-3" />
+                  Plano de tratamento ativo: {foundResult.activeTreatmentPlan.frequency ?? "Em andamento"}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lookupState === "new" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
+          <UserPlus className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-blue-800">Primeiro agendamento na clínica?</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Não encontramos seu cadastro. Preencha seus dados abaixo — faremos seu pré-cadastro automaticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">Nome completo *</Label>
-            <Input
-              required
-              placeholder="Seu nome completo"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="h-11 rounded-xl"
-            />
+            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                required
+                placeholder="(11) 99999-0000"
+                value={form.phone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                className="h-11 rounded-xl pl-9"
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">CPF</Label>
+            <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+              CPF
+              {lookupState === "searching" && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+              {lookupState === "found" && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+            </Label>
             <Input
-              placeholder="000.000.000-00 (opcional)"
+              placeholder="000.000.000-00 (para busca automática)"
               value={form.cpf}
-              onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-              className="h-11 rounded-xl"
+              onChange={(e) => handleCpfChange(e.target.value)}
+              className={`h-11 rounded-xl ${lookupState === "found" ? "border-emerald-300 bg-emerald-50/40" : ""}`}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
-            <Input
-              required
-              placeholder="(11) 99999-0000"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="h-11 rounded-xl"
-            />
+            <Label className="text-sm font-medium text-slate-700">Nome completo *</Label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                required
+                placeholder="Seu nome completo"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className={`h-11 rounded-xl pl-9 ${lookupState === "found" ? "border-emerald-300 bg-emerald-50/40" : ""}`}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-slate-700">E-mail</Label>
-            <Input
-              type="email"
-              placeholder="seu@email.com (opcional)"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="h-11 rounded-xl"
-            />
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                type="email"
+                placeholder="seu@email.com (opcional)"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className={`h-11 rounded-xl pl-9 ${lookupState === "found" && form.email ? "border-emerald-300 bg-emerald-50/40" : ""}`}
+              />
+            </div>
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-slate-700">Observações</Label>
+          <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-slate-400" /> Observações
+          </Label>
           <Textarea
             placeholder="Alguma informação adicional para a clínica? (opcional)"
             value={form.notes}
@@ -810,6 +1024,7 @@ export default function Agendar() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [foundPatient, setFoundPatient] = useState<PatientLookupResult | null>(null);
 
   const handleProcedureSelect = (proc: PublicProcedure) => {
     setProcedure(proc);
@@ -865,6 +1080,7 @@ export default function Agendar() {
     setTime(null);
     setConfirmation(null);
     setSubmitError(null);
+    setFoundPatient(null);
     setStep(1);
   };
 
@@ -917,7 +1133,10 @@ export default function Agendar() {
               )}
 
               {step === 1 && (
-                <StepProcedimento onSelect={handleProcedureSelect} />
+                <StepProcedimento
+                  onSelect={handleProcedureSelect}
+                  foundPatient={foundPatient}
+                />
               )}
               {step === 2 && procedure && (
                 <StepDataHora
@@ -934,6 +1153,7 @@ export default function Agendar() {
                   onSubmit={handleSubmit}
                   onBack={() => setStep(2)}
                   submitting={submitting}
+                  onPatientFound={(result) => setFoundPatient(result)}
                 />
               )}
               {step === 4 && confirmation && (
