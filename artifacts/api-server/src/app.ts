@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import path from "path";
+import rateLimit from "express-rate-limit";
 import router from "./routes";
 
 const app: Express = express();
@@ -12,6 +13,27 @@ const allowedOrigins = process.env.CORS_ORIGIN
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too Many Requests", message: "Muitas requisições. Tente novamente em alguns minutos." },
+  skip: (req) => req.path === "/api/health",
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too Many Requests", message: "Muitas tentativas de login. Tente novamente em 15 minutos." },
+});
+
+app.use("/api", globalLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
 
 app.use("/api", router);
 

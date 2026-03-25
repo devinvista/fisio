@@ -1358,6 +1358,77 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
   );
 }
 
+// ─── Audit Log Section ───────────────────────────────────────────────────────────
+
+const ENTITY_LABELS: Record<string, string> = {
+  anamnesis: "Anamnese",
+  evaluation: "Avaliação Física",
+  evolution: "Evolução",
+  discharge: "Alta Fisioterapêutica",
+  treatment_plan: "Plano de Tratamento",
+};
+
+const ACTION_STYLES: Record<string, { label: string; bg: string; text: string }> = {
+  create: { label: "Criado", bg: "bg-green-100", text: "text-green-700" },
+  update: { label: "Editado", bg: "bg-blue-100", text: "text-blue-700" },
+  delete: { label: "Excluído", bg: "bg-red-100", text: "text-red-700" },
+};
+
+function AuditLogSection({ patientId }: { patientId: number }) {
+  const [open, setOpen] = useState(false);
+  const token = () => localStorage.getItem("fisiogest_token");
+  const { data: logs = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/audit-log/patients/${patientId}`],
+    queryFn: () => fetch(`/api/audit-log/patients/${patientId}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    }).then(r => r.json()),
+    enabled: open && !!patientId,
+  });
+
+  return (
+    <div className="mt-6 border-t border-slate-100 pt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors"
+      >
+        <ShieldAlert className="w-4 h-4 text-slate-400" />
+        Log de Auditoria do Prontuário
+        {open ? <ChevronUp className="w-4 h-4 text-slate-400 ml-1" /> : <ChevronDown className="w-4 h-4 text-slate-400 ml-1" />}
+      </button>
+      {open && (
+        <div className="mt-3">
+          {isLoading && <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>}
+          {!isLoading && logs.length === 0 && (
+            <p className="text-sm text-slate-400 py-3 text-center">Nenhuma alteração registrada ainda.</p>
+          )}
+          {!isLoading && logs.length > 0 && (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+              {logs.map((log: any) => {
+                const style = ACTION_STYLES[log.action] || ACTION_STYLES.update;
+                const entityLabel = ENTITY_LABELS[log.entityType] || log.entityType;
+                return (
+                  <div key={log.id} className="flex items-start gap-2.5 text-xs rounded-lg px-3 py-2 bg-slate-50 border border-slate-100">
+                    <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded font-semibold text-[10px] ${style.bg} ${style.text}`}>
+                      {style.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-700">{log.summary || entityLabel}</p>
+                      {log.userName && <p className="text-slate-400">por {log.userName}</p>}
+                    </div>
+                    <span className="shrink-0 text-slate-400 whitespace-nowrap">
+                      {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Appointment History Tab ────────────────────────────────────────────────────
 
 function HistoryTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
@@ -1432,6 +1503,8 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
         appointmentDate={dialogAppt?.date}
         defaultType="comparecimento"
       />
+
+      <AuditLogSection patientId={patientId} />
     </div>
   );
 }

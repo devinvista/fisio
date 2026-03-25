@@ -13,9 +13,10 @@ import {
   atestadosTable,
 } from "@workspace/db";
 import { eq, desc, or } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { logAudit } from "../lib/auditLog.js";
 
 type P = { patientId: string };
 type PEval = { patientId: string; evaluationId: string };
@@ -53,7 +54,8 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
       .where(eq(anamnesisTable.patientId, patientId));
 
     let anamnesis;
-    if (existing.length > 0) {
+    const isUpdate = existing.length > 0;
+    if (isUpdate) {
       [anamnesis] = await db
         .update(anamnesisTable)
         .set({ mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale, updatedAt: new Date() })
@@ -65,6 +67,14 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
         .values({ patientId, mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale })
         .returning();
     }
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: isUpdate ? "update" : "create",
+      entityType: "anamnesis",
+      entityId: anamnesis?.id,
+      summary: isUpdate ? "Anamnese atualizada" : "Anamnese criada",
+    });
     res.json(anamnesis);
   } catch (err) {
     console.error(err);
@@ -95,6 +105,7 @@ router.post("/evaluations", requirePermission("medical.write"), async (req: Requ
       .insert(evaluationsTable)
       .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis })
       .returning();
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evaluation", entityId: evaluation?.id, summary: "Avaliação física criada" });
     res.status(201).json(evaluation);
   } catch (err) {
     console.error(err);
@@ -122,6 +133,7 @@ router.put("/evaluations/:evaluationId", requirePermission("medical.write"), asy
       .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
       .where(eq(evaluationsTable.id, evaluationId))
       .returning();
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física editada" });
     res.json(updated);
   } catch (err) {
     console.error(err);
@@ -144,6 +156,7 @@ router.delete("/evaluations/:evaluationId", requirePermission("medical.write"), 
     }
 
     await db.delete(evaluationsTable).where(eq(evaluationsTable.id, evaluationId));
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física excluída" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -222,6 +235,7 @@ router.post("/evolutions", requirePermission("medical.write"), async (req: Reque
       .insert(evolutionsTable)
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications })
       .returning();
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evolution", entityId: evolution?.id, summary: "Evolução de sessão criada" });
     res.status(201).json(evolution);
   } catch (err) {
     console.error(err);
@@ -249,6 +263,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
       .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications })
       .where(eq(evolutionsTable.id, evolutionId))
       .returning();
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão editada" });
     res.json(updated);
   } catch (err) {
     console.error(err);
@@ -271,6 +286,7 @@ router.delete("/evolutions/:evolutionId", requirePermission("medical.write"), as
     }
 
     await db.delete(evolutionsTable).where(eq(evolutionsTable.id, evolutionId));
+    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão excluída" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -324,7 +340,8 @@ router.post("/discharge-summary", requirePermission("medical.write"), async (req
       .where(eq(dischargeSummariesTable.patientId, patientId));
 
     let summary;
-    if (existing.length > 0) {
+    const isDischargeUpdate = existing.length > 0;
+    if (isDischargeUpdate) {
       [summary] = await db
         .update(dischargeSummariesTable)
         .set({ dischargeDate, dischargeReason, achievedResults, recommendations, updatedAt: new Date() })
@@ -336,6 +353,14 @@ router.post("/discharge-summary", requirePermission("medical.write"), async (req
         .values({ patientId, dischargeDate, dischargeReason, achievedResults, recommendations })
         .returning();
     }
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: isDischargeUpdate ? "update" : "create",
+      entityType: "discharge",
+      entityId: summary?.id,
+      summary: isDischargeUpdate ? "Alta fisioterapêutica atualizada" : "Alta fisioterapêutica registrada",
+    });
     res.json(summary);
   } catch (err) {
     console.error(err);

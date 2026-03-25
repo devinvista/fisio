@@ -1,12 +1,27 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { blockedSlotsTable } from "@workspace/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { randomUUID } from "crypto";
 
 const router = Router();
 router.use(authMiddleware);
+
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr + "T00:00:00Z").getUTCDay();
+}
+
+function dateStrIsAfter(a: string, b: string): boolean {
+  return a > b;
+}
 
 router.get("/", requirePermission("appointments.read"), async (req, res) => {
   try {
@@ -30,7 +45,15 @@ router.get("/", requirePermission("appointments.read"), async (req, res) => {
 
 router.post("/", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
-    const { date, startTime, endTime, reason } = req.body;
+    const {
+      date,
+      startTime,
+      endTime,
+      reason,
+      recurrenceType,
+      recurrenceDays,
+      recurrenceEndDate,
+    } = req.body;
 
     if (!date || !startTime || !endTime) {
       res.status(400).json({ error: "Bad Request", message: "date, startTime e endTime são obrigatórios" });
@@ -42,12 +65,62 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       return;
     }
 
-    const [slot] = await db
-      .insert(blockedSlotsTable)
-      .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null })
-      .returning();
+    const isRecurring = recurrenceType && recurrenceType !== "none";
 
-    res.status(201).json(slot);
+    if (!isRecurring) {
+      const [slot] = await db
+        .insert(blockedSlotsTable)
+        .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null })
+        .returning();
+      res.status(201).json({ slots: [slot], count: 1 });
+      return;
+    }
+
+    if (!recurrenceEndDate) {
+      res.status(400).json({ error: "Bad Request", message: "recurrenceEndDate é obrigatório para bloqueios recorrentes" });
+      return;
+    }
+
+    if (dateStrIsAfter(date, recurrenceEndDate)) {
+      res.status(400).json({ error: "Bad Request", message: "A data final deve ser posterior à data inicial" });
+      return;
+    }
+
+    const allowedDays: number[] = Array.isArray(recurrenceDays)
+      ? recurrenceDays.map(Number)
+      : [getDayOfWeek(date)];
+
+    const daysToBlock: string[] = [];
+    let cursor = date;
+    let iterations = 0;
+    const maxIterations = 366;
+
+    while (!dateStrIsAfter(cursor, recurrenceEndDate) && iterations < maxIterations) {
+      const dow = getDayOfWeek(cursor);
+      if (recurrenceType === "daily" || (recurrenceType === "weekly" && allowedDays.includes(dow))) {
+        daysToBlock.push(cursor);
+      }
+      cursor = addDaysToDateStr(cursor, 1);
+      iterations++;
+    }
+
+    if (daysToBlock.length === 0) {
+      res.status(400).json({ error: "Bad Request", message: "Nenhuma data correspondeu ao padrão de recorrência" });
+      return;
+    }
+
+    const groupId = randomUUID();
+    const rows = daysToBlock.map((d) => ({
+      date: d,
+      startTime,
+      endTime,
+      reason: reason || null,
+      userId: req.userId ?? null,
+      recurrenceGroupId: groupId,
+    }));
+
+    const slots = await db.insert(blockedSlotsTable).values(rows).returning();
+    res.status(201).json({ slots, count: slots.length, recurrenceGroupId: groupId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -57,6 +130,24 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const deleteGroup = req.query.group === "true";
+
+    if (deleteGroup) {
+      const [slot] = await db.select().from(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
+      if (slot?.recurrenceGroupId) {
+        const groupSlots = await db
+          .select({ id: blockedSlotsTable.id })
+          .from(blockedSlotsTable)
+          .where(eq(blockedSlotsTable.recurrenceGroupId, slot.recurrenceGroupId));
+        const ids = groupSlots.map((s) => s.id);
+        if (ids.length > 0) {
+          await db.delete(blockedSlotsTable).where(inArray(blockedSlotsTable.id, ids));
+        }
+        res.json({ deleted: ids.length });
+        return;
+      }
+    }
+
     await db.delete(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
     res.status(204).send();
   } catch (err) {

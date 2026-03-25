@@ -13,6 +13,7 @@ import storageRouter from "./storage.js";
 import blockedSlotsRouter from "./blocked-slots.js";
 import publicRouter from "./public.js";
 import subscriptionsRouter from "./subscriptions.js";
+import auditLogRouter from "./audit-log.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use("/subscriptions", subscriptionsRouter);
 router.use("/reports", reportsRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/storage", storageRouter);
+router.use("/audit-log", auditLogRouter);
 
 export default router;

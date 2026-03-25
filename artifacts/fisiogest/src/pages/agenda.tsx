@@ -2021,6 +2021,16 @@ function MonthGrid({
 
 // ─── Blocked Slot Modal ───────────────────────────────────────────────────────
 
+const WEEK_DAYS = [
+  { value: 0, label: "Dom" },
+  { value: 1, label: "Seg" },
+  { value: 2, label: "Ter" },
+  { value: 3, label: "Qua" },
+  { value: 4, label: "Qui" },
+  { value: 5, label: "Sex" },
+  { value: 6, label: "Sáb" },
+];
+
 function BlockedSlotModal({
   open,
   onOpenChange,
@@ -2033,11 +2043,15 @@ function BlockedSlotModal({
   const { toast } = useToast();
   const [form, setForm] = useState({
     date: format(new Date(), "yyyy-MM-dd"),
-    startTime: "08:00",
-    endTime: "09:00",
+    startTime: "12:00",
+    endTime: "13:00",
     reason: "",
+    recurrenceType: "none" as "none" | "daily" | "weekly",
+    recurrenceDays: [] as number[],
+    recurrenceEndDate: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteGroupId, setDeleteGroupId] = useState<{ id: number; groupId: string | null } | null>(null);
 
   const { data: existingBlocks = [], refetch: refetchList } = useQuery<BlockedSlot[]>({
     queryKey: ["blocked-slots-modal", form.date],
@@ -2049,32 +2063,64 @@ function BlockedSlotModal({
     staleTime: 5_000,
   });
 
+  const isRecurring = form.recurrenceType !== "none";
+
+  const toggleDay = (day: number) => {
+    setForm((f) => ({
+      ...f,
+      recurrenceDays: f.recurrenceDays.includes(day)
+        ? f.recurrenceDays.filter((d) => d !== day)
+        : [...f.recurrenceDays, day],
+    }));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.startTime >= form.endTime) {
       toast({ variant: "destructive", title: "Horário inválido", description: "O horário de início deve ser antes do término." });
       return;
     }
+    if (isRecurring && !form.recurrenceEndDate) {
+      toast({ variant: "destructive", title: "Data final obrigatória", description: "Informe até quando o bloqueio se repete." });
+      return;
+    }
+    if (isRecurring && form.recurrenceType === "weekly" && form.recurrenceDays.length === 0) {
+      toast({ variant: "destructive", title: "Selecione os dias", description: "Marque pelo menos um dia da semana." });
+      return;
+    }
     setIsSaving(true);
     try {
+      const body: Record<string, unknown> = {
+        date: form.date,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        reason: form.reason || undefined,
+        recurrenceType: form.recurrenceType,
+      };
+      if (isRecurring) {
+        body.recurrenceEndDate = form.recurrenceEndDate;
+        if (form.recurrenceType === "weekly") body.recurrenceDays = form.recurrenceDays;
+      }
       const res = await fetch("/api/blocked-slots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          date: form.date,
-          startTime: form.startTime,
-          endTime: form.endTime,
-          reason: form.reason || undefined,
-        }),
+        body: JSON.stringify(body),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         toast({ variant: "destructive", title: "Erro ao bloquear", description: data.message || "Erro desconhecido." });
       } else {
-        toast({ title: "Horário bloqueado!", description: `${form.date} · ${form.startTime}–${form.endTime}` });
+        const count = data.count || 1;
+        toast({
+          title: "Horário(s) bloqueado(s)!",
+          description: isRecurring
+            ? `${count} bloqueio(s) criado(s) com recorrência ${form.recurrenceType === "daily" ? "diária" : "semanal"}`
+            : `${form.date} · ${form.startTime}–${form.endTime}`,
+        });
         refetchList();
         onSuccess();
+        setForm(f => ({ ...f, recurrenceType: "none", recurrenceDays: [], recurrenceEndDate: "" }));
       }
     } catch {
       toast({ variant: "destructive", title: "Erro ao bloquear horário." });
@@ -2083,106 +2129,205 @@ function BlockedSlotModal({
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, groupId: string | null) => {
+    if (groupId) {
+      setDeleteGroupId({ id, groupId });
+      return;
+    }
+    await doDelete(id, false);
+  };
+
+  const doDelete = async (id: number, group: boolean) => {
     try {
-      await fetch(`/api/blocked-slots/${id}`, { method: "DELETE", credentials: "include" });
-      toast({ title: "Bloqueio removido." });
+      const url = group ? `/api/blocked-slots/${id}?group=true` : `/api/blocked-slots/${id}`;
+      await fetch(url, { method: "DELETE", credentials: "include" });
+      toast({ title: group ? "Série de bloqueios removida." : "Bloqueio removido." });
       refetchList();
       onSuccess();
     } catch {
       toast({ variant: "destructive", title: "Erro ao remover bloqueio." });
+    } finally {
+      setDeleteGroupId(null);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px] border-none shadow-2xl rounded-3xl">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-100">
-              <Lock className="w-4 h-4 text-slate-600" />
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[480px] border-none shadow-2xl rounded-3xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-slate-100">
+                <Lock className="w-4 h-4 text-slate-600" />
+              </div>
+              <DialogTitle className="font-display text-xl">Bloquear Horário</DialogTitle>
             </div>
-            <DialogTitle className="font-display text-xl">Bloquear Horário</DialogTitle>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
-        <form onSubmit={handleSave} className="space-y-4 pt-1">
-          <div className="space-y-1.5">
-            <Label>Data *</Label>
-            <DatePickerPTBR
-              value={form.date}
-              onChange={(v) => setForm({ ...form, date: v })}
-              className="h-11 rounded-xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSave} className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <Label>Início *</Label>
-              <TimeInputPTBR
-                value={form.startTime}
-                onChange={(v) => setForm({ ...form, startTime: v })}
+              <Label>Data inicial *</Label>
+              <DatePickerPTBR
+                value={form.date}
+                onChange={(v) => setForm({ ...form, date: v })}
                 className="h-11 rounded-xl"
               />
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Início *</Label>
+                <TimeInputPTBR
+                  value={form.startTime}
+                  onChange={(v) => setForm({ ...form, startTime: v })}
+                  className="h-11 rounded-xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Término *</Label>
+                <TimeInputPTBR
+                  value={form.endTime}
+                  onChange={(v) => setForm({ ...form, endTime: v })}
+                  className="h-11 rounded-xl"
+                />
+              </div>
+            </div>
+
             <div className="space-y-1.5">
-              <Label>Término *</Label>
-              <TimeInputPTBR
-                value={form.endTime}
-                onChange={(v) => setForm({ ...form, endTime: v })}
+              <Label>Motivo</Label>
+              <Input
+                placeholder="Ex: Almoço, Reunião, Feriado..."
+                value={form.reason}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
                 className="h-11 rounded-xl"
               />
             </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <Label>Motivo</Label>
-            <Input
-              placeholder="Ex: Almoço, Reunião, Feriado..."
-              value={form.reason}
-              onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              className="h-11 rounded-xl"
-            />
-          </div>
-
-          <Button type="submit" className="w-full h-11 rounded-xl" disabled={isSaving}>
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
-            Bloquear horário
-          </Button>
-        </form>
-
-        {/* Existing blocks for the selected date */}
-        {existingBlocks.length > 0 && (
-          <div className="pt-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-              Bloqueios neste dia
-            </p>
-            <div className="space-y-1.5">
-              {existingBlocks.map((b) => (
-                <div
-                  key={b.id}
-                  className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-200"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Ban className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="text-sm font-medium text-slate-700">{b.startTime}–{b.endTime}</span>
-                    {b.reason && (
-                      <span className="text-xs text-slate-500 truncate">{b.reason}</span>
-                    )}
-                  </div>
+            {/* Recurrence */}
+            <div className="rounded-xl border border-slate-200 p-3 space-y-3 bg-slate-50/60">
+              <div className="flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-slate-500" />
+                <Label className="text-sm font-semibold text-slate-700">Recorrência</Label>
+              </div>
+              <div className="flex gap-2">
+                {([
+                  { value: "none", label: "Uma vez" },
+                  { value: "daily", label: "Diário" },
+                  { value: "weekly", label: "Semanal" },
+                ] as const).map((opt) => (
                   <button
-                    className="ml-2 p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
-                    onClick={() => handleDelete(b.id)}
-                    title="Remover bloqueio"
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, recurrenceType: opt.value, recurrenceDays: [] }))}
+                    className={`flex-1 h-9 rounded-lg text-xs font-semibold border transition-colors ${
+                      form.recurrenceType === opt.value
+                        ? "bg-primary text-white border-primary"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary"
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {opt.label}
                   </button>
+                ))}
+              </div>
+
+              {form.recurrenceType === "weekly" && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-2">Dias da semana</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {WEEK_DAYS.map((d) => (
+                      <button
+                        key={d.value}
+                        type="button"
+                        onClick={() => toggleDay(d.value)}
+                        className={`w-10 h-8 rounded-lg text-xs font-semibold border transition-colors ${
+                          form.recurrenceDays.includes(d.value)
+                            ? "bg-primary text-white border-primary"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-primary"
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
+
+              {isRecurring && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Repetir até *</Label>
+                  <DatePickerPTBR
+                    value={form.recurrenceEndDate}
+                    onChange={(v) => setForm({ ...form, recurrenceEndDate: v })}
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+            <Button type="submit" className="w-full h-11 rounded-xl" disabled={isSaving}>
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
+              {isRecurring ? "Criar bloqueios recorrentes" : "Bloquear horário"}
+            </Button>
+          </form>
+
+          {/* Existing blocks for the selected date */}
+          {existingBlocks.length > 0 && (
+            <div className="pt-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Bloqueios neste dia
+              </p>
+              <div className="space-y-1.5">
+                {existingBlocks.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-200"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Ban className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="text-sm font-medium text-slate-700">{b.startTime}–{b.endTime}</span>
+                      {b.reason && (
+                        <span className="text-xs text-slate-500 truncate">{b.reason}</span>
+                      )}
+                      {(b as any).recurrenceGroupId && (
+                        <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded shrink-0">
+                          Recorrente
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      className="ml-2 p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                      onClick={() => handleDelete(b.id, (b as any).recurrenceGroupId || null)}
+                      title="Remover bloqueio"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete group confirmation */}
+      {deleteGroupId && (
+        <Dialog open onOpenChange={() => setDeleteGroupId(null)}>
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Remover bloqueio recorrente</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">Este bloqueio faz parte de uma série recorrente. O que deseja remover?</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Button variant="outline" className="rounded-xl" onClick={() => doDelete(deleteGroupId.id, false)}>
+                Apenas este bloqueio
+              </Button>
+              <Button variant="destructive" className="rounded-xl" onClick={() => doDelete(deleteGroupId.id, true)}>
+                Toda a série recorrente
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

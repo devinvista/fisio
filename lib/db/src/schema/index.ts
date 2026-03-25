@@ -8,3 +8,4 @@ export * from "./rbac";
 export * from "./blocked-slots";
 export * from "./subscriptions";
 export * from "./session-credits";
+export * from "./audit-log";

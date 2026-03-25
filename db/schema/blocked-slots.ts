@@ -8,6 +8,7 @@ export const blockedSlotsTable = pgTable("blocked_slots", {
   endTime: text("end_time").notNull(),
   reason: text("reason"),
   userId: integer("user_id").references(() => usersTable.id),
+  recurrenceGroupId: text("recurrence_group_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
