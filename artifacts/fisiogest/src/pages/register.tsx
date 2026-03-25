@@ -9,14 +9,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Stethoscope, Loader2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+function formatCpf(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
 export default function Register() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    cpf: "",
     password: "",
-    role: "profissional" as const
+    role: "profissional" as const,
   });
-  
+
   const registerMutation = useRegister();
   const { login } = useAuth();
   const { toast } = useToast();
@@ -24,19 +33,19 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     registerMutation.mutate(
-      { data: formData },
+      { data: { ...formData, cpf: formData.cpf || undefined } as any },
       {
         onSuccess: (res) => {
           toast({ title: "Conta criada!", description: "Bem-vindo ao FisioGest Pro." });
           login(res.token, res.user);
         },
         onError: (err: any) => {
-          toast({ 
-            variant: "destructive", 
-            title: "Erro no cadastro", 
-            description: err?.message || "Verifique os dados e tente novamente." 
+          toast({
+            variant: "destructive",
+            title: "Erro no cadastro",
+            description: err?.message || "Verifique os dados e tente novamente.",
           });
-        }
+        },
       }
     );
   };
@@ -45,7 +54,6 @@ export default function Register() {
     <div className="min-h-screen w-full flex bg-slate-50">
       <div className="w-full flex items-center justify-center p-4 sm:p-8">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 sm:p-10 border border-slate-100">
-          
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="bg-primary p-2 rounded-lg">
@@ -57,51 +65,72 @@ export default function Register() {
             <p className="text-muted-foreground">Preencha os dados abaixo para iniciar sua gestão clínica.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
             <div className="space-y-2">
               <Label htmlFor="name">Nome Completo</Label>
-              <Input 
-                id="name" 
-                placeholder="Dr. João Silva" 
+              <Input
+                id="name"
+                placeholder="Dr. João Silva"
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+                autoComplete="name"
                 className="h-12 rounded-xl"
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                placeholder="seu@email.com" 
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
                 value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
+                autoComplete="email"
                 className="h-12 rounded-xl"
               />
             </div>
-            
+
+            <div className="space-y-2">
+              <Label htmlFor="cpf">
+                CPF{" "}
+                <span className="text-muted-foreground font-normal text-xs">(opcional — permite login pelo CPF)</span>
+              </Label>
+              <Input
+                id="cpf"
+                type="text"
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                value={formData.cpf}
+                onChange={(e) => setFormData({ ...formData, cpf: formatCpf(e.target.value) })}
+                maxLength={14}
+                autoComplete="off"
+                className="h-12 rounded-xl"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="Mínimo 6 caracteres" 
+              <Input
+                id="password"
+                type="password"
+                placeholder="Mínimo 6 caracteres"
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 required
                 minLength={6}
+                autoComplete="new-password"
                 className="h-12 rounded-xl"
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="role">Perfil de Acesso</Label>
-              <Select 
-                value={formData.role} 
-                onValueChange={(val: any) => setFormData({...formData, role: val})}
+              <Select
+                value={formData.role}
+                onValueChange={(val: any) => setFormData({ ...formData, role: val })}
               >
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue placeholder="Selecione o perfil" />
@@ -114,8 +143,8 @@ export default function Register() {
               </Select>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full h-12 rounded-xl text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all mt-4"
               disabled={registerMutation.isPending}
             >
@@ -124,7 +153,10 @@ export default function Register() {
           </form>
 
           <div className="mt-8 text-center">
-            <Link href="/login" className="text-muted-foreground hover:text-primary font-medium inline-flex items-center gap-2 transition-colors">
+            <Link
+              href="/login"
+              className="text-muted-foreground hover:text-primary font-medium inline-flex items-center gap-2 transition-colors"
+            >
               <ArrowLeft className="w-4 h-4" /> Voltar para o Login
             </Link>
           </div>

@@ -3,10 +3,22 @@ import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { usersTable, userRolesTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, or } from "drizzle-orm";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
+
+function normalizeCpf(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function isEmail(value: string): boolean {
+  return value.includes("@");
+}
+
+function isCpf(value: string): boolean {
+  return /^\d{11}$/.test(normalizeCpf(value));
+}
 
 async function getUserRoles(userId: number): Promise<Role[]> {
   const rows = await db
@@ -25,7 +37,7 @@ async function assignRoles(userId: number, roles: Role[]): Promise<void> {
 
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, roles } = req.body;
+    const { name, email, cpf, password, roles } = req.body;
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0
       ? roles
       : ["profissional"];
@@ -46,10 +58,28 @@ router.post("/register", async (req, res) => {
       return;
     }
 
+    if (cpf) {
+      const normalizedCpf = normalizeCpf(cpf);
+      const existingCpf = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.cpf, normalizedCpf))
+        .limit(1);
+      if (existingCpf.length > 0) {
+        res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
+        return;
+      }
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const [user] = await db
       .insert(usersTable)
-      .values({ name, email, passwordHash })
+      .values({
+        name,
+        email,
+        cpf: cpf ? normalizeCpf(cpf) : null,
+        passwordHash,
+      })
       .returning();
 
     await assignRoles(user.id, roleList);
@@ -73,17 +103,33 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "E-mail e senha são obrigatórios" });
+    const { email: identifier, password } = req.body;
+    if (!identifier || !password) {
+      res.status(400).json({ error: "Bad Request", message: "Identificador e senha são obrigatórios" });
       return;
     }
 
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email))
-      .limit(1);
+    let user: typeof usersTable.$inferSelect | undefined;
+
+    if (isEmail(identifier)) {
+      const rows = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, identifier.toLowerCase().trim()))
+        .limit(1);
+      user = rows[0];
+    } else if (isCpf(identifier)) {
+      const normalizedCpf = normalizeCpf(identifier);
+      const rows = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.cpf, normalizedCpf))
+        .limit(1);
+      user = rows[0];
+    } else {
+      res.status(401).json({ error: "Unauthorized", message: "Credenciais inválidas" });
+      return;
+    }
 
     if (!user) {
       res.status(401).json({ error: "Unauthorized", message: "Credenciais inválidas" });

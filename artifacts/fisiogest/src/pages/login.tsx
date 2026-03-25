@@ -8,40 +8,63 @@ import { Label } from "@/components/ui/label";
 import { Stethoscope, Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+function formatCpfInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function looksLikeCpf(value: string): boolean {
+  return /^\d/.test(value.trim()) && !value.includes("@");
+}
+
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const loginMutation = useLogin();
   const { login } = useAuth();
   const { toast } = useToast();
 
+  const isCpfMode = looksLikeCpf(identifier);
+
+  const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (looksLikeCpf(raw)) {
+      setIdentifier(formatCpfInput(raw));
+    } else {
+      setIdentifier(raw);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     loginMutation.mutate(
-      { data: { email, password } },
+      { data: { email: identifier, password } },
       {
         onSuccess: (res) => {
           toast({ title: "Bem-vindo de volta!", description: "Login realizado com sucesso." });
           login(res.token, res.user);
         },
         onError: (err: any) => {
-          toast({ 
-            variant: "destructive", 
-            title: "Erro no login", 
-            description: err?.message || "Credenciais inválidas. Tente novamente." 
+          toast({
+            variant: "destructive",
+            title: "Erro no login",
+            description: err?.message || "Credenciais inválidas. Tente novamente.",
           });
-        }
+        },
       }
     );
   };
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50">
-      {/* Left side - Image */}
+      {/* Left side */}
       <div className="hidden lg:flex w-1/2 relative bg-primary items-center justify-center overflow-hidden">
-        <img 
-          src={`${import.meta.env.BASE_URL}images/auth-bg.png`} 
-          alt="Healthcare background" 
+        <img
+          src={`${import.meta.env.BASE_URL}images/auth-bg.png`}
+          alt="Healthcare background"
           className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-overlay"
         />
         <div className="relative z-10 p-12 text-white max-w-lg text-center">
@@ -70,49 +93,73 @@ export default function Login() {
             <p className="text-muted-foreground">Acesse sua conta para gerenciar sua clínica.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                placeholder="seu@email.com" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-12 rounded-xl"
-              />
+              <Label htmlFor="identifier">E-mail ou CPF</Label>
+              <div className="relative">
+                <Input
+                  id="identifier"
+                  type="text"
+                  inputMode={isCpfMode ? "numeric" : "email"}
+                  placeholder="seu@email.com ou 000.000.000-00"
+                  value={identifier}
+                  onChange={handleIdentifierChange}
+                  required
+                  autoComplete="username"
+                  className="h-12 rounded-xl pr-16"
+                />
+                {isCpfMode && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                    CPF
+                  </span>
+                )}
+                {!isCpfMode && identifier.includes("@") && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                    E-MAIL
+                  </span>
+                )}
+              </div>
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Senha</Label>
-                <a href="#" className="text-sm text-primary font-medium hover:underline">Esqueceu a senha?</a>
+                <a href="#" className="text-sm text-primary font-medium hover:underline">
+                  Esqueceu a senha?
+                </a>
               </div>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="••••••••" 
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 className="h-12 rounded-xl"
               />
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full h-12 rounded-xl text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
               disabled={loginMutation.isPending}
             >
-              {loginMutation.isPending ? <Loader2 className="animate-spin w-5 h-5" /> : "Entrar no Sistema"}
+              {loginMutation.isPending ? (
+                <Loader2 className="animate-spin w-5 h-5" />
+              ) : (
+                "Entrar no Sistema"
+              )}
             </Button>
           </form>
 
           <div className="mt-8 text-center">
             <p className="text-muted-foreground">
-              Não tem uma conta?{' '}
-              <Link href="/register" className="text-primary font-semibold hover:underline inline-flex items-center gap-1">
+              Não tem uma conta?{" "}
+              <Link
+                href="/register"
+                className="text-primary font-semibold hover:underline inline-flex items-center gap-1"
+              >
                 Crie agora <ArrowRight className="w-4 h-4" />
               </Link>
             </p>
