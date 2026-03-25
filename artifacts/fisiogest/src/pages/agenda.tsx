@@ -545,7 +545,7 @@ export default function Agenda() {
                                   </div>
                                   <p className="text-[9px] opacity-70 mt-0.5">{startTime} – {endTime}</p>
                                   <div className="mt-1 space-y-0.5">
-                                    {grpApts.slice(0, 3).map((a) => {
+                                    {grpApts.map((a) => {
                                       const sCfg = STATUS_CONFIG[a.status] || STATUS_CONFIG.agendado;
                                       return (
                                         <div
@@ -558,9 +558,6 @@ export default function Agenda() {
                                         </div>
                                       );
                                     })}
-                                    {occupancy > 3 && (
-                                      <p className="text-[9px] opacity-60">+{occupancy - 3} mais</p>
-                                    )}
                                     {spotsLeft > 0 && height >= 80 && (
                                       <p className="text-[9px] opacity-60 flex items-center gap-0.5 mt-0.5">
                                         <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
@@ -1097,9 +1094,6 @@ function AppointmentDetailModal({
                           )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {isCurrent && (
-                            <span className="text-[9px] font-bold text-violet-500 bg-violet-100 px-1.5 py-0.5 rounded-full">você</span>
-                          )}
                           <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", mCfg.badge)}>
                             {mCfg.label}
                           </span>
