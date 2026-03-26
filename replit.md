@@ -284,9 +284,24 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 ### Financeiro
 | Método | Caminho | Descrição |
 |---|---|---|
-| GET | `/api/financial/dashboard` | KPIs mensais |
+| GET | `/api/financial/dashboard` | KPIs mensais (só conta transactionType=pagamento) |
 | GET | `/api/financial/records` | Listar registros (filtros: type, month, year) |
-| POST | `/api/financial/records` | Criar registro |
+| POST | `/api/financial/records` | Criar registro de despesa/receita manual |
+| GET | `/api/financial/patients/:id/history` | Histórico financeiro completo do paciente |
+| GET | `/api/financial/patients/:id/summary` | Saldo: totalAReceber, totalPago, saldo, totalSessionCredits |
+| POST | `/api/financial/patients/:id/payment` | Registrar pagamento do paciente (transactionType=pagamento) |
+| GET | `/api/financial/patients/:id/credits` | Créditos de sessão do paciente |
+| GET | `/api/financial/patients/:id/subscriptions` | Assinaturas ativas do paciente |
+| PATCH | `/api/financial/records/:id/status` | Atualizar status do registro |
+| PATCH | `/api/financial/records/:id/estorno` | Soft-reversal: marca status=estornado (nunca deleta receitas) |
+| DELETE | `/api/financial/records/:id` | Deleta despesas; estorna receitas (soft) |
+
+**Modelo financeiro (v2):**
+- Sessões agendadas → geram `creditoAReceber` (receita pendente)
+- Pagamento do paciente → `transactionType: "pagamento"`, `status: "pago"`
+- Saldo = totalAReceber − totalPago
+- Receitas NUNCA são hard-deleted — apenas soft-estornadas (status=estornado)
+- Types suportados: `creditoAReceber`, `cobrancaSessao`, `cobrancaMensal`, `pagamento`, `usoCredito`, `creditoSessao`, `ajuste`, `estorno`
 
 ---
 

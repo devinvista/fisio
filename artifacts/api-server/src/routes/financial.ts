@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt, gt } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt, gt, inArray } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -55,7 +55,7 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       );
 
     const monthlyRevenue = records
-      .filter((r) => r.type === "receita")
+      .filter((r) => r.type === "receita" && r.transactionType === "pagamento" && r.status === "pago")
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
     const monthlyExpenses = records
@@ -93,8 +93,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
-          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          : and(eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
       )
       .groupBy(proceduresTable.category);
 
@@ -108,8 +108,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
-          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          : and(eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
       )
       .groupBy(proceduresTable.name)
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
@@ -161,6 +161,8 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
         appointmentId: financialRecordsTable.appointmentId,
         patientId: financialRecordsTable.patientId,
         procedureId: financialRecordsTable.procedureId,
+        transactionType: financialRecordsTable.transactionType,
+        status: financialRecordsTable.status,
         procedureName: proceduresTable.name,
         createdAt: financialRecordsTable.createdAt,
       })
@@ -255,6 +257,99 @@ router.get("/patients/:patientId/history", requirePermission("financial.read"), 
   }
 });
 
+router.get("/patients/:patientId/summary", requirePermission("financial.read"), async (req, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId as string);
+
+    const records = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(eq(financialRecordsTable.patientId, patientId));
+
+    const RECEIVABLE_TYPES = ["creditoAReceber", "cobrancaSessao", "cobrancaMensal"];
+
+    const totalAReceber = records
+      .filter((r) => RECEIVABLE_TYPES.includes(r.transactionType ?? "") && r.status !== "cancelado" && r.status !== "estornado" && Number(r.amount) > 0)
+      .reduce((s, r) => s + Number(r.amount), 0);
+
+    const totalPago = records
+      .filter((r) => r.transactionType === "pagamento" && r.status === "pago")
+      .reduce((s, r) => s + Number(r.amount), 0);
+
+    const saldo = totalAReceber - totalPago;
+
+    const credits = await db
+      .select()
+      .from(sessionCreditsTable)
+      .where(eq(sessionCreditsTable.patientId, patientId));
+
+    const totalSessionCredits = credits.reduce((s, c) => s + (c.quantity - c.usedQuantity), 0);
+
+    res.json({
+      totalAReceber,
+      totalPago,
+      saldo,
+      totalSessionCredits,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/patients/:patientId/payment", requirePermission("financial.write"), async (req: AuthRequest, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId as string);
+    const { amount, paymentMethod, description, procedureId } = req.body;
+
+    if (!amount) {
+      res.status(400).json({ error: "Bad Request", message: "Valor é obrigatório" });
+      return;
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      res.status(400).json({ error: "Bad Request", message: "Valor deve ser maior que zero" });
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [patient] = await db.select({ name: patientsTable.name }).from(patientsTable).where(eq(patientsTable.id, patientId));
+
+    const [record] = await db
+      .insert(financialRecordsTable)
+      .values({
+        type: "receita",
+        amount: String(numAmount),
+        description: description || `Pagamento — ${patient?.name ?? "Paciente"}`,
+        category: "Pagamento",
+        patientId,
+        procedureId: procedureId ? parseInt(String(procedureId)) : null,
+        transactionType: "pagamento",
+        status: "pago",
+        paymentDate: today,
+        paymentMethod: paymentMethod || null,
+        clinicId: req.clinicId ?? null,
+      })
+      .returning();
+
+    await logAudit({
+      userId: req.userId,
+      action: "create",
+      entityType: "financial_record",
+      entityId: record.id,
+      patientId,
+      summary: `Pagamento registrado: R$ ${numAmount.toFixed(2)} — ${paymentMethod ?? ""}`,
+    });
+
+    res.status(201).json(record);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.get("/patients/:patientId/credits", requirePermission("financial.read"), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
@@ -335,6 +430,47 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
   }
 });
 
+router.patch("/records/:id/estorno", requirePermission("financial.write"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+
+    const [record] = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(eq(financialRecordsTable.id, id));
+
+    if (!record) {
+      res.status(404).json({ error: "Not Found", message: "Registro financeiro não encontrado" });
+      return;
+    }
+
+    if (record.status === "estornado") {
+      res.status(400).json({ error: "Bad Request", message: "Registro já foi estornado" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(financialRecordsTable)
+      .set({ status: "estornado" })
+      .where(eq(financialRecordsTable.id, id))
+      .returning();
+
+    await logAudit({
+      userId: req.userId,
+      action: "update",
+      entityType: "financial_record",
+      entityId: id,
+      patientId: record.patientId ?? null,
+      summary: `Estorno aplicado: ${record.description} (R$ ${Number(record.amount).toFixed(2)})`,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.delete("/records/:id", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
@@ -349,7 +485,14 @@ router.delete("/records/:id", requirePermission("financial.write"), async (req: 
       return;
     }
 
-    await db.delete(financialRecordsTable).where(eq(financialRecordsTable.id, id));
+    if (record.type === "despesa") {
+      await db.delete(financialRecordsTable).where(eq(financialRecordsTable.id, id));
+    } else {
+      await db
+        .update(financialRecordsTable)
+        .set({ status: "estornado" })
+        .where(eq(financialRecordsTable.id, id));
+    }
 
     await logAudit({
       userId: req.userId,
@@ -357,7 +500,7 @@ router.delete("/records/:id", requirePermission("financial.write"), async (req: 
       entityType: "financial_record",
       entityId: id,
       patientId: record.patientId ?? null,
-      summary: `Registro financeiro excluído: ${record.description} (R$ ${Number(record.amount).toFixed(2)})`,
+      summary: `Registro financeiro estornado/removido: ${record.description} (R$ ${Number(record.amount).toFixed(2)})`,
     });
 
     res.status(204).send();

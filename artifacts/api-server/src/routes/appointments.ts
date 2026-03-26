@@ -97,18 +97,31 @@ async function applyBillingRules(
           dueDate: today,
         });
       } else {
-        await db.insert(financialRecordsTable).values({
-          type: "receita",
-          amount: String(procedure.price),
-          description: `${procedure.name} - ${patientName}`,
-          category: procedure.category,
-          appointmentId,
-          patientId,
-          procedureId,
-          transactionType: "cobrancaSessao",
-          status: "pendente",
-          dueDate: today,
-        });
+        const existing = await db
+          .select()
+          .from(financialRecordsTable)
+          .where(
+            and(
+              eq(financialRecordsTable.appointmentId, appointmentId),
+              eq(financialRecordsTable.transactionType, "creditoAReceber")
+            )
+          )
+          .limit(1);
+
+        if (existing.length === 0) {
+          await db.insert(financialRecordsTable).values({
+            type: "receita",
+            amount: String(procedure.price),
+            description: `${procedure.name} - ${patientName}`,
+            category: procedure.category,
+            appointmentId,
+            patientId,
+            procedureId,
+            transactionType: "creditoAReceber",
+            status: "pendente",
+            dueDate: today,
+          });
+        }
       }
     }
   }

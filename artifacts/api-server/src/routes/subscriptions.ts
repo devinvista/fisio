@@ -50,19 +50,16 @@ router.post("/", requirePermission("financial.write"), async (req, res) => {
   try {
     const { patientId, procedureId, startDate, billingDay, monthlyAmount, notes } = req.body;
 
-    if (!patientId || !procedureId || !startDate || !billingDay || !monthlyAmount) {
+    if (!patientId || !procedureId || !startDate || !monthlyAmount) {
       res.status(400).json({
         error: "Bad Request",
-        message: "patientId, procedureId, startDate, billingDay e monthlyAmount são obrigatórios",
+        message: "patientId, procedureId, startDate e monthlyAmount são obrigatórios",
       });
       return;
     }
 
-    const day = parseInt(billingDay);
-    if (day < 1 || day > 31) {
-      res.status(400).json({ error: "Bad Request", message: "billingDay deve estar entre 1 e 31" });
-      return;
-    }
+    const rawDay = billingDay ? parseInt(billingDay) : new Date(startDate + "T12:00:00Z").getUTCDate();
+    const day = Math.max(1, Math.min(31, rawDay));
 
     const [subscription] = await db
       .insert(patientSubscriptionsTable)
@@ -215,7 +212,7 @@ router.post("/run-billing", requirePermission("financial.write"), async (req, re
           category: row.procedure?.category ?? null,
           patientId: sub.patientId,
           procedureId: sub.procedureId,
-          transactionType: "cobrancaMensal",
+          transactionType: "creditoAReceber",
           status: "pendente",
           dueDate: todayDate,
           subscriptionId: sub.id,
