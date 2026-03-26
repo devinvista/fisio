@@ -157,7 +157,23 @@ router.put("/:id", requirePermission("patients.update"), async (req, res) => {
 router.delete("/:id", requirePermission("patients.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+
+    const [existing] = await db
+      .select({ name: patientsTable.name })
+      .from(patientsTable)
+      .where(eq(patientsTable.id, id));
+
     await db.delete(patientsTable).where(eq(patientsTable.id, id));
+
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId: null,
+      action: "delete",
+      entityType: "patient",
+      entityId: id,
+      summary: `Paciente excluído: ${existing?.name ?? `ID ${id}`}`,
+    });
+
     res.status(204).send();
   } catch (err) {
     console.error(err);

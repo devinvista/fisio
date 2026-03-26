@@ -1795,6 +1795,177 @@ function AuditLogSection({ patientId }: { patientId: number }) {
   );
 }
 
+// ─── Audit Log Tab (dedicated full view) ────────────────────────────────────────
+
+type AuditAction = "all" | "create" | "update" | "delete";
+
+function AuditLogTab({ patientId }: { patientId: number }) {
+  const [filter, setFilter] = useState<AuditAction>("all");
+  const token = () => localStorage.getItem("fisiogest_token");
+
+  const { data: logs = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/audit-log/patients/${patientId}`],
+    queryFn: () =>
+      fetch(`/api/audit-log/patients/${patientId}`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      }).then((r) => r.json()),
+    enabled: !!patientId,
+    staleTime: 30_000,
+  });
+
+  const filtered = filter === "all" ? logs : logs.filter((l) => l.action === filter);
+
+  const counts = {
+    all: logs.length,
+    create: logs.filter((l) => l.action === "create").length,
+    update: logs.filter((l) => l.action === "update").length,
+    delete: logs.filter((l) => l.action === "delete").length,
+  };
+
+  // Group by calendar date
+  const grouped: Record<string, any[]> = {};
+  for (const log of filtered) {
+    const day = format(new Date(log.createdAt), "yyyy-MM-dd");
+    if (!grouped[day]) grouped[day] = [];
+    grouped[day].push(log);
+  }
+  const days = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  function dayLabel(dateStr: string) {
+    const d = new Date(dateStr + "T12:00:00");
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    if (format(d, "yyyy-MM-dd") === format(today, "yyyy-MM-dd")) return "Hoje";
+    if (format(d, "yyyy-MM-dd") === format(yesterday, "yyyy-MM-dd")) return "Ontem";
+    return format(d, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  }
+
+  const filterButtons: { key: AuditAction; label: string; color: string; activeClass: string }[] = [
+    { key: "all",    label: `Todos (${counts.all})`,          color: "border-slate-200 text-slate-600", activeClass: "bg-slate-800 text-white border-slate-800" },
+    { key: "create", label: `Criações (${counts.create})`,    color: "border-emerald-200 text-emerald-700", activeClass: "bg-emerald-600 text-white border-emerald-600" },
+    { key: "update", label: `Edições (${counts.update})`,     color: "border-blue-200 text-blue-700",    activeClass: "bg-blue-600 text-white border-blue-600" },
+    { key: "delete", label: `Exclusões (${counts.delete})`,   color: "border-red-200 text-red-600",      activeClass: "bg-red-600 text-white border-red-600" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+          <ShieldAlert className="w-5 h-5 text-slate-600" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Log de Auditoria do Prontuário</h3>
+          <p className="text-sm text-slate-500">
+            Rastreabilidade completa — todas as criações, edições e exclusões ficam registradas com usuário e horário.
+          </p>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Criações", value: counts.create, bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-400" },
+          { label: "Edições",  value: counts.update, bg: "bg-blue-50",    text: "text-blue-700",    dot: "bg-blue-400"    },
+          { label: "Exclusões",value: counts.delete, bg: "bg-red-50",     text: "text-red-600",     dot: "bg-red-400"     },
+        ].map((s) => (
+          <div key={s.label} className={`rounded-xl p-3 ${s.bg} flex items-center gap-2.5`}>
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${s.dot}`} />
+            <div>
+              <p className={`text-lg font-bold leading-none ${s.text}`}>{s.value}</p>
+              <p className={`text-xs mt-0.5 ${s.text} opacity-80`}>{s.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter buttons */}
+      <div className="flex flex-wrap gap-2">
+        {filterButtons.map((btn) => (
+          <button
+            key={btn.key}
+            onClick={() => setFilter(btn.key)}
+            className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+              filter === btn.key ? btn.activeClass : `bg-white ${btn.color} hover:bg-slate-50`
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Log list */}
+      {isLoading ? (
+        <div className="py-12 text-center">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-300" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <Card className="border-dashed border-2 border-slate-200">
+          <CardContent className="p-12 text-center text-slate-400">
+            <Lock className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">Nenhum registro encontrado</p>
+            <p className="text-sm mt-1">
+              {filter === "all"
+                ? "Ainda não há ações registradas neste prontuário."
+                : "Nenhum registro para o filtro selecionado."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-5">
+          {days.map((day) => (
+            <div key={day}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {dayLabel(day)}
+                </span>
+                <div className="flex-1 h-px bg-slate-100" />
+                <span className="text-xs text-slate-300">{grouped[day].length}</span>
+              </div>
+              <div className="space-y-1">
+                {grouped[day].map((log: any) => {
+                  const style = ACTION_STYLES[log.action] || ACTION_STYLES.update;
+                  const entity = ENTITY_LABELS[log.entityType] || { label: log.entityType, icon: "📝" };
+                  return (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-3 px-4 py-3 rounded-xl border border-slate-100 bg-white hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="shrink-0 w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5 text-sm">
+                        {entity.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <span className="text-xs font-semibold text-slate-800">{entity.label}</span>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                            {style.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-snug">{log.summary || entity.label}</p>
+                        {log.userName && (
+                          <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <UserCheck className="w-3 h-3" />
+                            <span className="font-medium text-slate-500">{log.userName}</span>
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-[11px] text-slate-400 whitespace-nowrap mt-0.5 tabular-nums">
+                        {format(new Date(log.createdAt), "HH:mm", { locale: ptBR })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Appointment History Tab ────────────────────────────────────────────────────
 
 function HistoryTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
@@ -3346,7 +3517,7 @@ export default function PatientDetail() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {/* Atestados + Alta row — split 50/50, visually distinct */}
+              {/* Atestados + Alta + Auditoria row */}
               <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-dashed border-slate-300 h-auto flex gap-1">
                 <TabsTrigger
                   value="atestados"
@@ -3359,6 +3530,12 @@ export default function PatientDetail() {
                   className="flex-1 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
                 >
                   <LogOut className="w-3.5 h-3.5 shrink-0" /> Alta Fisioterapêutica
+                </TabsTrigger>
+                <TabsTrigger
+                  value="auditoria"
+                  className="flex-1 rounded-lg data-[state=active]:bg-slate-800 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Auditoria
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -3376,6 +3553,9 @@ export default function PatientDetail() {
             </TabsContent>
             <TabsContent value="discharge">
               <DischargeTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} />
+            </TabsContent>
+            <TabsContent value="auditoria">
+              <AuditLogTab patientId={patientId} />
             </TabsContent>
           </Tabs>
         </div>
