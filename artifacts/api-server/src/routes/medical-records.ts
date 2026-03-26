@@ -521,8 +521,8 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
         const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
         await objectFile.delete();
       }
-    } catch {
-      // If GCS delete fails, still remove from DB
+    } catch (storageErr) {
+      console.error("Falha ao excluir arquivo do storage (continuando com remoção do banco):", storageErr);
     }
 
     await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));

@@ -1690,7 +1690,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   const handleSave = () => {
     mutation.mutate({
       patientId,
-      data: { ...form, estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : undefined },
+      data: { ...form, estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : null },
     }, {
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Plano de tratamento atualizado." });
@@ -1891,7 +1891,7 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
 
   const buildPayload = () => ({
     ...form,
-    appointmentId: form.appointmentId ? Number(form.appointmentId) : undefined,
+    appointmentId: form.appointmentId ? Number(form.appointmentId) : null,
   });
 
   const handleCreate = () => {

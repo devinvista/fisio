@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable } from "@workspace/db";
+import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -8,9 +8,37 @@ import { requirePermission } from "../middleware/rbac.js";
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
+async function verifyPlanOwnership(planId: number, req: AuthRequest): Promise<boolean> {
+  if (req.isSuperAdmin || !req.clinicId) return true;
+  const [row] = await db
+    .select({ clinicId: patientsTable.clinicId })
+    .from(treatmentPlansTable)
+    .innerJoin(patientsTable, eq(treatmentPlansTable.patientId, patientsTable.id))
+    .where(eq(treatmentPlansTable.id, planId))
+    .limit(1);
+  return row?.clinicId === req.clinicId;
+}
+
+async function verifyItemOwnership(itemId: number, req: AuthRequest): Promise<boolean> {
+  if (req.isSuperAdmin || !req.clinicId) return true;
+  const [row] = await db
+    .select({ clinicId: patientsTable.clinicId })
+    .from(treatmentPlanProceduresTable)
+    .innerJoin(treatmentPlansTable, eq(treatmentPlanProceduresTable.treatmentPlanId, treatmentPlansTable.id))
+    .innerJoin(patientsTable, eq(treatmentPlansTable.patientId, patientsTable.id))
+    .where(eq(treatmentPlanProceduresTable.id, itemId))
+    .limit(1);
+  return row?.clinicId === req.clinicId;
+}
+
 router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res) => {
   try {
     const planId = parseInt(req.params.planId as string);
+
+    if (!(await verifyPlanOwnership(planId, req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const rawItems = await db
       .select({
@@ -114,6 +142,11 @@ router.post("/", requirePermission("patients.write"), async (req: AuthRequest, r
       return;
     }
 
+    if (!(await verifyPlanOwnership(planId, req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const [item] = await db
       .insert(treatmentPlanProceduresTable)
       .values({
@@ -138,6 +171,11 @@ router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest,
   try {
     const id = parseInt(req.params.id as string);
     const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes } = req.body;
+
+    if (!(await verifyItemOwnership(id, req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const updateData: any = {};
     if (procedureId !== undefined) updateData.procedureId = procedureId ? parseInt(procedureId) : null;
@@ -167,6 +205,12 @@ router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest,
 router.delete("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
+
+    if (!(await verifyItemOwnership(id, req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     await db.delete(treatmentPlanProceduresTable).where(eq(treatmentPlanProceduresTable.id, id));
     res.status(204).send();
   } catch (err) {
