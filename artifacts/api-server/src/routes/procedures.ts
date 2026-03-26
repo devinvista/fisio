@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { proceduresTable, appointmentsTable } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, ilike, isNull, or } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import type { Role } from "@workspace/db";
@@ -18,9 +18,9 @@ router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest,
 
     const conditions: any[] = [];
     if (!req.isSuperAdmin && req.clinicId) {
-      conditions.push(eq(proceduresTable.clinicId, req.clinicId));
+      conditions.push(or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, req.clinicId)));
     }
-    if (category) conditions.push(eq(proceduresTable.category, category));
+    if (category) conditions.push(ilike(proceduresTable.category, category));
     if (!isAdmin || !includeInactive) conditions.push(eq(proceduresTable.isActive, true));
 
     let query = db.select().from(proceduresTable) as any;

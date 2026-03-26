@@ -75,9 +75,9 @@ const CATEGORIES = [
 ];
 
 const CATEGORY_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  fisioterapia: { label: "Fisioterapia", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
-  estetica:     { label: "Estética",     bg: "bg-pink-50",   text: "text-pink-700",  dot: "bg-pink-400" },
-  pilates:      { label: "Pilates",      bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-400" },
+  "Fisioterapia": { label: "Fisioterapia", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
+  "Estética":     { label: "Estética",     bg: "bg-pink-50",   text: "text-pink-700",  dot: "bg-pink-400" },
+  "Pilates":      { label: "Pilates",      bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-400" },
 };
 
 function formatCurrency(value: string | number) {
@@ -123,12 +123,12 @@ export default function Procedimentos() {
     clinicName: "FisioGest Pro",
     tagline: "Cuidando de você com excelência",
     showPrices: true,
-    selectedCategories: ["fisioterapia", "estetica", "pilates"] as string[],
+    selectedCategories: ["Fisioterapia", "Estética", "Pilates"] as string[],
   });
 
   const [form, setForm] = useState({
     name: "",
-    category: "fisioterapia",
+    category: "Fisioterapia",
     modalidade: "individual" as "individual" | "dupla" | "grupo",
     durationMinutes: 60,
     price: "",
@@ -235,7 +235,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
+    setForm({ name: "", category: "Fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
   }
 
   function openEdit(proc: Procedure) {
@@ -269,15 +269,14 @@ export default function Procedimentos() {
   function generateCatalog() {
     const { clinicName, tagline, showPrices, selectedCategories } = catalogOptions;
 
-    const categoryOrder = ["fisioterapia", "estetica", "pilates"];
-    const catLabels: Record<string, string> = { fisioterapia: "Fisioterapia", estetica: "Estética", pilates: "Pilates" };
-    const catColors: Record<string, string> = { fisioterapia: "#2563eb", estetica: "#db2777", pilates: "#7c3aed" };
+    const categoryOrder = ["Fisioterapia", "Estética", "Pilates"];
+    const catColors: Record<string, string> = { "Fisioterapia": "#2563eb", "Estética": "#db2777", "Pilates": "#7c3aed" };
 
     const grouped = categoryOrder
       .filter(cat => selectedCategories.includes(cat))
       .map(cat => ({
         cat,
-        label: catLabels[cat] ?? cat,
+        label: cat,
         color: catColors[cat] ?? "#334155",
         items: allProcedures.filter(p => p.category === cat),
       }))
@@ -718,9 +717,9 @@ export default function Procedimentos() {
                 <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
                   <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fisioterapia">Fisioterapia</SelectItem>
-                    <SelectItem value="estetica">Estética</SelectItem>
-                    <SelectItem value="pilates">Pilates</SelectItem>
+                    <SelectItem value="Fisioterapia">Fisioterapia</SelectItem>
+                    <SelectItem value="Estética">Estética</SelectItem>
+                    <SelectItem value="Pilates">Pilates</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -897,9 +896,9 @@ export default function Procedimentos() {
               <Label>Categorias a incluir</Label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { value: "fisioterapia", label: "Fisioterapia" },
-                  { value: "estetica", label: "Estética" },
-                  { value: "pilates", label: "Pilates" },
+                  { value: "Fisioterapia", label: "Fisioterapia" },
+                  { value: "Estética", label: "Estética" },
+                  { value: "Pilates", label: "Pilates" },
                 ].map(c => {
                   const active = catalogOptions.selectedCategories.includes(c.value);
                   return (
