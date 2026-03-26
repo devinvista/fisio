@@ -243,6 +243,41 @@ router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
   }
 });
 
+router.put("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
+  try {
+    const clinicId = parseInt(req.params.id);
+    const userId = parseInt(req.params.userId);
+    const { name, email, password, roles } = req.body;
+
+    const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles : ["profissional"];
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (email !== undefined) updateData.email = email ? email.toLowerCase().trim() : null;
+    if (password) {
+      const bcrypt = await import("bcryptjs");
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await db.update(usersTable).set(updateData).where(eq(usersTable.id, userId));
+    }
+
+    await db.delete(userRolesTable).where(
+      and(eq(userRolesTable.userId, userId), eq(userRolesTable.clinicId, clinicId))
+    );
+    await db.insert(userRolesTable).values(
+      roleList.map((role) => ({ userId, clinicId, role }))
+    );
+
+    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    res.json({ id: updated.id, name: updated.name, email: updated.email, roles: roleList });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.delete("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
   try {
     const clinicId = parseInt(req.params.id);

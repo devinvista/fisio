@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,13 +25,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -56,7 +50,6 @@ import {
   MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth-context";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
@@ -75,7 +68,7 @@ async function createClinic(data: Record<string, string>) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || "Erro ao criar clínica");
+    throw new Error((err as any).message || "Erro ao criar clínica");
   }
   return res.json();
 }
@@ -109,7 +102,24 @@ async function addUserToClinic(clinicId: number, data: Record<string, unknown>) 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || "Erro ao adicionar usuário");
+    throw new Error((err as any).message || "Erro ao adicionar usuário");
+  }
+  return res.json();
+}
+
+async function updateUserInClinic(
+  clinicId: number,
+  userId: number,
+  data: Record<string, unknown>
+) {
+  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || "Erro ao atualizar usuário");
   }
   return res.json();
 }
@@ -160,29 +170,87 @@ interface AddUserFormData {
   cpf: string;
   email: string;
   password: string;
-  roles: string;
+  roles: string[];
+}
+
+interface EditUserFormData {
+  name: string;
+  email: string;
+  password: string;
+  roles: string[];
 }
 
 const EMPTY_FORM: ClinicFormData = { name: "", cnpj: "", phone: "", email: "", address: "" };
-const EMPTY_USER_FORM: AddUserFormData = { name: "", cpf: "", email: "", password: "", roles: "profissional" };
+const EMPTY_ADD_USER: AddUserFormData = { name: "", cpf: "", email: "", password: "", roles: ["profissional"] };
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrador",
-  profissional: "Profissional",
-  secretaria: "Secretaria",
+const ALL_ROLES = [
+  { value: "admin", label: "Administrador" },
+  { value: "profissional", label: "Profissional" },
+  { value: "secretaria", label: "Secretaria" },
+];
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: "bg-violet-100 text-violet-800 border-violet-200",
+  profissional: "bg-blue-100 text-blue-800 border-blue-200",
+  secretaria: "bg-emerald-100 text-emerald-800 border-emerald-200",
 };
+
+function RoleCheckboxes({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (roles: string[]) => void;
+}) {
+  const toggle = (role: string) => {
+    if (selected.includes(role)) {
+      const next = selected.filter((r) => r !== role);
+      if (next.length > 0) onChange(next);
+    } else {
+      onChange([...selected, role]);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {ALL_ROLES.map(({ value, label }) => (
+        <label
+          key={value}
+          className={`flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border transition-colors ${
+            selected.includes(value)
+              ? "border-primary bg-primary/5"
+              : "border-border hover:border-primary/40 bg-background"
+          }`}
+        >
+          <Checkbox
+            checked={selected.includes(value)}
+            onCheckedChange={() => toggle(value)}
+          />
+          <span className="text-sm font-medium">{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
 
 export default function Clinicas() {
   const { toast } = useToast();
-  const { switchClinic } = useAuth();
   const queryClient = useQueryClient();
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingClinic, setEditingClinic] = useState<Clinic | null>(null);
   const [deletingClinicId, setDeletingClinicId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ClinicFormData>(EMPTY_FORM);
 
   const [managingClinic, setManagingClinic] = useState<Clinic | null>(null);
-  const [addUserForm, setAddUserForm] = useState<AddUserFormData>(EMPTY_USER_FORM);
+  const [addUserForm, setAddUserForm] = useState<AddUserFormData>(EMPTY_ADD_USER);
+  const [editingUser, setEditingUser] = useState<ClinicUser | null>(null);
+  const [editUserForm, setEditUserForm] = useState<EditUserFormData>({
+    name: "",
+    email: "",
+    password: "",
+    roles: [],
+  });
   const [removingUserId, setRemovingUserId] = useState<number | null>(null);
 
   const { data: clinics = [], isLoading } = useQuery<Clinic[]>({
@@ -205,9 +273,7 @@ export default function Clinicas() {
       setIsCreateOpen(false);
       setFormData(EMPTY_FORM);
     },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Erro", description: err.message });
-    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const updateMutation = useMutation({
@@ -220,9 +286,7 @@ export default function Clinicas() {
       setEditingClinic(null);
       setFormData(EMPTY_FORM);
     },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Erro", description: err.message });
-    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const deleteMutation = useMutation({
@@ -233,9 +297,7 @@ export default function Clinicas() {
       toast({ title: "Clínica excluída." });
       setDeletingClinicId(null);
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Erro ao excluir clínica" });
-    },
+    onError: () => toast({ variant: "destructive", title: "Erro ao excluir clínica" }),
   });
 
   const addUserMutation = useMutation({
@@ -244,11 +306,27 @@ export default function Clinicas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clinic-users", managingClinic?.id] });
       toast({ title: "Usuário adicionado à clínica!" });
-      setAddUserForm(EMPTY_USER_FORM);
+      setAddUserForm(EMPTY_ADD_USER);
     },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Erro", description: err.message });
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({
+      clinicId,
+      userId,
+      data,
+    }: {
+      clinicId: number;
+      userId: number;
+      data: Record<string, unknown>;
+    }) => updateUserInClinic(clinicId, userId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clinic-users", managingClinic?.id] });
+      toast({ title: "Usuário atualizado!" });
+      setEditingUser(null);
     },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const removeUserMutation = useMutation({
@@ -259,9 +337,7 @@ export default function Clinicas() {
       toast({ title: "Usuário removido da clínica." });
       setRemovingUserId(null);
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Erro ao remover usuário" });
-    },
+    onError: () => toast({ variant: "destructive", title: "Erro ao remover usuário" }),
   });
 
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -293,6 +369,10 @@ export default function Clinicas() {
   const handleAddUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!managingClinic) return;
+    if (addUserForm.roles.length === 0) {
+      toast({ variant: "destructive", title: "Selecione ao menos um perfil" });
+      return;
+    }
     addUserMutation.mutate({
       clinicId: managingClinic.id,
       data: {
@@ -300,9 +380,35 @@ export default function Clinicas() {
         cpf: addUserForm.cpf,
         email: addUserForm.email || undefined,
         password: addUserForm.password,
-        roles: [addUserForm.roles],
+        roles: addUserForm.roles,
       },
     });
+  };
+
+  const openEditUser = (user: ClinicUser) => {
+    setEditingUser(user);
+    setEditUserForm({
+      name: user.name,
+      email: user.email ?? "",
+      password: "",
+      roles: [...user.roles],
+    });
+  };
+
+  const handleEditUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!managingClinic || !editingUser) return;
+    if (editUserForm.roles.length === 0) {
+      toast({ variant: "destructive", title: "Selecione ao menos um perfil" });
+      return;
+    }
+    const data: Record<string, unknown> = {
+      name: editUserForm.name,
+      email: editUserForm.email || undefined,
+      roles: editUserForm.roles,
+    };
+    if (editUserForm.password) data.password = editUserForm.password;
+    updateUserMutation.mutate({ clinicId: managingClinic.id, userId: editingUser.id, data });
   };
 
   const handleImpersonate = async (clinic: Clinic) => {
@@ -311,9 +417,7 @@ export default function Clinicas() {
       localStorage.setItem("fisiogest_token", data.token);
       localStorage.setItem("fisiogest_clinic_id", String(data.clinicId));
       toast({ title: `Acessando clínica: ${clinic.name}` });
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 500);
+      setTimeout(() => { window.location.href = "/"; }, 500);
     } catch {
       toast({ variant: "destructive", title: "Erro ao acessar clínica" });
     }
@@ -327,15 +431,8 @@ export default function Clinicas() {
             <h2 className="text-lg font-semibold text-foreground">Todas as Clínicas</h2>
             <p className="text-sm text-muted-foreground">{clinics.length} clínica(s) cadastrada(s)</p>
           </div>
-          <Button
-            onClick={() => {
-              setFormData(EMPTY_FORM);
-              setIsCreateOpen(true);
-            }}
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Nova Clínica
+          <Button onClick={() => { setFormData(EMPTY_FORM); setIsCreateOpen(true); }} className="gap-2">
+            <Plus className="h-4 w-4" /> Nova Clínica
           </Button>
         </div>
 
@@ -359,10 +456,7 @@ export default function Clinicas() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {clinics.map((clinic) => (
-              <Card
-                key={clinic.id}
-                className={`relative transition-all ${!clinic.isActive ? "opacity-60" : ""}`}
-              >
+              <Card key={clinic.id} className={`relative transition-all ${!clinic.isActive ? "opacity-60" : ""}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
@@ -371,15 +465,10 @@ export default function Clinicas() {
                       </div>
                       <div className="min-w-0">
                         <CardTitle className="text-base truncate">{clinic.name}</CardTitle>
-                        {clinic.cnpj && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{clinic.cnpj}</p>
-                        )}
+                        {clinic.cnpj && <p className="text-xs text-muted-foreground mt-0.5">{clinic.cnpj}</p>}
                       </div>
                     </div>
-                    <Badge
-                      variant={clinic.isActive ? "default" : "secondary"}
-                      className="shrink-0 text-xs"
-                    >
+                    <Badge variant={clinic.isActive ? "default" : "secondary"} className="shrink-0 text-xs">
                       {clinic.isActive ? "Ativa" : "Inativa"}
                     </Badge>
                   </div>
@@ -387,71 +476,29 @@ export default function Clinicas() {
                 <CardContent className="space-y-3">
                   {(clinic.phone || clinic.email || clinic.address) && (
                     <div className="text-xs text-muted-foreground space-y-1">
-                      {clinic.phone && (
-                        <p className="flex items-center gap-1.5">
-                          <Phone className="h-3 w-3" /> {clinic.phone}
-                        </p>
-                      )}
-                      {clinic.email && (
-                        <p className="flex items-center gap-1.5">
-                          <Mail className="h-3 w-3" /> {clinic.email}
-                        </p>
-                      )}
-                      {clinic.address && (
-                        <p className="flex items-center gap-1.5">
-                          <MapPin className="h-3 w-3" /> {clinic.address}
-                        </p>
-                      )}
+                      {clinic.phone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> {clinic.phone}</p>}
+                      {clinic.email && <p className="flex items-center gap-1.5"><Mail className="h-3 w-3" /> {clinic.email}</p>}
+                      {clinic.address && <p className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> {clinic.address}</p>}
                     </div>
                   )}
-
                   <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-border">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-xs h-8"
-                      onClick={() => openEdit(clinic)}
-                    >
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8" onClick={() => openEdit(clinic)}>
                       <Pencil className="h-3 w-3" /> Editar
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-xs h-8"
-                      onClick={() => {
-                        setManagingClinic(clinic);
-                        setAddUserForm(EMPTY_USER_FORM);
-                      }}
-                    >
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8"
+                      onClick={() => { setManagingClinic(clinic); setAddUserForm(EMPTY_ADD_USER); }}>
                       <Users className="h-3 w-3" /> Usuários
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-xs h-8"
-                      onClick={() => toggleActive(clinic)}
-                    >
-                      {clinic.isActive ? (
-                        <ToggleRight className="h-3 w-3" />
-                      ) : (
-                        <ToggleLeft className="h-3 w-3" />
-                      )}
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8" onClick={() => toggleActive(clinic)}>
+                      {clinic.isActive ? <ToggleRight className="h-3 w-3" /> : <ToggleLeft className="h-3 w-3" />}
                       {clinic.isActive ? "Desativar" : "Ativar"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-xs h-8 text-primary hover:text-primary"
-                      onClick={() => handleImpersonate(clinic)}
-                    >
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-xs h-8 text-primary hover:text-primary" onClick={() => handleImpersonate(clinic)}>
                       <LogIn className="h-3 w-3" /> Acessar
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    <Button size="sm" variant="ghost"
                       className="col-span-2 gap-1.5 text-xs h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => setDeletingClinicId(clinic.id)}
-                    >
+                      onClick={() => setDeletingClinicId(clinic.id)}>
                       <Trash2 className="h-3 w-3" /> Excluir Clínica
                     </Button>
                   </div>
@@ -462,6 +509,7 @@ export default function Clinicas() {
         )}
       </div>
 
+      {/* Create Clinic Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -471,21 +519,16 @@ export default function Clinicas() {
           <form onSubmit={handleCreateSubmit} className="space-y-4">
             <ClinicForm formData={formData} setFormData={setFormData} />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Criar Clínica"
-                )}
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar Clínica"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* Edit Clinic Dialog */}
       <Dialog open={!!editingClinic} onOpenChange={(open) => !open && setEditingClinic(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -495,110 +538,74 @@ export default function Clinicas() {
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <ClinicForm formData={formData} setFormData={setFormData} />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingClinic(null)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setEditingClinic(null)}>Cancelar</Button>
               <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Salvar"
-                )}
+                {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!managingClinic}
-        onOpenChange={(open) => !open && setManagingClinic(null)}
-      >
-        <DialogContent className="sm:max-w-2xl">
+      {/* Manage Users Dialog */}
+      <Dialog open={!!managingClinic} onOpenChange={(open) => !open && setManagingClinic(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               Usuários — {managingClinic?.name}
             </DialogTitle>
             <DialogDescription>
-              Gerencie os usuários com acesso a esta clínica.
+              Gerencie os usuários com acesso a esta clínica. Um usuário pode ter múltiplos perfis.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
-            <form onSubmit={handleAddUserSubmit} className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
-              <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                <UserPlus className="h-4 w-4" /> Adicionar usuário
+            {/* Add User Form */}
+            <form onSubmit={handleAddUserSubmit} className="border border-border rounded-xl p-4 space-y-4 bg-muted/30">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-primary" /> Adicionar usuário
               </p>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label className="text-xs">Nome *</Label>
-                  <Input
-                    placeholder="Nome completo"
-                    value={addUserForm.name}
-                    onChange={(e) => setAddUserForm((p) => ({ ...p, name: e.target.value }))}
-                    required
-                  />
+                  <Input placeholder="Nome completo" value={addUserForm.name}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, name: e.target.value }))} required />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label className="text-xs">CPF *</Label>
-                  <Input
-                    placeholder="000.000.000-00"
-                    value={addUserForm.cpf}
-                    onChange={(e) => setAddUserForm((p) => ({ ...p, cpf: e.target.value }))}
-                    required
-                  />
+                  <Input placeholder="000.000.000-00" value={addUserForm.cpf}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, cpf: e.target.value }))} required />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label className="text-xs">E-mail</Label>
-                  <Input
-                    type="email"
-                    placeholder="email@clinica.com"
-                    value={addUserForm.email}
-                    onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))}
-                  />
+                  <Input type="email" placeholder="email@clinica.com" value={addUserForm.email}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))} />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <Label className="text-xs">Senha *</Label>
-                  <Input
-                    type="password"
-                    placeholder="Senha inicial"
-                    value={addUserForm.password}
-                    onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))}
-                    required
-                  />
+                  <Input type="password" placeholder="Senha inicial" value={addUserForm.password}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))} required />
                 </div>
               </div>
-              <div className="flex items-end gap-3">
-                <div className="space-y-1 flex-1">
-                  <Label className="text-xs">Perfil *</Label>
-                  <Select
-                    value={addUserForm.roles}
-                    onValueChange={(v) => setAddUserForm((p) => ({ ...p, roles: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="profissional">Profissional</SelectItem>
-                      <SelectItem value="secretaria">Secretaria</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Perfis de acesso *</Label>
+                <RoleCheckboxes
+                  selected={addUserForm.roles}
+                  onChange={(roles) => setAddUserForm((p) => ({ ...p, roles }))}
+                />
+              </div>
+              <div className="flex justify-end">
                 <Button type="submit" disabled={addUserMutation.isPending} className="gap-2">
-                  {addUserMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <UserPlus className="h-4 w-4" />
-                  )}
+                  {addUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
                   Adicionar
                 </Button>
               </div>
             </form>
 
+            {/* User List */}
             <div>
-              <p className="text-sm font-medium text-foreground mb-3">
+              <p className="text-sm font-semibold text-foreground mb-3">
                 Usuários da clínica ({clinicUsers.length})
               </p>
               {isLoadingUsers ? (
@@ -606,45 +613,46 @@ export default function Clinicas() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : clinicUsers.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground text-sm">
+                <div className="text-center py-8 text-muted-foreground text-sm border border-dashed border-border rounded-xl">
                   Nenhum usuário nesta clínica
                 </div>
               ) : (
-                <div className="border border-border rounded-lg overflow-hidden">
+                <div className="border border-border rounded-xl overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>E-mail</TableHead>
-                        <TableHead>Perfil</TableHead>
-                        <TableHead className="w-12"></TableHead>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="text-xs">Nome</TableHead>
+                        <TableHead className="text-xs">E-mail</TableHead>
+                        <TableHead className="text-xs">Perfis</TableHead>
+                        <TableHead className="w-20 text-xs text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {clinicUsers.map((u) => (
                         <TableRow key={u.id}>
-                          <TableCell className="font-medium">{u.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {u.email ?? "—"}
-                          </TableCell>
+                          <TableCell className="font-medium text-sm">{u.name}</TableCell>
+                          <TableCell className="text-muted-foreground text-xs">{u.email ?? "—"}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {u.roles.map((r) => (
-                                <Badge key={r} variant="secondary" className="text-xs capitalize">
-                                  {ROLE_LABELS[r] ?? r}
-                                </Badge>
+                                <span key={r}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${ROLE_COLORS[r] ?? "bg-gray-100 text-gray-700"}`}>
+                                  {ALL_ROLES.find((x) => x.value === r)?.label ?? r}
+                                </span>
                               ))}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
-                              onClick={() => setRemovingUserId(u.id)}
-                            >
-                              <UserMinus className="h-3.5 w-3.5" />
-                            </Button>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={() => openEditUser(u)} title="Editar usuário">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => setRemovingUserId(u.id)} title="Remover da clínica">
+                                <UserMinus className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -655,60 +663,83 @@ export default function Clinicas() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setManagingClinic(null)}>
-              Fechar
-            </Button>
-            <Button
-              variant="default"
-              className="gap-2"
-              onClick={() => handleImpersonate(managingClinic!)}
-            >
-              <LogIn className="h-4 w-4" />
-              Acessar como Admin
+          <DialogFooter className="pt-2">
+            <Button variant="outline" onClick={() => setManagingClinic(null)}>Fechar</Button>
+            <Button className="gap-2" onClick={() => handleImpersonate(managingClinic!)}>
+              <LogIn className="h-4 w-4" /> Acessar como Admin
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={!!removingUserId}
-        onOpenChange={(open) => !open && setRemovingUserId(null)}
-      >
+      {/* Edit User Dialog */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" /> Editar Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Atualize os dados e perfis de <strong>{editingUser?.name}</strong> nesta clínica.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditUserSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Nome *</Label>
+              <Input value={editUserForm.name}
+                onChange={(e) => setEditUserForm((p) => ({ ...p, name: e.target.value }))} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>E-mail</Label>
+              <Input type="email" value={editUserForm.email}
+                onChange={(e) => setEditUserForm((p) => ({ ...p, email: e.target.value }))}
+                placeholder="Deixe em branco para manter" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nova senha</Label>
+              <Input type="password" value={editUserForm.password}
+                onChange={(e) => setEditUserForm((p) => ({ ...p, password: e.target.value }))}
+                placeholder="Deixe em branco para não alterar" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Perfis de acesso *</Label>
+              <RoleCheckboxes
+                selected={editUserForm.roles}
+                onChange={(roles) => setEditUserForm((p) => ({ ...p, roles }))}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>Cancelar</Button>
+              <Button type="submit" disabled={updateUserMutation.isPending}>
+                {updateUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar alterações"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove User Confirm */}
+      <AlertDialog open={!!removingUserId} onOpenChange={(open) => !open && setRemovingUserId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover usuário da clínica</AlertDialogTitle>
             <AlertDialogDescription>
-              O usuário perderá acesso a esta clínica. Esta ação não exclui a conta do usuário.
+              O usuário perderá acesso a esta clínica. A conta do usuário não será excluída.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() =>
-                managingClinic &&
-                removingUserId &&
-                removeUserMutation.mutate({
-                  clinicId: managingClinic.id,
-                  userId: removingUserId,
-                })
-              }
-            >
-              {removeUserMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Remover"
-              )}
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90"
+              onClick={() => managingClinic && removingUserId &&
+                removeUserMutation.mutate({ clinicId: managingClinic.id, userId: removingUserId })}>
+              {removeUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remover"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={!!deletingClinicId}
-        onOpenChange={(open) => !open && setDeletingClinicId(null)}
-      >
+      {/* Delete Clinic Confirm */}
+      <AlertDialog open={!!deletingClinicId} onOpenChange={(open) => !open && setDeletingClinicId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Clínica</AlertDialogTitle>
@@ -718,15 +749,9 @@ export default function Clinicas() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => deletingClinicId && deleteMutation.mutate(deletingClinicId)}
-            >
-              {deleteMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Excluir"
-              )}
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90"
+              onClick={() => deletingClinicId && deleteMutation.mutate(deletingClinicId)}>
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -746,52 +771,35 @@ function ClinicForm({
     <>
       <div className="space-y-2">
         <Label htmlFor="clinicName">Nome da Clínica *</Label>
-        <Input
-          id="clinicName"
-          value={formData.name}
-          onChange={(e) => setFormData((prev: any) => ({ ...prev, name: e.target.value }))}
-          placeholder="Ex: Clínica São Paulo"
-          required
-        />
+        <Input id="clinicName" value={formData.name} required
+          onChange={(e) => setFormData((p: any) => ({ ...p, name: e.target.value }))}
+          placeholder="Ex: Clínica São Paulo" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="cnpj">CNPJ</Label>
-        <Input
-          id="cnpj"
-          value={formData.cnpj}
-          onChange={(e) => setFormData((prev: any) => ({ ...prev, cnpj: e.target.value }))}
-          placeholder="00.000.000/0001-00"
-        />
+        <Input id="cnpj" value={formData.cnpj}
+          onChange={(e) => setFormData((p: any) => ({ ...p, cnpj: e.target.value }))}
+          placeholder="00.000.000/0001-00" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label htmlFor="phone">Telefone</Label>
-          <Input
-            id="phone"
-            value={formData.phone}
-            onChange={(e) => setFormData((prev: any) => ({ ...prev, phone: e.target.value }))}
-            placeholder="(11) 99999-9999"
-          />
+          <Input id="phone" value={formData.phone}
+            onChange={(e) => setFormData((p: any) => ({ ...p, phone: e.target.value }))}
+            placeholder="(11) 99999-9999" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="clinicEmail">E-mail</Label>
-          <Input
-            id="clinicEmail"
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData((prev: any) => ({ ...prev, email: e.target.value }))}
-            placeholder="contato@clinica.com"
-          />
+          <Input id="clinicEmail" type="email" value={formData.email}
+            onChange={(e) => setFormData((p: any) => ({ ...p, email: e.target.value }))}
+            placeholder="contato@clinica.com" />
         </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor="address">Endereço</Label>
-        <Input
-          id="address"
-          value={formData.address}
-          onChange={(e) => setFormData((prev: any) => ({ ...prev, address: e.target.value }))}
-          placeholder="Rua, número, bairro, cidade"
-        />
+        <Input id="address" value={formData.address}
+          onChange={(e) => setFormData((p: any) => ({ ...p, address: e.target.value }))}
+          placeholder="Rua, número, bairro, cidade" />
       </div>
     </>
   );
