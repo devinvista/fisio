@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,8 @@ import {
   BookOpen,
   Printer,
   Globe,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +63,7 @@ interface Procedure {
   billingType: "porSessao" | "mensal";
   monthlyPrice?: string | number | null;
   billingDay?: number | null;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -107,6 +111,8 @@ function CategoryBadge({ category }: { category: string }) {
 export default function Procedimentos() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { hasRole } = useAuth();
+  const isAdmin = hasRole("admin");
 
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -136,9 +142,10 @@ export default function Procedimentos() {
     billingDay: "",
   });
 
-  const url = selectedCategory === "all"
-    ? "/api/procedures"
-    : `/api/procedures?category=${selectedCategory}`;
+  const baseUrl = isAdmin
+    ? (selectedCategory === "all" ? "/api/procedures?includeInactive=true" : `/api/procedures?category=${selectedCategory}&includeInactive=true`)
+    : (selectedCategory === "all" ? "/api/procedures" : `/api/procedures?category=${selectedCategory}`);
+  const url = baseUrl;
 
   async function apiFetch<T = unknown>(url: string, options?: RequestInit): Promise<T> {
     const r = await fetch(url, options);
@@ -217,6 +224,17 @@ export default function Procedimentos() {
     },
     onError: (err: Error) => {
       toast({ variant: "destructive", title: "Erro ao remover procedimento", description: err.message });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: (id: number) => apiFetch<Procedure>(`/api/procedures/${id}/toggle-active`, { method: "PATCH" }),
+    onSuccess: (updated: Procedure) => {
+      queryClient.invalidateQueries({ queryKey: ["procedures"] });
+      toast({ title: updated.isActive ? "Procedimento ativado" : "Procedimento desativado" });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Erro ao alterar status", description: err.message });
     },
   });
 
@@ -674,9 +692,9 @@ export default function Procedimentos() {
             </Button>
           </div>
         ) : viewMode === "cards" ? (
-          <CardView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} />
+          <CardView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} />
         ) : (
-          <ListView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} />
+          <ListView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} />
         )}
       </div>
 
@@ -1008,10 +1026,12 @@ export default function Procedimentos() {
 
 // ─── Card View ────────────────────────────────────────────────────────────────
 
-function CardView({ procedures, onEdit, onDelete }: {
+function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
   procedures: Procedure[];
   onEdit: (p: Procedure) => void;
   onDelete: (p: Procedure) => void;
+  isAdmin?: boolean;
+  onToggleActive?: (p: Procedure) => void;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1022,7 +1042,10 @@ function CardView({ procedures, onEdit, onDelete }: {
         return (
           <div
             key={proc.id}
-            className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group"
+            className={cn(
+              "bg-white rounded-2xl border overflow-hidden hover:shadow-md transition-shadow group",
+              proc.isActive ? "border-slate-200" : "border-slate-200 opacity-60 grayscale-[40%]"
+            )}
           >
             {/* Top bar accent */}
             <div className={cn("h-1 w-full", marginColor)} />
@@ -1030,12 +1053,33 @@ function CardView({ procedures, onEdit, onDelete }: {
             <div className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-800 leading-snug truncate">{proc.name}</h3>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-semibold text-slate-800 leading-snug truncate">{proc.name}</h3>
+                    {!proc.isActive && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                        <PowerOff className="w-2.5 h-2.5" /> Inativo
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-1.5">
                     <CategoryBadge category={proc.category} />
                   </div>
                 </div>
                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {isAdmin && onToggleActive && (
+                    <button
+                      onClick={() => onToggleActive(proc)}
+                      title={proc.isActive ? "Desativar procedimento" : "Ativar procedimento"}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        proc.isActive
+                          ? "hover:bg-amber-50 text-slate-400 hover:text-amber-500"
+                          : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-500"
+                      )}
+                    >
+                      {proc.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                   <button
                     onClick={() => onEdit(proc)}
                     className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
@@ -1104,16 +1148,18 @@ function CardView({ procedures, onEdit, onDelete }: {
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
-function ListView({ procedures, onEdit, onDelete }: {
+function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
   procedures: Procedure[];
   onEdit: (p: Procedure) => void;
   onDelete: (p: Procedure) => void;
+  isAdmin?: boolean;
+  onToggleActive?: (p: Procedure) => void;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       {/* Header row */}
       <div className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"
-        style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 72px" }}
+        style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 80px" }}
       >
         <span>Procedimento</span>
         <span>Categoria</span>
@@ -1132,12 +1178,20 @@ function ListView({ procedures, onEdit, onDelete }: {
             key={proc.id}
             className={cn(
               "grid items-center px-4 py-3 hover:bg-slate-50/70 transition-colors group",
-              idx !== procedures.length - 1 && "border-b border-slate-100"
+              idx !== procedures.length - 1 && "border-b border-slate-100",
+              !proc.isActive && "opacity-60"
             )}
-            style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 72px" }}
+            style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 80px" }}
           >
             <div className="min-w-0 pr-3">
-              <p className="font-medium text-sm text-slate-800 truncate">{proc.name}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-sm text-slate-800 truncate">{proc.name}</p>
+                {!proc.isActive && (
+                  <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                    <PowerOff className="w-2.5 h-2.5" /> Inativo
+                  </span>
+                )}
+              </div>
               {proc.description && (
                 <p className="text-xs text-slate-400 truncate mt-0.5">{proc.description}</p>
               )}
@@ -1164,6 +1218,20 @@ function ListView({ procedures, onEdit, onDelete }: {
             </div>
 
             <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {isAdmin && onToggleActive && (
+                <button
+                  onClick={() => onToggleActive(proc)}
+                  title={proc.isActive ? "Desativar" : "Ativar"}
+                  className={cn(
+                    "p-1.5 rounded-lg transition-colors",
+                    proc.isActive
+                      ? "hover:bg-amber-50 text-slate-400 hover:text-amber-500"
+                      : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-500"
+                  )}
+                >
+                  {proc.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                </button>
+              )}
               <button
                 onClick={() => onEdit(proc)}
                 className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"

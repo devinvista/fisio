@@ -16,6 +16,7 @@ export const proceduresTable = pgTable("procedures", {
   monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 }),
   billingDay: integer("billing_day"),
   clinicId: integer("clinic_id"),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

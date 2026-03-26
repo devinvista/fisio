@@ -4,6 +4,7 @@ import { proceduresTable, appointmentsTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import type { Role } from "@workspace/db";
 
 const router = Router();
 router.use(authMiddleware);
@@ -11,10 +12,23 @@ router.use(authMiddleware);
 router.get("/", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const category = req.query.category as string | undefined;
-    let query = db.select().from(proceduresTable);
-    if (category) {
-      query = query.where(eq(proceduresTable.category, category)) as any;
+    const includeInactive = req.query.includeInactive === "true";
+
+    const isAdmin = (req.userRoles ?? []).includes("admin" as Role);
+
+    let query = db.select().from(proceduresTable) as any;
+
+    const conditions: any[] = [];
+    if (category) conditions.push(eq(proceduresTable.category, category));
+    if (!isAdmin || !includeInactive) conditions.push(eq(proceduresTable.isActive, true));
+
+    if (conditions.length === 1) {
+      query = query.where(conditions[0]);
+    } else if (conditions.length > 1) {
+      const { and } = await import("drizzle-orm");
+      query = query.where(and(...conditions));
     }
+
     const procedures = await query.orderBy(proceduresTable.name);
     res.json(procedures);
   } catch (err) {
@@ -55,6 +69,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
         billingType: resolvedBillingType,
         monthlyPrice: monthlyPrice ? String(monthlyPrice) : null,
         billingDay: billingDay ? parseInt(billingDay) : null,
+        isActive: true,
       })
       .returning();
     res.status(201).json(procedure);
@@ -91,6 +106,34 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
       return;
     }
     res.json(procedure);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async (req, res) => {
+  try {
+    const isAdmin = (req.userRoles ?? []).includes("admin" as Role);
+    if (!isAdmin) {
+      res.status(403).json({ error: "Forbidden", message: "Apenas administradores podem ativar/desativar procedimentos." });
+      return;
+    }
+
+    const id = parseInt(req.params.id as string);
+    const existing = await db.select().from(proceduresTable).where(eq(proceduresTable.id, id)).limit(1);
+    if (!existing[0]) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(proceduresTable)
+      .set({ isActive: !existing[0].isActive })
+      .where(eq(proceduresTable.id, id))
+      .returning();
+
+    res.json(updated);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
