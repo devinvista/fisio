@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { proceduresTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { proceduresTable, appointmentsTable } from "@workspace/db";
+import { eq, count } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -100,6 +100,20 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
 router.delete("/:id", requirePermission("procedures.manage"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(appointmentsTable)
+      .where(eq(appointmentsTable.procedureId, id));
+
+    if (total > 0) {
+      res.status(409).json({
+        error: "Conflict",
+        message: `Este procedimento não pode ser removido pois está vinculado a ${total} consulta(s). Remova ou reatribua as consultas antes de excluí-lo.`,
+      });
+      return;
+    }
+
     await db.delete(proceduresTable).where(eq(proceduresTable.id, id));
     res.status(204).send();
   } catch (err) {
