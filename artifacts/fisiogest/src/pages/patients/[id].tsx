@@ -1673,7 +1673,23 @@ function TreatmentPlanItemsSection({
   const hasMensal = planItems.some(i => i.packageType === "mensal");
   const hasSessoes = planItems.some(i => i.packageType !== "mensal");
 
-  if (!planId) return null;
+  if (!planId) {
+    return (
+      <div className="pt-4 border-t border-slate-100">
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <Lock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-800">
+              Vincule procedimentos e pacotes ao plano
+            </p>
+            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+              Clique em <strong>"Salvar Plano"</strong> abaixo para registrar as informações e desbloquear a vinculação de pacotes, procedimentos avulsos, descontos e previsão financeira.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-4 border-t border-slate-100 space-y-4">
@@ -2115,10 +2131,11 @@ function TreatmentPlanItemsSection({
 // ─── Treatment Plan Tab ─────────────────────────────────────────────────────────
 
 function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
-  const { data, isLoading } = useGetTreatmentPlan(patientId);
+  const { data, isLoading, isError } = useGetTreatmentPlan(patientId);
   const mutation = useSaveTreatmentPlan();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isNewPlan = !isLoading && (!data || isError);
 
   // Plan items query hoisted here to avoid the callback/infinite-loop pattern
   const planItemsKey = data?.id ? [`/api/treatment-plans/${data.id}/procedures`] : null;
