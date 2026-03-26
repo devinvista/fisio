@@ -773,7 +773,7 @@ export default function Procedimentos() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Preço (R$) *</Label>
+                <Label>Preço padrão / sessão (R$) *</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -784,7 +784,7 @@ export default function Procedimentos() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Custo (R$)</Label>
+                <Label>Custo direto / sessão (R$)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -1074,30 +1074,28 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1 border-t border-slate-100">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">
-                    {proc.billingType === "mensal" ? "Mensalidade" : "Preço / Sessão"}
-                  </p>
-                  <p className="text-sm font-bold text-slate-800">
-                    {proc.billingType === "mensal" && proc.monthlyPrice
-                      ? formatCurrency(proc.monthlyPrice)
-                      : formatCurrency(proc.price)}
-                  </p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Preço padrão / sessão</p>
+                  <p className="text-sm font-bold text-slate-800">{formatCurrency(proc.price)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide">Margem</p>
                   <MarginBadge margin={margin} />
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Cobrança</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Modalidade</p>
                   <span className={cn(
                     "inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
-                    proc.billingType === "mensal"
-                      ? "bg-violet-50 text-violet-700"
+                    proc.modalidade === "grupo"
+                      ? "bg-amber-50 text-amber-700"
+                      : proc.modalidade === "dupla"
+                      ? "bg-purple-50 text-purple-700"
                       : "bg-sky-50 text-sky-700"
                   )}>
-                    {proc.billingType === "mensal"
-                      ? `Mensal · dia ${proc.billingDay ?? "?"}`
-                      : "Por sessão"}
+                    {proc.modalidade === "grupo"
+                      ? `Grupo · ${proc.maxCapacity} vagas`
+                      : proc.modalidade === "dupla"
+                      ? "Dupla · 2 vagas"
+                      : "Individual"}
                   </span>
                 </div>
                 <div>
@@ -1107,7 +1105,7 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo direto / sessão</p>
                   <p className="text-xs text-slate-500">{formatCurrency(proc.cost ?? 0)}</p>
                 </div>
               </div>

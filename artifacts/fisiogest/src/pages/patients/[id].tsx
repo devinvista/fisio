@@ -1266,6 +1266,8 @@ interface PlanProcedureItem {
   procedureName?: string | null;
   packageType?: string | null;
   monthlyPrice?: string | null;
+  billingDay?: number | null;
+  absenceCreditLimit?: number;
   price?: string | null;
 }
 
@@ -1360,11 +1362,29 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
     .filter(i => i.packageType === "mensal")
     .reduce((s, i) => s + Number(i.monthlyPrice ?? i.price ?? 0), 0);
 
+  // For avulso procedures: multiply price/session × totalSessions
+  // For session packages: use the package total price
   const totalSessoes = planItems
     .filter(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId))
-    .reduce((s, i) => s + Number(i.price ?? 0), 0);
+    .reduce((s, i) => {
+      if (!i.packageType && i.procedureId) {
+        return s + Number(i.price ?? 0) * (i.totalSessions ?? 1);
+      }
+      return s + Number(i.price ?? 0);
+    }, 0);
 
-  const totalSessions = planItems.reduce((s, i) => s + (i.totalSessions ?? 0), 0);
+  const totalSessions = planItems.reduce((s, i) => {
+    if (i.packageType === "mensal") return s;
+    return s + (i.totalSessions ?? 0);
+  }, 0);
+
+  // Estimated weeks (max across items with session data)
+  const estimatedWeeks = planItems
+    .filter(i => i.packageType !== "mensal" && i.totalSessions && i.sessionsPerWeek > 0)
+    .reduce((max, i) => {
+      const weeks = Math.ceil((i.totalSessions ?? 0) / i.sessionsPerWeek);
+      return Math.max(max, weeks);
+    }, 0);
 
   const hasMensal = planItems.some(i => i.packageType === "mensal");
   const hasSessoes = planItems.some(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId));
@@ -1499,9 +1519,27 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
                     {item.sessionsPerWeek > 0 && !isMensal && (
                       <span>{item.sessionsPerWeek}x/semana</span>
                     )}
-                    {item.totalSessions && <span>{item.totalSessions} sessões</span>}
-                    {isMensal && <span>{fmtCur(item.monthlyPrice)}/mês · dia {(item as any).billingDay ?? "—"}</span>}
-                    {!isMensal && item.price && <span className="font-medium text-slate-700">{fmtCur(item.price)}</span>}
+                    {item.totalSessions && !isMensal && (
+                      <span>{item.totalSessions} sessões</span>
+                    )}
+                    {item.totalSessions && item.sessionsPerWeek > 0 && !isMensal && (
+                      <span className="text-slate-400">
+                        ~{Math.ceil(item.totalSessions / item.sessionsPerWeek)} sem.
+                      </span>
+                    )}
+                    {isMensal && (
+                      <span>{fmtCur(item.monthlyPrice)}/mês · dia {item.billingDay ?? "—"} · {item.sessionsPerWeek}x/sem</span>
+                    )}
+                    {isMensal && (item.absenceCreditLimit ?? 0) > 0 && (
+                      <span className="text-emerald-600 font-medium">{item.absenceCreditLimit} falta(s) c/ crédito</span>
+                    )}
+                    {!isMensal && item.price && (
+                      <span className="font-medium text-slate-700">
+                        {isAvulso && item.totalSessions
+                          ? <>{fmtCur(Number(item.price) * item.totalSessions)} total</>
+                          : fmtCur(item.price)}
+                      </span>
+                    )}
                     {item.notes && <span className="text-slate-400 italic">{item.notes}</span>}
                   </div>
                 </div>
@@ -1522,21 +1560,25 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
 
       {/* Financial Forecast */}
       {planItems.length > 0 && (
-        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4 space-y-2">
+        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4 space-y-3">
           <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
             <TrendingUp className="h-3.5 w-3.5" /> Previsão Financeira do Plano
           </p>
+
           <div className="space-y-1.5">
             {hasSessoes && (
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Pacotes por sessões / avulsos:</span>
+                <span className="text-slate-600">Pacotes / procedimentos avulsos:</span>
                 <span className="font-semibold">{fmtCur(totalSessoes)}</span>
               </div>
             )}
             {hasMensal && (
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Mensalidades (recorrente):</span>
-                <span className="font-semibold">{fmtCur(totalMensal)}<span className="text-xs font-normal text-muted-foreground">/mês</span></span>
+                <span className="font-semibold">
+                  {fmtCur(totalMensal)}
+                  <span className="text-xs font-normal text-muted-foreground">/mês</span>
+                </span>
               </div>
             )}
             {totalSessions > 0 && (
@@ -1545,17 +1587,56 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
                 <span className="font-semibold">{totalSessions} sessões</span>
               </div>
             )}
-            {hasSessoes && hasMensal && (
-              <div className="flex justify-between text-sm pt-1 border-t border-primary/20">
-                <span className="text-slate-600 font-semibold">Total na contratação:</span>
-                <span className="font-bold text-primary">{fmtCur(totalSessoes + totalMensal)}</span>
+            {estimatedWeeks > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Duração estimada do plano:</span>
+                <span className="font-semibold">
+                  {estimatedWeeks} {estimatedWeeks === 1 ? "semana" : "semanas"}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    (~{(estimatedWeeks / 4.33).toFixed(1)} meses)
+                  </span>
+                </span>
               </div>
             )}
+            <div className="flex justify-between text-sm pt-1.5 border-t border-primary/20">
+              <span className="text-slate-700 font-semibold">
+                {hasMensal && hasSessoes ? "Total na contratação:" : hasSessoes ? "Total do plano:" : "Investimento mensal:"}
+              </span>
+              <span className="font-bold text-primary">
+                {hasSessoes && hasMensal
+                  ? fmtCur(totalSessoes + totalMensal)
+                  : hasSessoes
+                  ? fmtCur(totalSessoes)
+                  : <>{fmtCur(totalMensal)}<span className="text-xs font-normal text-muted-foreground">/mês</span></>}
+              </span>
+            </div>
           </div>
+
+          {/* Monthly plan rules */}
           {hasMensal && (
-            <p className="text-[10px] text-slate-500 flex gap-1 items-start mt-1">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 space-y-1">
+              <p className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
+                <RefreshCw className="h-3 w-3" /> Regras do Plano Mensal
+              </p>
+              {planItems.filter(i => i.packageType === "mensal").map(item => (
+                <div key={item.id} className="text-[10px] text-emerald-700 flex items-start gap-1">
+                  <span className="mt-0.5">•</span>
+                  <span>
+                    <strong>{item.packageName ?? item.procedureName}</strong>: valor fixo de {fmtCur(item.monthlyPrice)}/mês, 
+                    {" "}{item.sessionsPerWeek}x/semana (~{item.sessionsPerWeek * 4} sessões/mês).
+                    {(item.absenceCreditLimit ?? 0) > 0
+                      ? ` Crédito de até ${item.absenceCreditLimit} falta(s)/mês — cobrado mesmo com ausências dentro do limite.`
+                      : " Sem crédito de faltas."}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {hasMensal && (
+            <p className="text-[10px] text-slate-500 flex gap-1 items-start">
               <Info className="h-3 w-3 shrink-0 mt-0.5" />
-              Mensalidades são recorrentes. O valor acima representa apenas o primeiro mês.
+              Mensalidades são recorrentes. O total acima considera apenas o 1º mês de cobrança.
             </p>
           )}
         </div>
