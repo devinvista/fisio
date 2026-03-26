@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, date, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { patientsTable } from "./patients";
@@ -47,6 +47,8 @@ export const treatmentPlansTable = pgTable("treatment_plans", {
   techniques: text("techniques"),
   frequency: text("frequency"),
   estimatedSessions: integer("estimated_sessions"),
+  startDate: date("start_date"),
+  responsibleProfessional: text("responsible_professional"),
   status: text("status").notNull().default("ativo"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -63,6 +65,9 @@ export const treatmentPlanProceduresTable = pgTable("treatment_plan_procedures",
   packageId: integer("package_id"),
   sessionsPerWeek: integer("sessions_per_week").notNull().default(1),
   totalSessions: integer("total_sessions"),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }),
+  unitMonthlyPrice: numeric("unit_monthly_price", { precision: 10, scale: 2 }),
+  discount: numeric("discount", { precision: 10, scale: 2 }).default("0"),
   priority: integer("priority").notNull().default(1),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

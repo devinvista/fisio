@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable, appointmentsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -73,6 +73,9 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
         packageId: treatmentPlanProceduresTable.packageId,
         sessionsPerWeek: treatmentPlanProceduresTable.sessionsPerWeek,
         totalSessions: treatmentPlanProceduresTable.totalSessions,
+        unitPrice: treatmentPlanProceduresTable.unitPrice,
+        unitMonthlyPrice: treatmentPlanProceduresTable.unitMonthlyPrice,
+        discount: treatmentPlanProceduresTable.discount,
         priority: treatmentPlanProceduresTable.priority,
         notes: treatmentPlanProceduresTable.notes,
         createdAt: treatmentPlanProceduresTable.createdAt,
@@ -107,6 +110,8 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
           if (pkg) {
             const usedSessions = procedureUsageMap[pkg.procedureId] ?? 0;
             const effectiveTotalSessions = item.totalSessions ?? pkg.totalSessions ?? null;
+            const lockedPrice = item.unitPrice ?? pkg.price;
+            const lockedMonthlyPrice = item.unitMonthlyPrice ?? pkg.monthlyPrice;
             return {
               ...item,
               packageName: pkg.name,
@@ -114,14 +119,15 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
               packageType: pkg.packageType,
               totalSessions: effectiveTotalSessions,
               sessionsPerWeek: item.sessionsPerWeek ?? pkg.sessionsPerWeek,
-              price: pkg.price,
-              monthlyPrice: pkg.monthlyPrice,
+              price: lockedPrice,
+              monthlyPrice: lockedMonthlyPrice,
               billingDay: pkg.billingDay,
               absenceCreditLimit: pkg.absenceCreditLimit,
               usedSessions,
+              discount: item.discount ?? "0",
             };
           }
-          return { ...item, usedSessions: 0 };
+          return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
         }
 
         if (item.procedureId) {
@@ -140,19 +146,21 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
 
           if (proc) {
             const usedSessions = procedureUsageMap[proc.id] ?? 0;
+            const lockedPrice = item.unitPrice ?? proc.price;
             return {
               ...item,
               procedureName: proc.name,
               packageType: null,
-              price: proc.price,
+              price: lockedPrice,
               monthlyPrice: null,
               usedSessions,
+              discount: item.discount ?? "0",
             };
           }
-          return { ...item, usedSessions: 0 };
+          return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
         }
 
-        return { ...item, usedSessions: 0 };
+        return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
       })
     );
 
@@ -166,7 +174,7 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
 router.post("/", requirePermission("patients.write"), async (req: AuthRequest, res) => {
   try {
     const planId = parseInt(req.params.planId as string);
-    const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes } = req.body;
+    const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes, unitPrice, unitMonthlyPrice, discount } = req.body;
 
     if (!procedureId && !packageId) {
       res.status(400).json({ error: "Bad Request", message: "procedureId ou packageId é obrigatório" });
@@ -186,6 +194,9 @@ router.post("/", requirePermission("patients.write"), async (req: AuthRequest, r
         packageId: packageId ? parseInt(packageId) : null,
         sessionsPerWeek: sessionsPerWeek ? parseInt(sessionsPerWeek) : 1,
         totalSessions: totalSessions ? parseInt(totalSessions) : null,
+        unitPrice: unitPrice != null ? String(unitPrice) : null,
+        unitMonthlyPrice: unitMonthlyPrice != null ? String(unitMonthlyPrice) : null,
+        discount: discount != null ? String(discount) : "0",
         priority: priority ? parseInt(priority) : 1,
         notes: notes || null,
       })
@@ -201,7 +212,7 @@ router.post("/", requirePermission("patients.write"), async (req: AuthRequest, r
 router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes } = req.body;
+    const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes, unitPrice, unitMonthlyPrice, discount } = req.body;
 
     if (!(await verifyItemOwnership(id, req))) {
       res.status(403).json({ error: "Forbidden" });
@@ -213,6 +224,9 @@ router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest,
     if (packageId !== undefined) updateData.packageId = packageId ? parseInt(packageId) : null;
     if (sessionsPerWeek !== undefined) updateData.sessionsPerWeek = parseInt(sessionsPerWeek);
     if (totalSessions !== undefined) updateData.totalSessions = totalSessions ? parseInt(totalSessions) : null;
+    if (unitPrice !== undefined) updateData.unitPrice = unitPrice != null ? String(unitPrice) : null;
+    if (unitMonthlyPrice !== undefined) updateData.unitMonthlyPrice = unitMonthlyPrice != null ? String(unitMonthlyPrice) : null;
+    if (discount !== undefined) updateData.discount = String(discount ?? 0);
     if (priority !== undefined) updateData.priority = parseInt(priority);
     if (notes !== undefined) updateData.notes = notes;
 

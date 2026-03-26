@@ -165,7 +165,12 @@ function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appoin
   `;
 }
 
-function generatePlanHTML(patient: PatientBasic, plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string }, appointments: any[]) {
+function generatePlanHTML(
+  patient: PatientBasic,
+  plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string; startDate?: string; responsibleProfessional?: string },
+  appointments: any[],
+  planItems: PlanProcedureItem[] = []
+) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const completedAppts = [...appointments].filter((a) => a.status === "concluido")
     .sort((a, b) => new Date(b.date + "T" + (b.startTime || "00:00")).getTime() - new Date(a.date + "T" + (a.startTime || "00:00")).getTime());
@@ -173,28 +178,62 @@ function generatePlanHTML(patient: PatientBasic, plan: { objectives?: string; te
   const estimated = plan.estimatedSessions ? Number(plan.estimatedSessions) : 0;
   const pct = estimated > 0 ? Math.min(100, (totalCompleted / estimated) * 100) : 0;
   const statusLabel: Record<string, string> = { ativo: "Ativo", concluido: "Concluído", suspenso: "Suspenso" };
+
+  function fmtC(v: any) {
+    if (v === null || v === undefined) return "—";
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
+  }
+
+  const itemRows = planItems.map((item) => {
+    const isMensal = item.packageType === "mensal";
+    const isAvulso = !item.packageId;
+    const disc = Number(item.discount ?? 0);
+    const price = Number(item.price ?? 0);
+    const gross = isMensal ? Number(item.monthlyPrice ?? price) : isAvulso ? price * (item.totalSessions ?? 1) : price;
+    const net = Math.max(0, gross - disc);
+    const used = item.usedSessions ?? 0;
+    const planned = item.totalSessions ?? (isMensal ? (item.sessionsPerWeek * 4) : 0);
+    const pctItem = planned > 0 ? Math.min(100, (used / planned) * 100) : 0;
+    const badge = isMensal ? "Mensal" : isAvulso ? "Avulso" : "Pacote";
+    const label = item.packageName ?? item.procedureName ?? "—";
+    const sessInfo = isMensal
+      ? `${item.sessionsPerWeek}x/sem (~${item.sessionsPerWeek * 4}/mês)`
+      : item.totalSessions ? `${item.totalSessions} sessões · ${item.sessionsPerWeek}x/sem` : "—";
+    const valueInfo = isMensal ? `${fmtC(net)}/mês` : `${fmtC(net)}${disc > 0 ? ` (desc. ${fmtC(disc)})` : ""}`;
+    const progressBar = planned > 0
+      ? `<div style="margin-top:4px"><div style="font-size:8pt;color:#555">${used}/${planned} sessões realizadas</div><div style="background:#e5e7eb;height:6px;border-radius:3px;margin:3px 0"><div style="background:${pctItem >= 100 ? "#16a34a" : "#1d4ed8"};height:6px;border-radius:3px;width:${pctItem.toFixed(0)}%"></div></div></div>`
+      : "";
+    return `<tr><td><strong>${label}</strong><br/><span style="font-size:8pt;color:#6b7280">${badge}</span>${progressBar}</td><td style="text-align:center">${sessInfo}</td><td style="text-align:right">${valueInfo}</td></tr>`;
+  }).join("");
+
   const rows = completedAppts.map((a, i) => `<tr>
     <td>${totalCompleted - i}</td>
     <td>${format(parseISO(a.date), "dd/MM/yyyy")}</td>
     <td>${a.startTime || "—"}</td>
     <td>${a.procedure?.name || "—"}</td>
   </tr>`).join("");
+
   return `
-    <div class="header"><h1>PLANO DE TRATAMENTO</h1><div class="subtitle">Progresso de Sessões</div></div>
+    <div class="header"><h1>PLANO DE TRATAMENTO FISIOTERAPÊUTICO</h1><div class="subtitle">Documento Clínico — FisioGest Pro</div></div>
     <div class="patient-box">
       <div class="row">
         <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}</strong></div></div>
         <div class="field"><div class="label">Status</div><div class="value">${statusLabel[plan.status || "ativo"] || "Ativo"}</div></div>
         ${plan.frequency ? `<div class="field"><div class="label">Frequência</div><div class="value">${plan.frequency}</div></div>` : ""}
+        ${plan.startDate ? `<div class="field"><div class="label">Data de Início</div><div class="value">${format(parseISO(plan.startDate), "dd/MM/yyyy")}</div></div>` : ""}
       </div>
+      ${plan.responsibleProfessional ? `<div class="row"><div class="field"><div class="label">Profissional Responsável</div><div class="value">${plan.responsibleProfessional}</div></div></div>` : ""}
     </div>
+    ${plan.objectives ? `<div class="section"><div class="section-title">Objetivos do Tratamento</div><div class="content-box">${plan.objectives}</div></div>` : ""}
+    ${plan.techniques ? `<div class="section"><div class="section-title">Técnicas e Recursos</div><div class="content-box">${plan.techniques}</div></div>` : ""}
     <div class="section">
       <div class="section-title">Progresso de Sessões</div>
       <p><strong>${totalCompleted}</strong> sessão(ões) concluída(s) de <strong>${estimated || "—"}</strong> estimada(s)</p>
       ${estimated > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct.toFixed(0)}%"></div></div><p style="font-size:9pt;color:#555">${pct.toFixed(1)}% concluído</p>` : ""}
     </div>
-    ${plan.objectives ? `<div class="section"><div class="section-title">Objetivos</div><div class="content-box">${plan.objectives}</div></div>` : ""}
-    ${plan.techniques ? `<div class="section"><div class="section-title">Técnicas e Recursos</div><div class="content-box">${plan.techniques}</div></div>` : ""}
+    ${itemRows ? `<div class="section"><div class="section-title">Procedimentos e Pacotes do Plano</div>
+      <table class="sessions-table"><thead><tr><th>Procedimento / Pacote</th><th style="text-align:center">Sessões</th><th style="text-align:right">Valor</th></tr></thead>
+      <tbody>${itemRows}</tbody></table></div>` : ""}
     ${rows ? `<div class="section"><div class="section-title">Histórico de Sessões</div>
       <table class="sessions-table"><thead><tr><th>#</th><th>Data</th><th>Horário</th><th>Procedimento</th></tr></thead>
       <tbody>${rows}</tbody></table></div>` : ""}
@@ -204,8 +243,8 @@ function generatePlanHTML(patient: PatientBasic, plan: { objectives?: string; te
 
 function generateContractHTML(
   patient: PatientBasic,
-  plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string },
-  planItems: any[],
+  plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string; startDate?: string; responsibleProfessional?: string },
+  planItems: PlanProcedureItem[],
 ) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
@@ -217,42 +256,51 @@ function generateContractHTML(
 
   let totalSessoesVal = 0;
   let totalMensalVal = 0;
-  let totalSessionCount = 0;
+  let totalDisconto = 0;
 
-  const itemRows = planItems.map((item: any) => {
+  const itemRows = planItems.map((item) => {
     const isMensal = item.packageType === "mensal";
     const isAvulso = !item.packageId;
     const sessionCount = item.totalSessions ?? 0;
-    const pricePerSession = isAvulso ? Number(item.price ?? 0) : null;
-    const totalCost = isMensal
-      ? Number(item.monthlyPrice ?? 0)
-      : isAvulso
-        ? pricePerSession! * (sessionCount || 1)
-        : Number(item.price ?? 0);
+    const disc = Number(item.discount ?? 0);
+    const unitP = Number(item.price ?? 0);
+    const unitM = Number(item.monthlyPrice ?? 0);
 
-    if (isMensal) totalMensalVal += totalCost;
-    else { totalSessoesVal += totalCost; totalSessionCount += sessionCount; }
+    const gross = isMensal
+      ? unitM
+      : isAvulso
+        ? unitP * (sessionCount || 1)
+        : unitP;
+    const net = Math.max(0, gross - disc);
+
+    totalDisconto += disc;
+    if (isMensal) totalMensalVal += net;
+    else { totalSessoesVal += net; }
 
     const label = item.packageName ?? item.procedureName ?? "—";
-    const badge = isMensal ? "Mensal" : item.packageId ? "Pacote" : "Avulso";
-    const costDetail = isMensal
-      ? `${fmtC(item.monthlyPrice)}/mês`
-      : isAvulso && sessionCount > 0
-        ? `${fmtC(pricePerSession)}/sessão × ${sessionCount} = ${fmtC(totalCost)}`
-        : fmtC(item.price);
+    const badge = isMensal ? "Mensal" : isAvulso ? "Avulso" : "Pacote Sessões";
     const sessInfo = isMensal
-      ? `${item.sessionsPerWeek}x/semana (~${item.sessionsPerWeek * 4} sessões/mês)`
+      ? `${item.sessionsPerWeek}x/sem (~${item.sessionsPerWeek * 4}/mês)`
       : sessionCount > 0
-        ? `${sessionCount} sessões · ${item.sessionsPerWeek ?? 1}x/semana`
+        ? `${sessionCount} sessões · ${item.sessionsPerWeek ?? 1}x/sem`
         : "—";
-    const weeks = (!isMensal && sessionCount > 0 && item.sessionsPerWeek > 0)
-      ? `~${Math.ceil(sessionCount / item.sessionsPerWeek)} sem.` : "";
+    const weeks = (!isMensal && sessionCount > 0 && (item.sessionsPerWeek ?? 0) > 0)
+      ? `~${Math.ceil(sessionCount / (item.sessionsPerWeek || 1))} sem.` : "—";
+
+    const priceDetail = isMensal
+      ? `${fmtC(unitM)}/mês`
+      : isAvulso && sessionCount > 0
+        ? `${fmtC(unitP)} × ${sessionCount} sessões`
+        : fmtC(unitP);
+    const discDetail = disc > 0 ? `<br/><span style="color:#16a34a;font-size:8pt">– Desconto: ${fmtC(disc)}</span>` : "";
+    const netDetail = `<strong style="color:#1e40af">${fmtC(net)}${isMensal ? "/mês" : ""}</strong>${discDetail}`;
 
     return `<tr>
       <td><strong>${label}</strong><br/><span style="font-size:8pt;color:#6b7280">${badge}</span></td>
       <td style="text-align:center">${sessInfo}</td>
-      <td style="text-align:center">${weeks || "—"}</td>
-      <td style="text-align:right"><strong>${costDetail}</strong></td>
+      <td style="text-align:center">${weeks}</td>
+      <td style="text-align:right;font-size:9pt">${priceDetail}</td>
+      <td style="text-align:right">${netDetail}</td>
     </tr>`;
   }).join("");
 
@@ -261,12 +309,13 @@ function generateContractHTML(
   return `
     <div class="header">
       <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-      <div class="subtitle">Serviços de Fisioterapia e Saúde</div>
+      <div class="subtitle">Serviços de Fisioterapia e Saúde — FisioGest Pro</div>
     </div>
 
     <div class="section">
-      <div class="section-title">Dados do Contratante (Paciente)</div>
+      <div class="section-title">Partes Contratantes</div>
       <div class="patient-box">
+        <p style="font-size:9pt;font-weight:bold;margin-bottom:6px">CONTRATANTE (Paciente):</p>
         <div class="row">
           <div class="field"><div class="label">Nome Completo</div><div class="value"><strong>${patient.name}</strong></div></div>
           <div class="field"><div class="label">CPF</div><div class="value">${cpfFmt}</div></div>
@@ -274,13 +323,16 @@ function generateContractHTML(
         </div>
         ${patient.birthDate ? `<div class="row"><div class="field"><div class="label">Data de Nascimento</div><div class="value">${format(parseISO(patient.birthDate), "dd/MM/yyyy")}</div></div></div>` : ""}
       </div>
+      ${plan.responsibleProfessional ? `<div class="patient-box" style="margin-top:8px"><p style="font-size:9pt;font-weight:bold;margin-bottom:4px">CONTRATADA (Prestadora):</p><div class="row"><div class="field"><div class="label">Profissional / CREFITO</div><div class="value"><strong>${plan.responsibleProfessional}</strong></div></div></div></div>` : ""}
     </div>
 
     <div class="section">
       <div class="section-title">Objeto do Contrato — Plano de Tratamento</div>
-      ${plan.objectives ? `<p><strong>Objetivos:</strong> ${plan.objectives}</p>` : ""}
+      ${plan.objectives ? `<p><strong>Objetivos terapêuticos:</strong> ${plan.objectives}</p>` : ""}
       ${plan.techniques ? `<p><strong>Técnicas e recursos:</strong> ${plan.techniques}</p>` : ""}
       ${plan.frequency ? `<p><strong>Frequência:</strong> ${plan.frequency}</p>` : ""}
+      ${plan.startDate ? `<p><strong>Data de início prevista:</strong> ${format(parseISO(plan.startDate), "dd/MM/yyyy")}</p>` : ""}
+      ${plan.estimatedSessions ? `<p><strong>Total de sessões estimadas:</strong> ${plan.estimatedSessions} sessões</p>` : ""}
     </div>
 
     <div class="section">
@@ -292,32 +344,37 @@ function generateContractHTML(
             <th>Serviço / Procedimento</th>
             <th style="text-align:center">Sessões</th>
             <th style="text-align:center">Duração</th>
-            <th style="text-align:right">Valor Estimado</th>
+            <th style="text-align:right">Preço Unitário</th>
+            <th style="text-align:right">Valor c/ Desconto</th>
           </tr>
         </thead>
         <tbody>${itemRows}</tbody>
         <tfoot>
-          ${totalSessoesVal > 0 ? `<tr><td colspan="3" style="text-align:right;font-weight:600">Subtotal (sessões/pacotes):</td><td style="text-align:right;font-weight:600">${fmtC(totalSessoesVal)}</td></tr>` : ""}
-          ${totalMensalVal > 0 ? `<tr><td colspan="3" style="text-align:right;font-weight:600">Mensalidade recorrente:</td><td style="text-align:right;font-weight:600">${fmtC(totalMensalVal)}/mês</td></tr>` : ""}
-          <tr style="background:#f0f9ff"><td colspan="3" style="text-align:right;font-weight:700;color:#1e40af">TOTAL ESTIMADO:</td><td style="text-align:right;font-weight:700;color:#1e40af;font-size:11pt">${fmtC(grandTotal)}</td></tr>
+          ${totalDisconto > 0 ? `<tr><td colspan="4" style="text-align:right;color:#16a34a;font-weight:600">Total de descontos concedidos:</td><td style="text-align:right;color:#16a34a;font-weight:600">– ${fmtC(totalDisconto)}</td></tr>` : ""}
+          ${totalSessoesVal > 0 ? `<tr><td colspan="4" style="text-align:right;font-weight:600">Subtotal (sessões/pacotes):</td><td style="text-align:right;font-weight:600">${fmtC(totalSessoesVal)}</td></tr>` : ""}
+          ${totalMensalVal > 0 ? `<tr><td colspan="4" style="text-align:right;font-weight:600">Mensalidade recorrente:</td><td style="text-align:right;font-weight:600">${fmtC(totalMensalVal)}/mês</td></tr>` : ""}
+          <tr style="background:#eff6ff"><td colspan="4" style="text-align:right;font-weight:700;color:#1e40af;font-size:10pt">TOTAL ESTIMADO DO PLANO:</td><td style="text-align:right;font-weight:700;color:#1e40af;font-size:11pt">${fmtC(grandTotal)}${totalMensalVal > 0 && totalSessoesVal > 0 ? `<br/><span style="font-size:8pt;font-weight:400">+ ${fmtC(totalMensalVal)}/mês</span>` : ""}</td></tr>
         </tfoot>
       </table>
       ` : "<p>Nenhum serviço vinculado ao plano.</p>"}
-      <p style="font-size:8pt;color:#6b7280;margin-top:8px">* Os valores acima são estimativas baseadas no plano de tratamento. O valor efetivo poderá variar conforme a evolução clínica do paciente.</p>
+      <p style="font-size:8pt;color:#6b7280;margin-top:8px">* Os valores acima são os acordados na contratação do plano. Alterações somente mediante aditivo contratual.</p>
     </div>
 
     <div class="section">
       <div class="section-title">Cláusulas Gerais</div>
       <ol style="font-size:9pt;line-height:1.7;color:#374151">
-        <li>O presente contrato tem por objeto a prestação de serviços de fisioterapia descritos no plano de tratamento acima.</li>
-        <li>Os atendimentos serão realizados conforme agenda acordada entre as partes, podendo ser alterados mediante comunicação prévia de 24 horas.</li>
-        <li>Faltas não justificadas com antecedência mínima de 2 horas serão cobradas integralmente.</li>
-        <li>Os valores poderão ser reajustados anualmente, mediante comunicação prévia de 30 dias.</li>
+        <li>O presente contrato tem por objeto a prestação de serviços de fisioterapia descritos no plano de tratamento acima, com os valores expressamente acordados entre as partes.</li>
+        <li>Os atendimentos serão realizados conforme agenda acordada, podendo ser reagendados mediante comunicação prévia de 24 horas.</li>
+        <li>Faltas não justificadas com antecedência mínima de 2 horas serão cobradas integralmente, exceto nos casos de crédito de falta previstos no pacote contratado.</li>
+        <li>Os valores fixados neste contrato vigorarão pelo período do plano, podendo ser reajustados por renovação ou aditivo com acordo de ambas as partes.</li>
         <li>O contratante autoriza o uso de dados pessoais e clínicos exclusivamente para fins de acompanhamento terapêutico, em conformidade com a LGPD (Lei 13.709/2018).</li>
-        <li>As informações clínicas são confidenciais e regidas pelo Código de Ética do COFFITO.</li>
-        <li>Qualquer rescisão deverá ser comunicada por escrito com antecedência de 15 dias.</li>
+        <li>As informações clínicas são sigilosas e regidas pelo Código de Ética do COFFITO.</li>
+        <li>Qualquer rescisão deverá ser comunicada por escrito com antecedência mínima de 15 dias corridos.</li>
+        <li>O presente instrumento é firmado em duas vias de igual teor e forma.</li>
       </ol>
     </div>
+
+    <p style="font-size:9pt;color:#374151;margin-top:16px">Emitido em ${today}, cidade e Estado da clínica.</p>
 
     <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
       <div>
@@ -328,11 +385,12 @@ function generateContractHTML(
       </div>
       <div>
         <div class="sig-line"></div>
-        <div class="sig-label">Fisioterapeuta / Prestador de Serviço</div>
+        <div class="sig-label">${plan.responsibleProfessional || "Fisioterapeuta / Prestador de Serviço"}</div>
+        <div class="sig-label">Contratada</div>
       </div>
     </div>
 
-    <div class="footer">Contrato gerado em ${today} &bull; FisioGest Pro &bull; Os valores são estimativas sujeitas a ajuste clínico</div>
+    <div class="footer">Contrato gerado em ${today} &bull; FisioGest Pro &bull; Valores acordados na contratação do plano</div>
   `;
 }
 
@@ -1400,9 +1458,12 @@ interface PlanProcedureItem {
   procedureName?: string | null;
   packageType?: string | null;
   monthlyPrice?: string | null;
+  unitMonthlyPrice?: string | null;
   billingDay?: number | null;
   absenceCreditLimit?: number;
   price?: string | null;
+  unitPrice?: string | null;
+  discount?: string | null;
   usedSessions?: number;
 }
 
@@ -1411,7 +1472,15 @@ function fmtCur(v: string | number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
 }
 
-function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | undefined; patientId: number }) {
+function TreatmentPlanItemsSection({
+  planId,
+  patientId,
+  onItemsChange,
+}: {
+  planId: number | undefined;
+  patientId: number;
+  onItemsChange?: (items: PlanProcedureItem[]) => void;
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1421,6 +1490,13 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
   const [itemSpw, setItemSpw] = useState(2);
   const [itemSessions, setItemSessions] = useState<string>("");
   const [itemNotes, setItemNotes] = useState("");
+  const [itemDiscount, setItemDiscount] = useState<string>("0");
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editSpw, setEditSpw] = useState(1);
+  const [editSessions, setEditSessions] = useState<string>("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editDiscount, setEditDiscount] = useState<string>("0");
 
   const planItemsKey = planId ? [`/api/treatment-plans/${planId}/procedures`] : null;
 
@@ -1431,6 +1507,8 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
     }).then(r => r.json()),
     enabled: !!planId,
   });
+
+  useEffect(() => { onItemsChange?.(planItems); }, [planItems]);
 
   const { data: packages = [] } = useQuery<PkgOption[]>({
     queryKey: ["packages"],
@@ -1446,6 +1524,9 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
     }).then(r => r.json()),
   });
 
+  const selectedPkg = packages.find(p => String(p.id) === selectedPkgId) ?? null;
+  const selectedProc = procedures.find(p => String(p.id) === selectedProcId) ?? null;
+
   const addMutation = useMutation({
     mutationFn: (body: object) => fetch(`/api/treatment-plans/${planId}/procedures`, {
       method: "POST",
@@ -1459,7 +1540,25 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
       queryClient.invalidateQueries({ queryKey: planItemsKey ?? [] });
       toast({ title: "Item adicionado ao plano!" });
       setAddMode(null);
-      setSelectedPkgId(""); setSelectedProcId(""); setItemSpw(2); setItemSessions(""); setItemNotes("");
+      setSelectedPkgId(""); setSelectedProcId(""); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0");
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: object }) =>
+      fetch(`/api/treatment-plans/${planId}/procedures/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+        body: JSON.stringify(body),
+      }).then(async r => {
+        if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b?.message || "Erro ao atualizar"); }
+        return r.json();
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: planItemsKey ?? [] });
+      toast({ title: "Item atualizado!" });
+      setEditingId(null);
     },
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
@@ -1485,60 +1584,83 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
       sessionsPerWeek: itemSpw,
       totalSessions: itemSessions ? Number(itemSessions) : null,
       notes: itemNotes || null,
+      discount: Number(itemDiscount) || 0,
     };
-    if (addMode === "package") body.packageId = Number(selectedPkgId);
-    else body.procedureId = Number(selectedProcId);
-
+    if (addMode === "package" && selectedPkg) {
+      body.packageId = selectedPkg.id;
+      body.unitPrice = selectedPkg.price;
+      body.unitMonthlyPrice = selectedPkg.monthlyPrice ?? null;
+      body.sessionsPerWeek = itemSpw || selectedPkg.sessionsPerWeek;
+      body.totalSessions = itemSessions ? Number(itemSessions) : (selectedPkg.totalSessions ?? null);
+    } else if (selectedProc) {
+      body.procedureId = selectedProc.id;
+      body.unitPrice = selectedProc.price;
+    }
     addMutation.mutate(body);
   }
 
-  // Financial forecast
-  const totalMensal = planItems
-    .filter(i => i.packageType === "mensal")
-    .reduce((s, i) => s + Number(i.monthlyPrice ?? i.price ?? 0), 0);
+  function startEdit(item: PlanProcedureItem) {
+    setEditingId(item.id);
+    setEditSpw(item.sessionsPerWeek);
+    setEditSessions(String(item.totalSessions ?? ""));
+    setEditNotes(item.notes ?? "");
+    setEditDiscount(String(item.discount ?? "0"));
+  }
 
-  // For avulso procedures: multiply price/session × totalSessions
-  // For session packages: use the package total price
-  const totalSessoes = planItems
-    .filter(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId))
-    .reduce((s, i) => {
-      if (!i.packageType && i.procedureId) {
-        return s + Number(i.price ?? 0) * (i.totalSessions ?? 1);
-      }
-      return s + Number(i.price ?? 0);
-    }, 0);
+  function handleEditSave(item: PlanProcedureItem) {
+    updateMutation.mutate({
+      id: item.id,
+      body: {
+        sessionsPerWeek: editSpw,
+        totalSessions: editSessions ? Number(editSessions) : null,
+        notes: editNotes || null,
+        discount: Number(editDiscount) || 0,
+      },
+    });
+  }
 
-  const totalSessions = planItems.reduce((s, i) => {
-    if (i.packageType === "mensal") return s;
-    return s + (i.totalSessions ?? 0);
-  }, 0);
+  function calcItemTotal(item: PlanProcedureItem): { gross: number; discount: number; net: number } {
+    const isMensal = item.packageType === "mensal";
+    const discount = Number(item.discount ?? 0);
+    if (isMensal) {
+      const gross = Number(item.monthlyPrice ?? item.price ?? 0);
+      return { gross, discount, net: Math.max(0, gross - discount) };
+    }
+    const isAvulso = !item.packageId;
+    const unitP = Number(item.price ?? 0);
+    const sessions = item.totalSessions ?? (isAvulso ? 1 : 0);
+    const gross = isAvulso ? unitP * sessions : unitP;
+    return { gross, discount, net: Math.max(0, gross - discount) };
+  }
 
-  // Estimated weeks (max across items with session data)
+  // Financial totals
+  const financialRows = planItems.map(item => ({ item, ...calcItemTotal(item) }));
+  const totalMensal = financialRows.filter(r => r.item.packageType === "mensal").reduce((s, r) => s + r.net, 0);
+  const totalSessoes = financialRows.filter(r => r.item.packageType !== "mensal").reduce((s, r) => s + r.net, 0);
+  const totalDesconto = financialRows.reduce((s, r) => s + r.discount, 0);
+  const totalSessions = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
   const estimatedWeeks = planItems
     .filter(i => i.packageType !== "mensal" && i.totalSessions && i.sessionsPerWeek > 0)
-    .reduce((max, i) => {
-      const weeks = Math.ceil((i.totalSessions ?? 0) / i.sessionsPerWeek);
-      return Math.max(max, weeks);
-    }, 0);
-
+    .reduce((max, i) => Math.max(max, Math.ceil((i.totalSessions ?? 0) / i.sessionsPerWeek)), 0);
   const hasMensal = planItems.some(i => i.packageType === "mensal");
-  const hasSessoes = planItems.some(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId));
+  const hasSessoes = planItems.some(i => i.packageType !== "mensal");
 
   if (!planId) return null;
 
   return (
-    <div className="pt-4 border-t border-slate-100 space-y-3">
+    <div className="pt-4 border-t border-slate-100 space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
           <Package className="w-4 h-4 text-primary" />
           Procedimentos e Pacotes do Plano
         </p>
-        {addMode === null && (
+        {addMode === null && editingId === null && (
           <div className="flex gap-1.5">
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => setAddMode("package")}>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("package"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); }}>
               <Plus className="h-3 w-3" /> Pacote
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => setAddMode("procedure")}>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("procedure"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); }}>
               <Plus className="h-3 w-3" /> Avulso
             </Button>
           </div>
@@ -1549,14 +1671,16 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
       {addMode !== null && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-600">
-            {addMode === "package" ? "Adicionar pacote ao plano" : "Adicionar procedimento avulso"}
+            {addMode === "package" ? "➕ Adicionar pacote ao plano" : "➕ Adicionar procedimento avulso"}
           </p>
 
           {addMode === "package" ? (
-            <Select value={selectedPkgId} onValueChange={setSelectedPkgId}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder="Selecione o pacote..." />
-              </SelectTrigger>
+            <Select value={selectedPkgId} onValueChange={v => {
+              setSelectedPkgId(v);
+              const pkg = packages.find(p => String(p.id) === v);
+              if (pkg) { setItemSpw(pkg.sessionsPerWeek); setItemSessions(String(pkg.totalSessions ?? "")); }
+            }}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Selecione o pacote..." /></SelectTrigger>
               <SelectContent>
                 {packages.map(p => (
                   <SelectItem key={p.id} value={String(p.id)}>
@@ -1566,9 +1690,7 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
                         : <Layers className="h-3 w-3 text-blue-500 shrink-0" />}
                       <span>{p.name}</span>
                       <span className="text-muted-foreground text-xs ml-1">
-                        {p.packageType === "mensal"
-                          ? `${fmtCur(p.monthlyPrice)}/mês`
-                          : `${p.totalSessions} sessões · ${fmtCur(p.price)}`}
+                        {p.packageType === "mensal" ? `${fmtCur(p.monthlyPrice)}/mês` : `${p.totalSessions ?? "?"} sessões · ${fmtCur(p.price)}`}
                       </span>
                     </span>
                   </SelectItem>
@@ -1576,42 +1698,82 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
               </SelectContent>
             </Select>
           ) : (
-            <Select value={selectedProcId} onValueChange={setSelectedProcId}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder="Selecione o procedimento..." />
-              </SelectTrigger>
+            <Select value={selectedProcId} onValueChange={v => { setSelectedProcId(v); }}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Selecione o procedimento..." /></SelectTrigger>
               <SelectContent>
                 {procedures.map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name} — {fmtCur(p.price)}/sessão
-                  </SelectItem>
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name} — {fmtCur(p.price)}/sessão</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
 
+          {/* Price preview */}
+          {(selectedPkg || selectedProc) && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-slate-600 flex gap-4 flex-wrap">
+              {selectedPkg && (
+                <>
+                  <span>Procedimento: <strong>{selectedPkg.procedureName}</strong></span>
+                  {selectedPkg.packageType === "mensal"
+                    ? <span>Mensalidade: <strong className="text-primary">{fmtCur(selectedPkg.monthlyPrice)}</strong></span>
+                    : <span>Valor do pacote: <strong className="text-primary">{fmtCur(selectedPkg.price)}</strong></span>}
+                </>
+              )}
+              {selectedProc && (
+                <span>Valor/sessão: <strong className="text-primary">{fmtCur(selectedProc.price)}</strong></span>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
-            {addMode === "procedure" && (
-              <>
-                <div className="space-y-1">
-                  <Label className="text-xs">Sessões/semana</Label>
-                  <Select value={String(itemSpw)} onValueChange={v => setItemSpw(Number(v))}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>{[1,2,3,4,5].map(n=><SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Total de sessões</Label>
-                  <Input className="h-8 text-xs" type="number" min={1} placeholder="Ex: 20" value={itemSessions} onChange={e => setItemSessions(e.target.value)} />
-                </div>
-              </>
-            )}
+            <div className="space-y-1">
+              <Label className="text-xs">Sessões/semana</Label>
+              <Select value={String(itemSpw)} onValueChange={v => setItemSpw(Number(v))}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>{[1,2,3,4,5].map(n=><SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {addMode === "procedure" || (selectedPkg && selectedPkg.packageType === "sessoes") ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Total de sessões</Label>
+                <Input className="h-8 text-xs" type="number" min={1} placeholder="Ex: 20" value={itemSessions} onChange={e => setItemSessions(e.target.value)} />
+              </div>
+            ) : <div />}
           </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs">Observações <span className="text-muted-foreground">(opcional)</span></Label>
-            <Input className="h-8 text-xs" placeholder="Ex: iniciar com baixa carga..." value={itemNotes} onChange={e => setItemNotes(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Desconto (R$) <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input className="h-8 text-xs" type="number" min={0} step={0.01} placeholder="0,00" value={itemDiscount} onChange={e => setItemDiscount(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Observações <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input className="h-8 text-xs" placeholder="Ex: iniciar com baixa carga..." value={itemNotes} onChange={e => setItemNotes(e.target.value)} />
+            </div>
           </div>
+
+          {/* Estimated cost preview */}
+          {(selectedPkg || selectedProc) && (
+            <div className="text-xs text-right font-medium text-slate-700">
+              {(() => {
+                const disc = Number(itemDiscount) || 0;
+                if (selectedPkg) {
+                  if (selectedPkg.packageType === "mensal") {
+                    const gross = Number(selectedPkg.monthlyPrice ?? 0);
+                    return <>Estimativa: <span className="text-primary">{fmtCur(Math.max(0, gross - disc))}</span>/mês{disc > 0 && <span className="text-slate-400 ml-1">(desconto: {fmtCur(disc)})</span>}</>;
+                  } else {
+                    const gross = Number(selectedPkg.price ?? 0);
+                    return <>Estimativa: <span className="text-primary">{fmtCur(Math.max(0, gross - disc))}</span>{disc > 0 && <span className="text-slate-400 ml-1">(desconto: {fmtCur(disc)})</span>}</>;
+                  }
+                } else if (selectedProc) {
+                  const sessions = Number(itemSessions) || 0;
+                  const gross = Number(selectedProc.price ?? 0) * (sessions || 1);
+                  return <>{sessions > 0 ? <>Estimativa: <span className="text-primary">{fmtCur(gross - disc)}</span> ({sessions} sessões × {fmtCur(selectedProc.price)}{disc > 0 ? ` – desc. ${fmtCur(disc)}` : ""})</> : <span className="text-slate-400">Informe o total de sessões</span>}</>;
+                }
+                return null;
+              })()}
+            </div>
+          )}
 
           <div className="flex gap-2 justify-end">
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAddMode(null); setSelectedPkgId(""); setSelectedProcId(""); }}>
@@ -1619,7 +1781,7 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
             </Button>
             <Button size="sm" className="h-7 text-xs" onClick={handleAddSubmit} disabled={addMutation.isPending}>
               {addMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
-              Adicionar
+              Adicionar ao Plano
             </Button>
           </div>
         </div>
@@ -1627,7 +1789,7 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
 
       {/* Items list */}
       {planItems.length === 0 ? (
-        <p className="text-xs text-muted-foreground py-2 text-center">
+        <p className="text-xs text-muted-foreground py-3 text-center border border-dashed border-slate-200 rounded-xl">
           Nenhum procedimento ou pacote vinculado ao plano ainda.
         </p>
       ) : (
@@ -1635,58 +1797,118 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
           {planItems.map((item) => {
             const isMensal = item.packageType === "mensal";
             const isAvulso = !item.packageId;
+            const used = item.usedSessions ?? 0;
+            const planned = item.totalSessions ?? (isMensal ? item.sessionsPerWeek * 4 : 0);
+            const pct = planned > 0 ? Math.min(100, (used / planned) * 100) : 0;
+            const { gross, discount: disc, net } = calcItemTotal(item);
+            const isEditing = editingId === item.id;
+
             return (
-              <div key={item.id} className="flex items-start justify-between gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                    {item.packageId ? (
-                      isMensal
-                        ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> Mensal</span>
-                        : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex items-center gap-0.5"><Layers className="h-2.5 w-2.5" /> Sessões</span>
+              <div key={item.id} className={`border rounded-xl p-3 transition-colors ${isEditing ? "bg-blue-50 border-blue-200" : "bg-white border-slate-200 hover:border-slate-300"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      {item.packageId ? (
+                        isMensal
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> Mensal</span>
+                          : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-0.5"><Layers className="h-2.5 w-2.5" /> Pacote Sessões</span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">Avulso</span>
+                      )}
+                      <span className="text-xs font-semibold text-slate-800 truncate">
+                        {item.packageName ?? item.procedureName ?? "—"}
+                      </span>
+                    </div>
+
+                    {!isEditing ? (
+                      <>
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+                          {!isMensal && item.sessionsPerWeek > 0 && <span>{item.sessionsPerWeek}x/semana</span>}
+                          {isMensal && <span>{item.sessionsPerWeek}x/sem · dia {item.billingDay ?? "—"}</span>}
+                          {!isMensal && item.totalSessions && <span className="font-medium">{item.totalSessions} sessões previstas</span>}
+                          {!isMensal && item.totalSessions && item.sessionsPerWeek > 0 && (
+                            <span className="text-slate-400">~{Math.ceil(item.totalSessions / item.sessionsPerWeek)} semanas</span>
+                          )}
+                          {isMensal && (item.absenceCreditLimit ?? 0) > 0 && (
+                            <span className="text-emerald-600 font-medium">{item.absenceCreditLimit} falta(s) c/ crédito/mês</span>
+                          )}
+                          <span className="font-semibold text-slate-700">
+                            {isMensal
+                              ? <>{fmtCur(net)}/mês{disc > 0 && <span className="text-emerald-600 ml-1">(-{fmtCur(disc)})</span>}</>
+                              : isAvulso && item.totalSessions
+                                ? <>{fmtCur(net)}{disc > 0 && <span className="text-emerald-600 ml-1">(-{fmtCur(disc)})</span>}</>
+                                : <>{fmtCur(net)}{disc > 0 && <span className="text-emerald-600 ml-1">(-{fmtCur(disc)})</span>}</>}
+                          </span>
+                          {item.notes && <span className="text-slate-400 italic w-full">{item.notes}</span>}
+                        </div>
+
+                        {/* Burn-down progress bar */}
+                        {planned > 0 && (
+                          <div className="mt-2 space-y-0.5">
+                            <div className="flex justify-between text-[10px] text-slate-500">
+                              <span>{used} de {planned} sessões realizadas</span>
+                              <span className={pct >= 100 ? "text-green-600 font-semibold" : "text-slate-500"}>
+                                {pct >= 100 ? "✓ Concluído" : `${pct.toFixed(0)}%`}
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className={`h-1.5 rounded-full transition-all ${pct >= 100 ? "bg-green-500" : pct >= 75 ? "bg-amber-400" : "bg-primary"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </>
                     ) : (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">Avulso</span>
+                      /* Edit mode */
+                      <div className="mt-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Sessões/semana</Label>
+                            <Select value={String(editSpw)} onValueChange={v => setEditSpw(Number(v))}>
+                              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>{[1,2,3,4,5].map(n=><SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>)}</SelectContent>
+                            </Select>
+                          </div>
+                          {!isMensal && (
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Total sessões</Label>
+                              <Input className="h-7 text-xs" type="number" min={1} value={editSessions} onChange={e => setEditSessions(e.target.value)} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Desconto (R$)</Label>
+                            <Input className="h-7 text-xs" type="number" min={0} step={0.01} value={editDiscount} onChange={e => setEditDiscount(e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Observações</Label>
+                            <Input className="h-7 text-xs" value={editNotes} onChange={e => setEditNotes(e.target.value)} />
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 justify-end">
+                          <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setEditingId(null)}>Cancelar</Button>
+                          <Button size="sm" className="h-6 text-[10px] px-2" onClick={() => handleEditSave(item)} disabled={updateMutation.isPending}>
+                            {updateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar"}
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                    <span className="text-xs font-semibold text-slate-800 truncate">
-                      {item.packageName ?? item.procedureName ?? "—"}
-                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mt-0.5">
-                    {item.sessionsPerWeek > 0 && !isMensal && (
-                      <span>{item.sessionsPerWeek}x/semana</span>
-                    )}
-                    {item.totalSessions && !isMensal && (
-                      <span>{item.totalSessions} sessões</span>
-                    )}
-                    {item.totalSessions && item.sessionsPerWeek > 0 && !isMensal && (
-                      <span className="text-slate-400">
-                        ~{Math.ceil(item.totalSessions / item.sessionsPerWeek)} sem.
-                      </span>
-                    )}
-                    {isMensal && (
-                      <span>{fmtCur(item.monthlyPrice)}/mês · dia {item.billingDay ?? "—"} · {item.sessionsPerWeek}x/sem</span>
-                    )}
-                    {isMensal && (item.absenceCreditLimit ?? 0) > 0 && (
-                      <span className="text-emerald-600 font-medium">{item.absenceCreditLimit} falta(s) c/ crédito</span>
-                    )}
-                    {!isMensal && item.price && (
-                      <span className="font-medium text-slate-700">
-                        {isAvulso && item.totalSessions
-                          ? <>{fmtCur(Number(item.price) * item.totalSessions)} total</>
-                          : fmtCur(item.price)}
-                      </span>
-                    )}
-                    {item.notes && <span className="text-slate-400 italic">{item.notes}</span>}
-                  </div>
+
+                  {!isEditing && (
+                    <div className="flex gap-0.5 shrink-0">
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-blue-600" onClick={() => startEdit(item)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-destructive" onClick={() => removeMutation.mutate(item.id)} disabled={removeMutation.isPending}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6 text-slate-400 hover:text-destructive shrink-0 mt-0.5"
-                  onClick={() => removeMutation.mutate(item.id)}
-                  disabled={removeMutation.isPending}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
               </div>
             );
           })}
@@ -1700,20 +1922,43 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
             <TrendingUp className="h-3.5 w-3.5" /> Previsão Financeira do Plano
           </p>
 
-          <div className="space-y-1.5">
+          {/* Per-item breakdown */}
+          <div className="space-y-1 text-xs">
+            {financialRows.map(({ item, gross, discount: disc, net }) => {
+              const isMensal = item.packageType === "mensal";
+              const isAvulso = !item.packageId;
+              const label = item.packageName ?? item.procedureName ?? "—";
+              const detail = isMensal
+                ? `${fmtCur(net)}/mês`
+                : isAvulso && item.totalSessions
+                  ? `${item.totalSessions} × ${fmtCur(Number(item.price ?? 0))}${disc > 0 ? ` − ${fmtCur(disc)}` : ""} = ${fmtCur(net)}`
+                  : `${fmtCur(net)}${disc > 0 ? ` (desc. ${fmtCur(disc)})` : ""}`;
+              return (
+                <div key={item.id} className="flex justify-between items-center py-0.5 border-b border-primary/10 last:border-0">
+                  <span className="text-slate-600 truncate max-w-[60%]">{label}</span>
+                  <span className="font-medium text-slate-700 text-right">{detail}{isMensal && <span className="text-muted-foreground">/mês</span>}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="space-y-1.5 pt-1 border-t border-primary/20">
+            {totalDesconto > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-emerald-600">Total de descontos:</span>
+                <span className="font-semibold text-emerald-600">− {fmtCur(totalDesconto)}</span>
+              </div>
+            )}
             {hasSessoes && (
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Pacotes / procedimentos avulsos:</span>
+                <span className="text-slate-600">Pacotes / avulsos:</span>
                 <span className="font-semibold">{fmtCur(totalSessoes)}</span>
               </div>
             )}
             {hasMensal && (
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Mensalidades (recorrente):</span>
-                <span className="font-semibold">
-                  {fmtCur(totalMensal)}
-                  <span className="text-xs font-normal text-muted-foreground">/mês</span>
-                </span>
+                <span className="text-slate-600">Mensalidades:</span>
+                <span className="font-semibold">{fmtCur(totalMensal)}<span className="text-xs font-normal text-muted-foreground">/mês</span></span>
               </div>
             )}
             {totalSessions > 0 && (
@@ -1724,22 +1969,17 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
             )}
             {estimatedWeeks > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Duração estimada do plano:</span>
-                <span className="font-semibold">
-                  {estimatedWeeks} {estimatedWeeks === 1 ? "semana" : "semanas"}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">
-                    (~{(estimatedWeeks / 4.33).toFixed(1)} meses)
-                  </span>
-                </span>
+                <span className="text-slate-600">Duração estimada:</span>
+                <span className="font-semibold">{estimatedWeeks} sem. <span className="text-xs font-normal text-muted-foreground">(~{(estimatedWeeks / 4.33).toFixed(1)} meses)</span></span>
               </div>
             )}
-            <div className="flex justify-between text-sm pt-1.5 border-t border-primary/20">
-              <span className="text-slate-700 font-semibold">
+            <div className="flex justify-between text-sm pt-2 border-t border-primary/20">
+              <span className="text-slate-700 font-bold">
                 {hasMensal && hasSessoes ? "Total na contratação:" : hasSessoes ? "Total do plano:" : "Investimento mensal:"}
               </span>
-              <span className="font-bold text-primary">
+              <span className="font-bold text-primary text-base">
                 {hasSessoes && hasMensal
-                  ? fmtCur(totalSessoes + totalMensal)
+                  ? <>{fmtCur(totalSessoes + totalMensal)}<span className="text-xs font-normal text-muted-foreground ml-1">+ {fmtCur(totalMensal)}/mês</span></>
                   : hasSessoes
                   ? fmtCur(totalSessoes)
                   : <>{fmtCur(totalMensal)}<span className="text-xs font-normal text-muted-foreground">/mês</span></>}
@@ -1747,21 +1987,18 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
             </div>
           </div>
 
-          {/* Monthly plan rules */}
+          {/* Monthly rules */}
           {hasMensal && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 space-y-1">
               <p className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-                <RefreshCw className="h-3 w-3" /> Regras do Plano Mensal
+                <RefreshCw className="h-3 w-3" /> Regras dos Planos Mensais
               </p>
               {planItems.filter(i => i.packageType === "mensal").map(item => (
                 <div key={item.id} className="text-[10px] text-emerald-700 flex items-start gap-1">
                   <span className="mt-0.5">•</span>
                   <span>
-                    <strong>{item.packageName ?? item.procedureName}</strong>: valor fixo de {fmtCur(item.monthlyPrice)}/mês, 
-                    {" "}{item.sessionsPerWeek}x/semana (~{item.sessionsPerWeek * 4} sessões/mês).
-                    {(item.absenceCreditLimit ?? 0) > 0
-                      ? ` Crédito de até ${item.absenceCreditLimit} falta(s)/mês — cobrado mesmo com ausências dentro do limite.`
-                      : " Sem crédito de faltas."}
+                    <strong>{item.packageName ?? item.procedureName}</strong>: {fmtCur(item.monthlyPrice)}/mês, {item.sessionsPerWeek}x/sem (~{item.sessionsPerWeek * 4} sess./mês).
+                    {(item.absenceCreditLimit ?? 0) > 0 ? ` Até ${item.absenceCreditLimit} falta(s) c/ crédito/mês.` : " Sem crédito de faltas."}
                   </span>
                 </div>
               ))}
@@ -1771,7 +2008,7 @@ function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | und
           {hasMensal && (
             <p className="text-[10px] text-slate-500 flex gap-1 items-start">
               <Info className="h-3 w-3 shrink-0 mt-0.5" />
-              Mensalidades são recorrentes. O total acima considera apenas o 1º mês de cobrança.
+              Mensalidades são recorrentes. O total acima considera apenas o 1º mês.
             </p>
           )}
         </div>
@@ -1787,6 +2024,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   const mutation = useSaveTreatmentPlan();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const [planItems, setPlanItems] = useState<PlanProcedureItem[]>([]);
 
   const { data: appointments = [] } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/appointments`],
@@ -1807,6 +2046,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   const [form, setForm] = useState({
     objectives: "", techniques: "", frequency: "",
     estimatedSessions: "" as string | number,
+    startDate: "",
+    responsibleProfessional: "",
     status: "ativo" as "ativo" | "concluido" | "suspenso",
   });
 
@@ -1817,15 +2058,25 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
         techniques: data.techniques || "",
         frequency: data.frequency || "",
         estimatedSessions: data.estimatedSessions || "",
+        startDate: (data as any).startDate || "",
+        responsibleProfessional: (data as any).responsibleProfessional || "",
         status: (data.status as "ativo" | "concluido" | "suspenso") || "ativo",
       });
     }
   }, [data]);
 
+  // Auto-suggest total sessions from planItems
+  const suggestedSessions = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
+
   const handleSave = () => {
     mutation.mutate({
       patientId,
-      data: { ...form, estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : null },
+      data: {
+        ...form,
+        estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : null,
+        startDate: form.startDate || null,
+        responsibleProfessional: form.responsibleProfessional || null,
+      } as any,
     }, {
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Plano de tratamento atualizado." });
@@ -1836,9 +2087,9 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   };
 
   const statusStyles = {
-    ativo: "bg-green-100 text-green-700",
-    concluido: "bg-slate-100 text-slate-700",
-    suspenso: "bg-orange-100 text-orange-700",
+    ativo: "bg-green-100 text-green-700 border-green-200",
+    concluido: "bg-slate-100 text-slate-700 border-slate-200",
+    suspenso: "bg-orange-100 text-orange-700 border-orange-200",
   };
 
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
@@ -1849,22 +2100,30 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
         <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
             <CardTitle className="text-xl">Plano de Tratamento</CardTitle>
-            <CardDescription>Objetivos, técnicas e frequência do tratamento</CardDescription>
+            <CardDescription>Objetivos, procedimentos, estimativas e base para contrato</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status]}`}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center border px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status]}`}>
               {form.status === "ativo" ? "Ativo" : form.status === "concluido" ? "Concluído" : "Suspenso"}
             </span>
             {patient && (
-              <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
-                onClick={() => printDocument(generatePlanHTML(patient, form, appointments), `Plano de Tratamento — ${patient.name}`)}>
-                <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
-              </Button>
+              <>
+                <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
+                  onClick={() => printDocument(generatePlanHTML(patient, form, appointments, planItems), `Plano de Tratamento — ${patient.name}`)}>
+                  <Printer className="w-3.5 h-3.5" /> Imprimir Plano
+                </Button>
+                <Button size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => printDocument(generateContractHTML(patient, form, planItems), `Contrato — ${patient.name}`)}>
+                  <ScrollText className="w-3.5 h-3.5" /> Gerar Contrato
+                </Button>
+              </>
             )}
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-6 space-y-5">
+
+        {/* Objectives */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <Target className="w-4 h-4 text-primary" /> Objetivos do Tratamento
@@ -1873,6 +2132,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
             value={form.objectives} onChange={e => setForm({ ...form, objectives: e.target.value })}
             placeholder="Quais os objetivos terapêuticos a serem alcançados..." />
         </div>
+
+        {/* Techniques */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <Stethoscope className="w-4 h-4 text-primary" /> Técnicas e Recursos
@@ -1881,26 +2142,54 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
             value={form.techniques} onChange={e => setForm({ ...form, techniques: e.target.value })}
             placeholder="Técnicas fisioterapêuticas, eletroterapia, exercícios..." />
         </div>
+
+        {/* Responsible professional */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-primary" /> Profissional Responsável
+          </Label>
+          <Input className="bg-slate-50 border-slate-200 focus:bg-white"
+            value={form.responsibleProfessional} onChange={e => setForm({ ...form, responsibleProfessional: e.target.value })}
+            placeholder="Nome do fisioterapeuta / CREFITO..." />
+        </div>
+
+        {/* Frequency, start date, estimated sessions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Frequência das Sessões</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-slate-700">Frequência</Label>
             <Input className="bg-slate-50 border-slate-200 focus:bg-white"
               value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}
-              placeholder="Ex: 3x por semana, quinzenal..." />
+              placeholder="Ex: 3x/semana..." />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Sessões Estimadas</Label>
+            <Label className="text-sm font-semibold text-slate-700">Data de Início</Label>
+            <Input type="date" className="bg-slate-50 border-slate-200 focus:bg-white"
+              value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              Sessões Estimadas
+              {suggestedSessions > 0 && Number(form.estimatedSessions) !== suggestedSessions && (
+                <button
+                  className="text-[10px] text-primary underline font-normal"
+                  onClick={() => setForm(f => ({ ...f, estimatedSessions: suggestedSessions }))}
+                  type="button"
+                >
+                  usar {suggestedSessions} (dos itens)
+                </button>
+              )}
+            </Label>
             <Input type="number" min={1} className="bg-slate-50 border-slate-200 focus:bg-white"
               value={form.estimatedSessions} onChange={e => setForm({ ...form, estimatedSessions: e.target.value })}
               placeholder="Ex: 20" />
           </div>
         </div>
+
+        {/* Status */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-slate-700">Status do Tratamento</Label>
           <Select value={form.status} onValueChange={(v: "ativo" | "concluido" | "suspenso") => setForm({ ...form, status: v })}>
-            <SelectTrigger className="bg-slate-50 border-slate-200 w-48">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="bg-slate-50 border-slate-200 w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ativo">Ativo</SelectItem>
               <SelectItem value="concluido">Concluído</SelectItem>
@@ -1914,13 +2203,9 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           <div className="pt-2 border-t border-slate-100 space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" /> Progresso de Sessões
+                <Activity className="w-4 h-4 text-primary" /> Progresso Geral de Sessões
               </Label>
-              <span className={`text-sm font-bold ${
-                form.estimatedSessions && completedSessions >= Number(form.estimatedSessions)
-                  ? "text-green-600"
-                  : "text-primary"
-              }`}>
+              <span className={`text-sm font-bold ${form.estimatedSessions && completedSessions >= Number(form.estimatedSessions) ? "text-green-600" : "text-primary"}`}>
                 {completedSessions} / {form.estimatedSessions || "—"}
               </span>
             </div>
@@ -1928,17 +2213,13 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
               <>
                 <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className={`h-2.5 rounded-full transition-all duration-500 ${
-                      completedSessions >= Number(form.estimatedSessions)
-                        ? "bg-green-500"
-                        : "bg-primary"
-                    }`}
+                    className={`h-2.5 rounded-full transition-all duration-500 ${completedSessions >= Number(form.estimatedSessions) ? "bg-green-500" : "bg-primary"}`}
                     style={{ width: `${Math.min(100, (completedSessions / Number(form.estimatedSessions)) * 100)}%` }}
                   />
                 </div>
                 <p className="text-xs text-slate-400">
                   {completedSessions >= Number(form.estimatedSessions)
-                    ? "Meta atingida! Considere registrar a alta."
+                    ? "✓ Meta atingida! Considere registrar a alta."
                     : `${Math.max(0, Number(form.estimatedSessions) - completedSessions)} sessão(ões) restante(s)`}
                 </p>
               </>
@@ -1948,12 +2229,11 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           </div>
         )}
 
-        {/* Últimas sessões concluídas */}
+        {/* Recent sessions */}
         {completedAppts.length > 0 && (
           <div className="pt-2 space-y-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-              Últimas sessões concluídas
+              <CheckCircle className="w-3.5 h-3.5 text-green-500" /> Últimas sessões concluídas
             </p>
             <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
               {completedAppts.slice(0, 10).map((a: any, i: number) => (
@@ -1973,8 +2253,10 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           </div>
         )}
 
-        <TreatmentPlanItemsSection planId={data?.id} patientId={patientId} />
+        {/* Items section */}
+        <TreatmentPlanItemsSection planId={data?.id} patientId={patientId} onItemsChange={setPlanItems} />
 
+        {/* Save button */}
         <div className="pt-3 flex justify-end">
           <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}

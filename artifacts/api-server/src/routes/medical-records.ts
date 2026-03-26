@@ -185,7 +185,7 @@ router.get("/treatment-plan", requirePermission("medical.read"), async (req: Req
 router.post("/treatment-plan", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { objectives, techniques, frequency, estimatedSessions, status = "ativo" } = req.body;
+    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
 
     const existing = await db
       .select()
@@ -197,13 +197,13 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
     if (isPlanUpdate) {
       [plan] = await db
         .update(treatmentPlansTable)
-        .set({ objectives, techniques, frequency, estimatedSessions, status, updatedAt: new Date() })
+        .set({ objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null, updatedAt: new Date() })
         .where(eq(treatmentPlansTable.patientId, patientId))
         .returning();
     } else {
       [plan] = await db
         .insert(treatmentPlansTable)
-        .values({ patientId, objectives, techniques, frequency, estimatedSessions, status })
+        .values({ patientId, objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null })
         .returning();
     }
     logAudit({
