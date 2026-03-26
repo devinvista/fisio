@@ -17,6 +17,7 @@ import Procedimentos from "./pages/procedimentos";
 import Relatorios from "./pages/relatorios";
 import Usuarios from "./pages/usuarios";
 import Clinicas from "./pages/clinicas";
+import Configuracoes from "./pages/configuracoes";
 import Agendar from "./pages/agendar";
 import NotFound from "./pages/not-found";
 
@@ -121,6 +122,9 @@ function Router() {
       </Route>
       <Route path="/usuarios">
         {() => <PermissionRoute component={Usuarios} permission="users.manage" />}
+      </Route>
+      <Route path="/configuracoes">
+        {() => <PermissionRoute component={Configuracoes} permission="settings.manage" />}
       </Route>
       <Route path="/clinicas">
         {() => <PermissionRoute component={Clinicas} permission="clinics.manage" />}

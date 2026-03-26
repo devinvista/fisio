@@ -4,7 +4,7 @@ import { clinicsTable, usersTable, userRolesTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requireSuperAdmin } from "../middleware/rbac.js";
+import { requireSuperAdmin, requirePermission } from "../middleware/rbac.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../middleware/auth.js";
 
@@ -36,6 +36,59 @@ router.post("/", requireSuperAdmin(), async (req: AuthRequest, res) => {
       .values({ name, cnpj, phone, email, address })
       .returning();
     res.status(201).json(clinic);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/current", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Nenhuma clínica ativa no contexto" });
+      return;
+    }
+    const [clinic] = await db
+      .select()
+      .from(clinicsTable)
+      .where(eq(clinicsTable.id, clinicId))
+      .limit(1);
+    if (!clinic) {
+      res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
+      return;
+    }
+    res.json(clinic);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.put("/current", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Nenhuma clínica ativa no contexto" });
+      return;
+    }
+    const { name, cnpj, phone, email, address } = req.body;
+    const [clinic] = await db
+      .update(clinicsTable)
+      .set({
+        ...(name !== undefined && { name }),
+        ...(cnpj !== undefined && { cnpj }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(address !== undefined && { address }),
+      })
+      .where(eq(clinicsTable.id, clinicId))
+      .returning();
+    if (!clinic) {
+      res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
+      return;
+    }
+    res.json(clinic);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -114,10 +167,19 @@ router.get("/:id/users", requireSuperAdmin(), async (req, res) => {
       .innerJoin(usersTable, eq(userRolesTable.userId, usersTable.id))
       .where(eq(userRolesTable.clinicId, clinicId));
 
-    const userMap = new Map<number, { id: number; name: string; email: string | null; roles: Role[]; createdAt: Date }>();
+    const userMap = new Map<
+      number,
+      { id: number; name: string; email: string | null; roles: Role[]; createdAt: Date }
+    >();
     for (const row of rows) {
       if (!userMap.has(row.userId)) {
-        userMap.set(row.userId, { id: row.userId, name: row.name, email: row.email, roles: [], createdAt: row.createdAt });
+        userMap.set(row.userId, {
+          id: row.userId,
+          name: row.name,
+          email: row.email,
+          roles: [],
+          createdAt: row.createdAt,
+        });
       }
       userMap.get(row.userId)!.roles.push(row.role as Role);
     }
@@ -175,6 +237,20 @@ router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
     }
 
     res.status(201).json({ id: user.id, name: user.name, email: user.email, roles: roleList });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
+  try {
+    const clinicId = parseInt(req.params.id);
+    const userId = parseInt(req.params.userId);
+    await db.delete(userRolesTable).where(
+      and(eq(userRolesTable.userId, userId), eq(userRolesTable.clinicId, clinicId))
+    );
+    res.status(204).send();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

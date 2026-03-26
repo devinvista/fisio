@@ -106,17 +106,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${apiBase}/api/auth/switch-clinic`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinicId: newClinicId }),
+        body: JSON.stringify({ clinicId: newClinicId === 0 ? null : newClinicId }),
       });
       if (!res.ok) throw new Error("Failed to switch clinic");
       const data = await res.json();
       localStorage.setItem("fisiogest_token", data.token);
-      localStorage.setItem("fisiogest_clinic_id", String(newClinicId));
-      setToken(data.token);
-      setClinicId(newClinicId);
-      if (user) {
-        const clinic = clinics.find((c) => c.id === newClinicId);
-        setUser({ ...user, roles: clinic?.roles ?? [] } as any);
+      if (data.clinicId) {
+        localStorage.setItem("fisiogest_clinic_id", String(data.clinicId));
+      } else {
+        localStorage.removeItem("fisiogest_clinic_id");
       }
       window.location.href = "/";
     } catch (err) {

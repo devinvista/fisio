@@ -13,6 +13,7 @@ import {
   Stethoscope,
   UserCog,
   Building2,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -30,6 +31,7 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   permission: Permission | null;
+  hideSuperAdmin?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -40,15 +42,18 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, permission: "reports.read" },
   { href: "/usuarios", label: "Usuários", icon: UserCog, permission: "users.manage" },
+  { href: "/configuracoes", label: "Minha Clínica", icon: Settings, permission: "settings.manage", hideSuperAdmin: true },
   { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
 ];
 
 export function AppLayout({ children, title }: AppLayoutProps) {
-  const { user, logout, hasPermission, clinics } = useAuth();
+  const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
   const [location] = useLocation();
 
   const visibleNavItems = NAV_ITEMS.filter(
-    (item) => item.permission === null || hasPermission(item.permission)
+    (item) =>
+      (item.permission === null || hasPermission(item.permission)) &&
+      !(item.hideSuperAdmin && isSuperAdmin)
   );
 
   const roleLabels = (user?.roles ?? [])
@@ -66,7 +71,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
         </span>
       </div>
 
-      {clinics.length > 1 && (
+      {(clinics.length > 1 || isSuperAdmin) && (
         <div className="px-4 pt-3 pb-1">
           <ClinicSwitcher />
         </div>

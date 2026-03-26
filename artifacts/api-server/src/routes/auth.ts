@@ -231,6 +231,12 @@ router.post("/login", async (req, res) => {
 router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { clinicId } = req.body;
+
+    if (req.isSuperAdmin && (clinicId === null || clinicId === 0)) {
+      const token = generateToken(req.userId!, [], null, true);
+      return res.json({ token, clinicId: null });
+    }
+
     if (!clinicId) {
       res.status(400).json({ error: "Bad Request", message: "clinicId é obrigatório" });
       return;
@@ -246,8 +252,8 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
         res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
         return;
       }
-      const token = generateToken(req.userId!, [], null, true);
-      return res.json({ token, clinicId: null });
+      const token = generateToken(req.userId!, ["admin"], Number(clinicId), true);
+      return res.json({ token, clinicId: Number(clinicId), clinicName: clinic.name });
     }
 
     const roles = await getUserRolesForClinic(req.userId!, Number(clinicId));

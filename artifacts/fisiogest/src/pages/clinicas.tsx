@@ -24,8 +24,39 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Building2, Plus, Pencil, Trash2, Users, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Building2,
+  Plus,
+  Pencil,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+  Loader2,
+  Users,
+  LogIn,
+  UserPlus,
+  UserMinus,
+  Phone,
+  Mail,
+  MapPin,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
@@ -64,6 +95,40 @@ async function deleteClinic(id: number) {
   if (!res.ok) throw new Error("Erro ao excluir clínica");
 }
 
+async function fetchClinicUsers(clinicId: number) {
+  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users`);
+  if (!res.ok) throw new Error("Falha ao buscar usuários");
+  return res.json();
+}
+
+async function addUserToClinic(clinicId: number, data: Record<string, unknown>) {
+  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Erro ao adicionar usuário");
+  }
+  return res.json();
+}
+
+async function removeUserFromClinic(clinicId: number, userId: number) {
+  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Erro ao remover usuário");
+}
+
+async function impersonateClinic(clinicId: number) {
+  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/impersonate`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Erro ao acessar clínica");
+  return res.json();
+}
+
 interface Clinic {
   id: number;
   name: string;
@@ -75,6 +140,13 @@ interface Clinic {
   createdAt: string;
 }
 
+interface ClinicUser {
+  id: number;
+  name: string;
+  email: string | null;
+  roles: string[];
+}
+
 interface ClinicFormData {
   name: string;
   cnpj: string;
@@ -83,25 +155,52 @@ interface ClinicFormData {
   address: string;
 }
 
+interface AddUserFormData {
+  name: string;
+  cpf: string;
+  email: string;
+  password: string;
+  roles: string;
+}
+
 const EMPTY_FORM: ClinicFormData = { name: "", cnpj: "", phone: "", email: "", address: "" };
+const EMPTY_USER_FORM: AddUserFormData = { name: "", cpf: "", email: "", password: "", roles: "profissional" };
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrador",
+  profissional: "Profissional",
+  secretaria: "Secretaria",
+};
 
 export default function Clinicas() {
   const { toast } = useToast();
+  const { switchClinic } = useAuth();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingClinic, setEditingClinic] = useState<Clinic | null>(null);
   const [deletingClinicId, setDeletingClinicId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ClinicFormData>(EMPTY_FORM);
 
+  const [managingClinic, setManagingClinic] = useState<Clinic | null>(null);
+  const [addUserForm, setAddUserForm] = useState<AddUserFormData>(EMPTY_USER_FORM);
+  const [removingUserId, setRemovingUserId] = useState<number | null>(null);
+
   const { data: clinics = [], isLoading } = useQuery<Clinic[]>({
     queryKey: ["clinics"],
     queryFn: fetchClinics,
+  });
+
+  const { data: clinicUsers = [], isLoading: isLoadingUsers } = useQuery<ClinicUser[]>({
+    queryKey: ["clinic-users", managingClinic?.id],
+    queryFn: () => fetchClinicUsers(managingClinic!.id),
+    enabled: !!managingClinic,
   });
 
   const createMutation = useMutation({
     mutationFn: createClinic,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clinics"] });
+      queryClient.invalidateQueries({ queryKey: ["all-clinics-switcher"] });
       toast({ title: "Clínica criada com sucesso!" });
       setIsCreateOpen(false);
       setFormData(EMPTY_FORM);
@@ -116,6 +215,7 @@ export default function Clinicas() {
       updateClinic(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clinics"] });
+      queryClient.invalidateQueries({ queryKey: ["all-clinics-switcher"] });
       toast({ title: "Clínica atualizada!" });
       setEditingClinic(null);
       setFormData(EMPTY_FORM);
@@ -129,6 +229,7 @@ export default function Clinicas() {
     mutationFn: deleteClinic,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clinics"] });
+      queryClient.invalidateQueries({ queryKey: ["all-clinics-switcher"] });
       toast({ title: "Clínica excluída." });
       setDeletingClinicId(null);
     },
@@ -137,24 +238,85 @@ export default function Clinicas() {
     },
   });
 
+  const addUserMutation = useMutation({
+    mutationFn: ({ clinicId, data }: { clinicId: number; data: Record<string, unknown> }) =>
+      addUserToClinic(clinicId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clinic-users", managingClinic?.id] });
+      toast({ title: "Usuário adicionado à clínica!" });
+      setAddUserForm(EMPTY_USER_FORM);
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Erro", description: err.message });
+    },
+  });
+
+  const removeUserMutation = useMutation({
+    mutationFn: ({ clinicId, userId }: { clinicId: number; userId: number }) =>
+      removeUserFromClinic(clinicId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clinic-users", managingClinic?.id] });
+      toast({ title: "Usuário removido da clínica." });
+      setRemovingUserId(null);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Erro ao remover usuário" });
+    },
+  });
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({ name: formData.name, cnpj: formData.cnpj, phone: formData.phone, email: formData.email, address: formData.address });
+    createMutation.mutate(formData);
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingClinic) return;
-    updateMutation.mutate({ id: editingClinic.id, data: { name: formData.name, cnpj: formData.cnpj, phone: formData.phone, email: formData.email, address: formData.address } });
+    updateMutation.mutate({ id: editingClinic.id, data: formData });
   };
 
   const openEdit = (clinic: Clinic) => {
     setEditingClinic(clinic);
-    setFormData({ name: clinic.name, cnpj: clinic.cnpj ?? "", phone: clinic.phone ?? "", email: clinic.email ?? "", address: clinic.address ?? "" });
+    setFormData({
+      name: clinic.name,
+      cnpj: clinic.cnpj ?? "",
+      phone: clinic.phone ?? "",
+      email: clinic.email ?? "",
+      address: clinic.address ?? "",
+    });
   };
 
   const toggleActive = (clinic: Clinic) => {
     updateMutation.mutate({ id: clinic.id, data: { isActive: !clinic.isActive } });
+  };
+
+  const handleAddUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!managingClinic) return;
+    addUserMutation.mutate({
+      clinicId: managingClinic.id,
+      data: {
+        name: addUserForm.name,
+        cpf: addUserForm.cpf,
+        email: addUserForm.email || undefined,
+        password: addUserForm.password,
+        roles: [addUserForm.roles],
+      },
+    });
+  };
+
+  const handleImpersonate = async (clinic: Clinic) => {
+    try {
+      const data = await impersonateClinic(clinic.id);
+      localStorage.setItem("fisiogest_token", data.token);
+      localStorage.setItem("fisiogest_clinic_id", String(data.clinicId));
+      toast({ title: `Acessando clínica: ${clinic.name}` });
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 500);
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao acessar clínica" });
+    }
   };
 
   return (
@@ -165,7 +327,13 @@ export default function Clinicas() {
             <h2 className="text-lg font-semibold text-foreground">Todas as Clínicas</h2>
             <p className="text-sm text-muted-foreground">{clinics.length} clínica(s) cadastrada(s)</p>
           </div>
-          <Button onClick={() => { setFormData(EMPTY_FORM); setIsCreateOpen(true); }} className="gap-2">
+          <Button
+            onClick={() => {
+              setFormData(EMPTY_FORM);
+              setIsCreateOpen(true);
+            }}
+            className="gap-2"
+          >
             <Plus className="h-4 w-4" />
             Nova Clínica
           </Button>
@@ -191,7 +359,10 @@ export default function Clinicas() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {clinics.map((clinic) => (
-              <Card key={clinic.id} className={`relative transition-all ${!clinic.isActive ? "opacity-60" : ""}`}>
+              <Card
+                key={clinic.id}
+                className={`relative transition-all ${!clinic.isActive ? "opacity-60" : ""}`}
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
@@ -200,37 +371,88 @@ export default function Clinicas() {
                       </div>
                       <div className="min-w-0">
                         <CardTitle className="text-base truncate">{clinic.name}</CardTitle>
-                        {clinic.cnpj && <p className="text-xs text-muted-foreground mt-0.5">{clinic.cnpj}</p>}
+                        {clinic.cnpj && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{clinic.cnpj}</p>
+                        )}
                       </div>
                     </div>
-                    <Badge variant={clinic.isActive ? "default" : "secondary"} className="shrink-0 text-xs">
+                    <Badge
+                      variant={clinic.isActive ? "default" : "secondary"}
+                      className="shrink-0 text-xs"
+                    >
                       {clinic.isActive ? "Ativa" : "Inativa"}
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {(clinic.phone || clinic.email) && (
+                  {(clinic.phone || clinic.email || clinic.address) && (
                     <div className="text-xs text-muted-foreground space-y-1">
-                      {clinic.phone && <p>📞 {clinic.phone}</p>}
-                      {clinic.email && <p>✉️ {clinic.email}</p>}
-                      {clinic.address && <p>📍 {clinic.address}</p>}
+                      {clinic.phone && (
+                        <p className="flex items-center gap-1.5">
+                          <Phone className="h-3 w-3" /> {clinic.phone}
+                        </p>
+                      )}
+                      {clinic.email && (
+                        <p className="flex items-center gap-1.5">
+                          <Mail className="h-3 w-3" /> {clinic.email}
+                        </p>
+                      )}
+                      {clinic.address && (
+                        <p className="flex items-center gap-1.5">
+                          <MapPin className="h-3 w-3" /> {clinic.address}
+                        </p>
+                      )}
                     </div>
                   )}
-                  <div className="flex items-center gap-2 pt-2 border-t border-border">
-                    <Button size="sm" variant="ghost" className="flex-1 gap-1.5 text-xs" onClick={() => openEdit(clinic)}>
+
+                  <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-border">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => openEdit(clinic)}
+                    >
                       <Pencil className="h-3 w-3" /> Editar
                     </Button>
-                    <Button size="sm" variant="ghost" className="flex-1 gap-1.5 text-xs" onClick={() => toggleActive(clinic)}>
-                      {clinic.isActive ? <ToggleRight className="h-3 w-3" /> : <ToggleLeft className="h-3 w-3" />}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => {
+                        setManagingClinic(clinic);
+                        setAddUserForm(EMPTY_USER_FORM);
+                      }}
+                    >
+                      <Users className="h-3 w-3" /> Usuários
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => toggleActive(clinic)}
+                    >
+                      {clinic.isActive ? (
+                        <ToggleRight className="h-3 w-3" />
+                      ) : (
+                        <ToggleLeft className="h-3 w-3" />
+                      )}
                       {clinic.isActive ? "Desativar" : "Ativar"}
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="gap-1.5 text-xs h-8 text-primary hover:text-primary"
+                      onClick={() => handleImpersonate(clinic)}
+                    >
+                      <LogIn className="h-3 w-3" /> Acessar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="col-span-2 gap-1.5 text-xs h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => setDeletingClinicId(clinic.id)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3" /> Excluir Clínica
                     </Button>
                   </div>
                 </CardContent>
@@ -249,9 +471,15 @@ export default function Clinicas() {
           <form onSubmit={handleCreateSubmit} className="space-y-4">
             <ClinicForm formData={formData} setFormData={setFormData} />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                Cancelar
+              </Button>
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar Clínica"}
+                {createMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Criar Clínica"
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -262,20 +490,225 @@ export default function Clinicas() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Clínica</DialogTitle>
+            <DialogDescription>Atualize os dados de {editingClinic?.name}.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <ClinicForm formData={formData} setFormData={setFormData} />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingClinic(null)}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setEditingClinic(null)}>
+                Cancelar
+              </Button>
               <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+                {updateMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Salvar"
+                )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deletingClinicId} onOpenChange={(open) => !open && setDeletingClinicId(null)}>
+      <Dialog
+        open={!!managingClinic}
+        onOpenChange={(open) => !open && setManagingClinic(null)}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Usuários — {managingClinic?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Gerencie os usuários com acesso a esta clínica.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <form onSubmit={handleAddUserSubmit} className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                <UserPlus className="h-4 w-4" /> Adicionar usuário
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Nome *</Label>
+                  <Input
+                    placeholder="Nome completo"
+                    value={addUserForm.name}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">CPF *</Label>
+                  <Input
+                    placeholder="000.000.000-00"
+                    value={addUserForm.cpf}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, cpf: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">E-mail</Label>
+                  <Input
+                    type="email"
+                    placeholder="email@clinica.com"
+                    value={addUserForm.email}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Senha *</Label>
+                  <Input
+                    type="password"
+                    placeholder="Senha inicial"
+                    value={addUserForm.password}
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="space-y-1 flex-1">
+                  <Label className="text-xs">Perfil *</Label>
+                  <Select
+                    value={addUserForm.roles}
+                    onValueChange={(v) => setAddUserForm((p) => ({ ...p, roles: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="profissional">Profissional</SelectItem>
+                      <SelectItem value="secretaria">Secretaria</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" disabled={addUserMutation.isPending} className="gap-2">
+                  {addUserMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
+                  Adicionar
+                </Button>
+              </div>
+            </form>
+
+            <div>
+              <p className="text-sm font-medium text-foreground mb-3">
+                Usuários da clínica ({clinicUsers.length})
+              </p>
+              {isLoadingUsers ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : clinicUsers.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  Nenhum usuário nesta clínica
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>E-mail</TableHead>
+                        <TableHead>Perfil</TableHead>
+                        <TableHead className="w-12"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clinicUsers.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">{u.name}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {u.email ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {u.roles.map((r) => (
+                                <Badge key={r} variant="secondary" className="text-xs capitalize">
+                                  {ROLE_LABELS[r] ?? r}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => setRemovingUserId(u.id)}
+                            >
+                              <UserMinus className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManagingClinic(null)}>
+              Fechar
+            </Button>
+            <Button
+              variant="default"
+              className="gap-2"
+              onClick={() => handleImpersonate(managingClinic!)}
+            >
+              <LogIn className="h-4 w-4" />
+              Acessar como Admin
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={!!removingUserId}
+        onOpenChange={(open) => !open && setRemovingUserId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover usuário da clínica</AlertDialogTitle>
+            <AlertDialogDescription>
+              O usuário perderá acesso a esta clínica. Esta ação não exclui a conta do usuário.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() =>
+                managingClinic &&
+                removingUserId &&
+                removeUserMutation.mutate({
+                  clinicId: managingClinic.id,
+                  userId: removingUserId,
+                })
+              }
+            >
+              {removeUserMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Remover"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deletingClinicId}
+        onOpenChange={(open) => !open && setDeletingClinicId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Clínica</AlertDialogTitle>
@@ -289,7 +722,11 @@ export default function Clinicas() {
               className="bg-destructive hover:bg-destructive/90"
               onClick={() => deletingClinicId && deleteMutation.mutate(deletingClinicId)}
             >
-              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Excluir"}
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Excluir"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -302,7 +739,7 @@ function ClinicForm({
   formData,
   setFormData,
 }: {
-  formData: { name: string; cnpj: string; phone: string; email: string; address: string };
+  formData: ClinicFormData;
   setFormData: (data: any) => void;
 }) {
   return (
