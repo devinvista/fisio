@@ -59,7 +59,8 @@ export type TreatmentPlan = typeof treatmentPlansTable.$inferSelect;
 export const treatmentPlanProceduresTable = pgTable("treatment_plan_procedures", {
   id: serial("id").primaryKey(),
   treatmentPlanId: integer("treatment_plan_id").notNull().references(() => treatmentPlansTable.id, { onDelete: "cascade" }),
-  procedureId: integer("procedure_id").notNull(),
+  procedureId: integer("procedure_id"),
+  packageId: integer("package_id"),
   sessionsPerWeek: integer("sessions_per_week").notNull().default(1),
   totalSessions: integer("total_sessions"),
   priority: integer("priority").notNull().default(1),

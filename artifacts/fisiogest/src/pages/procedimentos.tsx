@@ -61,9 +61,6 @@ interface Procedure {
   description?: string;
   maxCapacity: number;
   onlineBookingEnabled: boolean;
-  billingType: "porSessao" | "mensal";
-  monthlyPrice?: string | number | null;
-  billingDay?: number | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -139,9 +136,6 @@ export default function Procedimentos() {
     description: "",
     maxCapacity: 1,
     onlineBookingEnabled: false,
-    billingType: "porSessao" as "porSessao" | "mensal",
-    monthlyPrice: "",
-    billingDay: "",
   });
 
   const baseUrl = isAdmin
@@ -241,7 +235,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "porSessao", monthlyPrice: "", billingDay: "" });
+    setForm({ name: "", category: "fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
   }
 
   function openEdit(proc: Procedure) {
@@ -256,9 +250,6 @@ export default function Procedimentos() {
       description: proc.description ?? "",
       maxCapacity: proc.maxCapacity ?? 1,
       onlineBookingEnabled: proc.onlineBookingEnabled ?? false,
-      billingType: (proc.billingType ?? "porSessao") as "porSessao" | "mensal",
-      monthlyPrice: proc.monthlyPrice ? String(proc.monthlyPrice) : "",
-      billingDay: proc.billingDay ? String(proc.billingDay) : "",
     });
     setIsModalOpen(true);
   }
@@ -757,14 +748,26 @@ export default function Procedimentos() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Vagas simultâneas</Label>
+                <Label>
+                  Vagas simultâneas
+                  {form.modalidade !== "grupo" && (
+                    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">(fixo por modalidade)</span>
+                  )}
+                </Label>
                 <Input
                   type="number"
-                  min="1"
+                  min={form.modalidade === "grupo" ? 3 : form.modalidade === "dupla" ? 2 : 1}
                   value={form.maxCapacity}
-                  onChange={e => setForm(f => ({ ...f, maxCapacity: parseInt(e.target.value) || 1 }))}
-                  className="rounded-xl"
+                  disabled={form.modalidade !== "grupo"}
+                  onChange={e => setForm(f => ({ ...f, maxCapacity: parseInt(e.target.value) || 3 }))}
+                  className="rounded-xl disabled:bg-slate-100 disabled:text-slate-500"
                 />
+                {form.modalidade === "individual" && (
+                  <p className="text-[10px] text-muted-foreground">1 vaga — atendimento exclusivo</p>
+                )}
+                {form.modalidade === "dupla" && (
+                  <p className="text-[10px] text-muted-foreground">2 vagas — atendimento em dupla</p>
+                )}
               </div>
             </div>
 
@@ -817,59 +820,8 @@ export default function Procedimentos() {
               />
             </div>
 
-            <div className="space-y-3 p-3 rounded-xl border-2 border-slate-200 bg-slate-50">
-              <div className="space-y-1">
-                <Label className="text-sm font-semibold">Tipo de Cobrança</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { value: "porSessao", label: "Por Sessão", desc: "Cobrado a cada atendimento confirmado" },
-                    { value: "mensal", label: "Mensal Fixo", desc: "Mensalidade recorrente independente de sessões" },
-                  ] as const).map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, billingType: opt.value }))}
-                      className={cn(
-                        "text-left p-3 rounded-xl border-2 transition-all",
-                        form.billingType === opt.value
-                          ? "border-primary bg-primary/5 text-primary"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                      )}
-                    >
-                      <p className="text-xs font-bold">{opt.label}</p>
-                      <p className="text-[10px] mt-0.5 opacity-70">{opt.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {form.billingType === "mensal" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Valor Mensal (R$) *</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={form.monthlyPrice}
-                      onChange={e => setForm(f => ({ ...f, monthlyPrice: e.target.value }))}
-                      placeholder="Ex: 350,00"
-                      className="rounded-xl text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Dia de Cobrança *</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={form.billingDay}
-                      onChange={e => setForm(f => ({ ...f, billingDay: e.target.value }))}
-                      placeholder="Ex: 5"
-                      className="rounded-xl text-sm"
-                    />
-                  </div>
-                </div>
-              )}
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+              <strong>Periodicidade e cobrança</strong> são configuradas nos <strong>Pacotes</strong> — o procedimento define apenas o produto (preço avulso e custo direto por sessão).
             </div>
 
             <div className={cn(

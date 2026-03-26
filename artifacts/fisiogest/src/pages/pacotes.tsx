@@ -38,11 +38,14 @@ import {
   Search,
   Package,
   CalendarDays,
-  Users,
   Clock,
   Layers,
   TrendingUp,
   User,
+  Users,
+  RefreshCw,
+  AlertCircle,
+  Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -60,15 +63,21 @@ interface Procedure {
 interface PackageItem {
   id: number;
   name: string;
-  description?: string;
+  description?: string | null;
   procedureId: number;
   procedureName: string;
   procedureCategory: string;
   procedureModalidade: string;
-  totalSessions: number;
+  procedureDurationMinutes: number;
+  procedurePricePerSession: string | number;
+  packageType: "sessoes" | "mensal";
+  totalSessions?: number | null;
   sessionsPerWeek: number;
-  validityDays: number;
+  validityDays?: number | null;
   price: string | number;
+  monthlyPrice?: string | number | null;
+  billingDay?: number | null;
+  absenceCreditLimit: number;
   isActive: boolean;
   createdAt: string;
 }
@@ -85,7 +94,8 @@ const MODALIDADE_CONFIG: Record<string, { label: string; icon: React.ComponentTy
   grupo:      { label: "Grupo",      icon: Users },
 };
 
-function formatCurrency(value: string | number) {
+function formatCurrency(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value));
 }
 
@@ -113,10 +123,14 @@ const EMPTY_FORM = {
   name: "",
   description: "",
   procedureId: "",
+  packageType: "sessoes" as "sessoes" | "mensal",
   totalSessions: 8,
   sessionsPerWeek: 2,
   validityDays: 30,
   price: "",
+  monthlyPrice: "",
+  billingDay: 5,
+  absenceCreditLimit: 1,
 };
 
 export default function Pacotes() {
@@ -126,7 +140,7 @@ export default function Pacotes() {
   const isAdmin = hasRole("admin");
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "sessoes" | "mensal">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<PackageItem | null>(null);
   const [deletingPackage, setDeletingPackage] = useState<PackageItem | null>(null);
@@ -143,9 +157,11 @@ export default function Pacotes() {
   });
 
   const filtered = packages.filter((pkg) => {
-    const matchesSearch = search.trim() === "" || pkg.name.toLowerCase().includes(search.toLowerCase()) || pkg.procedureName.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === "all" || pkg.procedureCategory === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesSearch = search.trim() === "" ||
+      pkg.name.toLowerCase().includes(search.toLowerCase()) ||
+      pkg.procedureName.toLowerCase().includes(search.toLowerCase());
+    const matchesType = typeFilter === "all" || pkg.packageType === typeFilter;
+    return matchesSearch && matchesType;
   });
 
   const createMutation = useMutation({
@@ -153,14 +169,7 @@ export default function Pacotes() {
       apiFetch<PackageItem>("/api/packages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          procedureId: Number(data.procedureId),
-          totalSessions: Number(data.totalSessions),
-          sessionsPerWeek: Number(data.sessionsPerWeek),
-          validityDays: Number(data.validityDays),
-          price: Number(data.price),
-        }),
+        body: JSON.stringify(buildPayload(data)),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
@@ -175,14 +184,7 @@ export default function Pacotes() {
       apiFetch<PackageItem>(`/api/packages/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          procedureId: Number(data.procedureId),
-          totalSessions: Number(data.totalSessions),
-          sessionsPerWeek: Number(data.sessionsPerWeek),
-          validityDays: Number(data.validityDays),
-          price: Number(data.price),
-        }),
+        body: JSON.stringify(buildPayload(data)),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
@@ -202,6 +204,37 @@ export default function Pacotes() {
     onError: (err: Error) => toast({ title: "Erro ao remover pacote", description: err.message, variant: "destructive" }),
   });
 
+  function buildPayload(data: typeof form) {
+    const base = {
+      name: data.name,
+      description: data.description || null,
+      procedureId: Number(data.procedureId),
+      packageType: data.packageType,
+      sessionsPerWeek: Number(data.sessionsPerWeek),
+    };
+    if (data.packageType === "sessoes") {
+      return {
+        ...base,
+        totalSessions: Number(data.totalSessions),
+        validityDays: Number(data.validityDays),
+        price: Number(data.price),
+        monthlyPrice: null,
+        billingDay: null,
+        absenceCreditLimit: 0,
+      };
+    } else {
+      return {
+        ...base,
+        totalSessions: null,
+        validityDays: null,
+        price: Number(data.monthlyPrice),
+        monthlyPrice: Number(data.monthlyPrice),
+        billingDay: Number(data.billingDay),
+        absenceCreditLimit: Number(data.absenceCreditLimit),
+      };
+    }
+  }
+
   function openCreate() {
     setEditingPackage(null);
     setForm(EMPTY_FORM);
@@ -214,10 +247,14 @@ export default function Pacotes() {
       name: pkg.name,
       description: pkg.description ?? "",
       procedureId: String(pkg.procedureId),
-      totalSessions: pkg.totalSessions,
+      packageType: pkg.packageType,
+      totalSessions: pkg.totalSessions ?? 8,
       sessionsPerWeek: pkg.sessionsPerWeek,
-      validityDays: pkg.validityDays,
+      validityDays: pkg.validityDays ?? 30,
       price: String(pkg.price),
+      monthlyPrice: pkg.monthlyPrice ? String(pkg.monthlyPrice) : "",
+      billingDay: pkg.billingDay ?? 5,
+      absenceCreditLimit: pkg.absenceCreditLimit ?? 1,
     });
     setIsModalOpen(true);
   }
@@ -229,8 +266,16 @@ export default function Pacotes() {
   }
 
   function handleSubmit() {
-    if (!form.name || !form.procedureId || !form.price) {
+    if (!form.name || !form.procedureId) {
       toast({ title: "Preencha os campos obrigatórios", variant: "destructive" });
+      return;
+    }
+    if (form.packageType === "sessoes" && !form.price) {
+      toast({ title: "Informe o preço total do pacote", variant: "destructive" });
+      return;
+    }
+    if (form.packageType === "mensal" && !form.monthlyPrice) {
+      toast({ title: "Informe o valor mensal", variant: "destructive" });
       return;
     }
     if (editingPackage) {
@@ -240,20 +285,30 @@ export default function Pacotes() {
     }
   }
 
-  const pricePerSession = form.price && form.totalSessions
+  const selectedProcedure = procedures.find((p) => p.id === Number(form.procedureId));
+  const pricePerSessionAvulso = selectedProcedure ? Number(selectedProcedure.price) : null;
+
+  const pricePerSessionPkg = form.packageType === "sessoes" && form.price && form.totalSessions
     ? Number(form.price) / Number(form.totalSessions)
     : null;
 
-  const selectedProcedure = procedures.find((p) => p.id === Number(form.procedureId));
-  const pricePerSessionOriginal = selectedProcedure ? Number(selectedProcedure.price) : null;
-  const discount = pricePerSession && pricePerSessionOriginal && pricePerSessionOriginal > 0
-    ? ((pricePerSessionOriginal - pricePerSession) / pricePerSessionOriginal) * 100
+  const discount = pricePerSessionPkg && pricePerSessionAvulso && pricePerSessionAvulso > 0
+    ? ((pricePerSessionAvulso - pricePerSessionPkg) / pricePerSessionAvulso) * 100
     : null;
 
-  const totalPackagesByCategory = packages.reduce((acc, pkg) => {
-    acc[pkg.procedureCategory] = (acc[pkg.procedureCategory] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const weeksEstimated = form.totalSessions && form.sessionsPerWeek
+    ? Math.ceil(Number(form.totalSessions) / Number(form.sessionsPerWeek))
+    : null;
+
+  const mensal_sessoesMes = form.sessionsPerWeek ? Number(form.sessionsPerWeek) * 4 : null;
+  const mensal_pricePerSession = form.monthlyPrice && mensal_sessoesMes
+    ? Number(form.monthlyPrice) / mensal_sessoesMes
+    : null;
+
+  const sessoesPkg = typeFilter === "sessoes" || typeFilter === "all"
+    ? packages.filter(p => p.packageType === "sessoes").length : 0;
+  const mensaisPkg = typeFilter === "mensal" || typeFilter === "all"
+    ? packages.filter(p => p.packageType === "mensal").length : 0;
 
   return (
     <AppLayout title="Pacotes">
@@ -262,7 +317,7 @@ export default function Pacotes() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Pacotes de Serviços</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Gerencie pacotes de sessões com frequência semanal e validade configuráveis
+              Configure pacotes por sessões ou mensalidades com regras de frequência e falta
             </p>
           </div>
           {isAdmin && (
@@ -273,44 +328,51 @@ export default function Pacotes() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Métricas */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
             <div className="bg-primary/10 p-2.5 rounded-lg">
               <Package className="h-5 w-5 text-primary" />
             </div>
             <div>
               <p className="text-2xl font-bold">{packages.length}</p>
-              <p className="text-xs text-muted-foreground">Pacotes cadastrados</p>
-            </div>
-          </div>
-          <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
-            <div className="bg-emerald-100 p-2.5 rounded-lg">
-              <CalendarDays className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">
-                {packages.length > 0
-                  ? Math.round(packages.reduce((a, p) => a + p.sessionsPerWeek, 0) / packages.length)
-                  : 0}x/sem
-              </p>
-              <p className="text-xs text-muted-foreground">Frequência média</p>
+              <p className="text-xs text-muted-foreground">Total de pacotes</p>
             </div>
           </div>
           <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
             <div className="bg-blue-100 p-2.5 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
+              <Layers className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{sessoesPkg}</p>
+              <p className="text-xs text-muted-foreground">Por sessões</p>
+            </div>
+          </div>
+          <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
+            <div className="bg-emerald-100 p-2.5 rounded-lg">
+              <RefreshCw className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{mensaisPkg}</p>
+              <p className="text-xs text-muted-foreground">Mensalidades</p>
+            </div>
+          </div>
+          <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
+            <div className="bg-amber-100 p-2.5 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-amber-600" />
             </div>
             <div>
               <p className="text-2xl font-bold">
                 {packages.length > 0
-                  ? formatCurrency(packages.reduce((a, p) => a + Number(p.price), 0) / packages.length)
+                  ? formatCurrency(packages.reduce((a, p) => a + Number(p.packageType === "mensal" ? p.monthlyPrice ?? p.price : p.price), 0) / packages.length)
                   : "R$ 0"}
               </p>
-              <p className="text-xs text-muted-foreground">Ticket médio dos pacotes</p>
+              <p className="text-xs text-muted-foreground">Ticket médio</p>
             </div>
           </div>
         </div>
 
+        {/* Filtros */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -321,19 +383,29 @@ export default function Pacotes() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas categorias</SelectItem>
-              <SelectItem value="fisioterapia">Fisioterapia</SelectItem>
-              <SelectItem value="estetica">Estética</SelectItem>
-              <SelectItem value="pilates">Pilates</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+            {([
+              { v: "all", label: "Todos" },
+              { v: "sessoes", label: "Por Sessões" },
+              { v: "mensal", label: "Mensalidade" },
+            ] as const).map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setTypeFilter(opt.v)}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                  typeFilter === opt.v
+                    ? "bg-background shadow text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* Lista */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {[...Array(6)].map((_, i) => (
@@ -349,19 +421,35 @@ export default function Pacotes() {
             <Package className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
             <p className="font-medium text-foreground">Nenhum pacote encontrado</p>
             <p className="text-sm text-muted-foreground mt-1">
-              {search || categoryFilter !== "all" ? "Tente outros filtros" : "Crie o primeiro pacote clicando em \"Novo Pacote\""}
+              {search || typeFilter !== "all" ? "Tente outros filtros" : "Crie o primeiro pacote clicando em \"Novo Pacote\""}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((pkg) => {
-              const pps = Number(pkg.price) / pkg.totalSessions;
-              const modalidadeCfg = MODALIDADE_CONFIG[pkg.procedureModalidade] ?? MODALIDADE_CONFIG.individual;
-              const ModalIcon = modalidadeCfg.icon;
+              const isMensal = pkg.packageType === "mensal";
+              const ModalIcon = MODALIDADE_CONFIG[pkg.procedureModalidade]?.icon ?? User;
+              const modalidadeLabel = MODALIDADE_CONFIG[pkg.procedureModalidade]?.label ?? pkg.procedureModalidade;
+              const pps = isMensal
+                ? (pkg.monthlyPrice ? Number(pkg.monthlyPrice) / (pkg.sessionsPerWeek * 4) : null)
+                : (pkg.totalSessions ? Number(pkg.price) / pkg.totalSessions : null);
+
               return (
-                <div key={pkg.id} className="bg-card border rounded-xl p-5 hover:shadow-md transition-shadow flex flex-col gap-4">
+                <div key={pkg.id} className={cn(
+                  "bg-card border rounded-xl p-5 hover:shadow-md transition-shadow flex flex-col gap-4",
+                  !pkg.isActive && "opacity-60"
+                )}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                          isMensal ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                        )}>
+                          {isMensal ? "Mensal" : "Sessões"}
+                        </span>
+                        {!pkg.isActive && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
+                      </div>
                       <h3 className="font-semibold text-foreground truncate">{pkg.name}</h3>
                       {pkg.description && (
                         <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{pkg.description}</p>
@@ -383,47 +471,69 @@ export default function Pacotes() {
                     <CategoryBadge category={pkg.procedureCategory} />
                     <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                       <ModalIcon className="h-3 w-3" />
-                      {modalidadeCfg.label}
+                      {modalidadeLabel}
                     </span>
                   </div>
 
-                  <div className="text-xs text-muted-foreground font-medium">
-                    Procedimento: <span className="text-foreground">{pkg.procedureName}</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Procedimento: <span className="text-foreground font-medium">{pkg.procedureName}</span>
+                    <span className="text-muted-foreground"> ({pkg.procedureDurationMinutes} min)</span>
+                  </p>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <Layers className="h-3 w-3 text-muted-foreground" />
+                  {isMensal ? (
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <CalendarDays className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">{pkg.sessionsPerWeek}x</p>
+                        <p className="text-[10px] text-muted-foreground">por semana</p>
                       </div>
-                      <p className="text-base font-bold text-foreground">{pkg.totalSessions}</p>
-                      <p className="text-[10px] text-muted-foreground">sessões</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <CalendarDays className="h-3 w-3 text-muted-foreground" />
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <AlertCircle className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">{pkg.absenceCreditLimit}</p>
+                        <p className="text-[10px] text-muted-foreground">faltas/mês</p>
                       </div>
-                      <p className="text-base font-bold text-foreground">{pkg.sessionsPerWeek}x</p>
-                      <p className="text-[10px] text-muted-foreground">por semana</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <Clock className="h-3 w-3 text-muted-foreground" />
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <Clock className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">dia {pkg.billingDay}</p>
+                        <p className="text-[10px] text-muted-foreground">cobrança</p>
                       </div>
-                      <p className="text-base font-bold text-foreground">{pkg.validityDays}</p>
-                      <p className="text-[10px] text-muted-foreground">dias validade</p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <Layers className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">{pkg.totalSessions}</p>
+                        <p className="text-[10px] text-muted-foreground">sessões</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <CalendarDays className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">{pkg.sessionsPerWeek}x</p>
+                        <p className="text-[10px] text-muted-foreground">por semana</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-2">
+                        <Clock className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
+                        <p className="text-base font-bold">{pkg.validityDays}</p>
+                        <p className="text-[10px] text-muted-foreground">dias valid.</p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-end justify-between pt-1 border-t">
                     <div>
-                      <p className="text-xl font-bold text-foreground">{formatCurrency(pkg.price)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatCurrency(pps)}/sessão
+                      <p className="text-xl font-bold">
+                        {isMensal ? formatCurrency(pkg.monthlyPrice) : formatCurrency(pkg.price)}
+                        <span className="text-xs font-normal text-muted-foreground ml-1">
+                          {isMensal ? "/mês" : "total"}
+                        </span>
                       </p>
+                      {pps !== null && (
+                        <p className="text-xs text-muted-foreground">{formatCurrency(pps)}/sessão</p>
+                      )}
                     </div>
-                    {!pkg.isActive && (
-                      <Badge variant="secondary" className="text-xs">Inativo</Badge>
+                    {pps !== null && pricePerSessionAvulso === null && Number(pkg.procedurePricePerSession) > 0 && (
+                      <span className="text-xs font-semibold text-emerald-600">
+                        {(((Number(pkg.procedurePricePerSession) - pps) / Number(pkg.procedurePricePerSession)) * 100).toFixed(0)}% desc.
+                      </span>
                     )}
                   </div>
                 </div>
@@ -433,24 +543,26 @@ export default function Pacotes() {
         )}
       </div>
 
+      {/* Modal criar/editar */}
       <Dialog open={isModalOpen} onOpenChange={(open) => { if (!open) closeModal(); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPackage ? "Editar Pacote" : "Novo Pacote"}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
+            {/* Nome e descrição */}
             <div className="space-y-1.5">
               <Label>Nome do pacote *</Label>
               <Input
-                placeholder="Ex: Pilates em Grupo — 8 sessões/mês"
+                placeholder="Ex: Pilates em Grupo — Mensal 2x/semana"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Descrição</Label>
+              <Label>Descrição <span className="text-muted-foreground text-xs font-normal">(opcional)</span></Label>
               <Textarea
                 placeholder="Descreva o pacote para o paciente..."
                 value={form.description}
@@ -459,104 +571,246 @@ export default function Pacotes() {
               />
             </div>
 
+            {/* Procedimento */}
             <div className="space-y-1.5">
               <Label>Procedimento *</Label>
-              <Select
-                value={form.procedureId}
-                onValueChange={(v) => setForm((f) => ({ ...f, procedureId: v }))}
-              >
+              <Select value={form.procedureId} onValueChange={(v) => setForm((f) => ({ ...f, procedureId: v }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o procedimento..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {procedures.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                      {" "}
-                      <span className="text-muted-foreground text-xs">
-                        ({p.modalidade} · {formatCurrency(p.price)}/sessão)
-                      </span>
+                  {procedures.map((p) => {
+                    const ModalIcon = MODALIDADE_CONFIG[p.modalidade]?.icon ?? User;
+                    return (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        <span className="flex items-center gap-2">
+                          <ModalIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span>{p.name}</span>
+                          <span className="text-muted-foreground text-xs">
+                            ({p.modalidade} · {formatCurrency(p.price)}/sessão)
+                          </span>
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tipo do pacote */}
+            <div className="space-y-2">
+              <Label>Tipo de pacote *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  {
+                    v: "sessoes",
+                    label: "Por Sessões",
+                    desc: "Quantidade fixa de sessões com validade em dias",
+                    icon: Layers,
+                    color: "border-blue-300 bg-blue-50 text-blue-700",
+                  },
+                  {
+                    v: "mensal",
+                    label: "Mensalidade",
+                    desc: "Cobrança mensal fixa com crédito para faltas",
+                    icon: RefreshCw,
+                    color: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                  },
+                ] as const).map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, packageType: opt.v }))}
+                      className={cn(
+                        "text-left p-3 rounded-xl border-2 transition-all",
+                        form.packageType === opt.v
+                          ? opt.color
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Icon className="h-3.5 w-3.5" />
+                        <p className="text-xs font-bold">{opt.label}</p>
+                      </div>
+                      <p className="text-[10px] opacity-70 leading-snug">{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Frequência semanal — comum a ambos tipos */}
+            <div className="space-y-1.5">
+              <Label>Sessões por semana *</Label>
+              <Select
+                value={String(form.sessionsPerWeek)}
+                onValueChange={(v) => setForm((f) => ({ ...f, sessionsPerWeek: Number(v) }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}x por semana
+                      {n === 1 ? " (1 vez)" : n <= 3 ? " (recomendado)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label>Total de sessões *</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={form.totalSessions}
-                  onChange={(e) => setForm((f) => ({ ...f, totalSessions: Number(e.target.value) }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Sessões/semana *</Label>
-                <Select
-                  value={String(form.sessionsPerWeek)}
-                  onValueChange={(v) => setForm((f) => ({ ...f, sessionsPerWeek: Number(v) }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Validade (dias)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={form.validityDays}
-                  onChange={(e) => setForm((f) => ({ ...f, validityDays: Number(e.target.value) }))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Preço do pacote (R$) *</Label>
-              <Input
-                type="number"
-                min={0}
-                step={0.01}
-                placeholder="0,00"
-                value={form.price}
-                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-              />
-            </div>
-
-            {pricePerSession !== null && (
-              <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Preço por sessão no pacote:</span>
-                  <span className="font-semibold">{formatCurrency(pricePerSession)}</span>
-                </div>
-                {pricePerSessionOriginal && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Preço avulso do procedimento:</span>
-                    <span className="font-semibold">{formatCurrency(pricePerSessionOriginal)}</span>
+            {/* Campos específicos por tipo */}
+            {form.packageType === "sessoes" ? (
+              <div className="space-y-4 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5" /> Configurações do Pacote por Sessões
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Total de sessões *</Label>
+                    <Input
+                      type="number" min={1}
+                      value={form.totalSessions}
+                      onChange={(e) => setForm((f) => ({ ...f, totalSessions: Number(e.target.value) }))}
+                    />
                   </div>
-                )}
-                {discount !== null && (
-                  <div className="flex justify-between pt-1 border-t">
-                    <span className="text-muted-foreground">Desconto para o paciente:</span>
-                    <span className={cn("font-bold", discount > 0 ? "text-emerald-600" : "text-red-500")}>
-                      {discount > 0 ? `-${discount.toFixed(0)}%` : `+${Math.abs(discount).toFixed(0)}% (acima do avulso)`}
-                    </span>
+                  <div className="space-y-1.5">
+                    <Label>Validade (dias)</Label>
+                    <Input
+                      type="number" min={1}
+                      value={form.validityDays}
+                      onChange={(e) => setForm((f) => ({ ...f, validityDays: Number(e.target.value) }))}
+                    />
                   </div>
-                )}
-                <div className="flex justify-between pt-1 border-t">
-                  <span className="text-muted-foreground">Duração estimada do pacote:</span>
-                  <span className="font-semibold">
-                    ~{Math.ceil(form.totalSessions / form.sessionsPerWeek)} semana(s)
-                  </span>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Preço total do pacote (R$) *</Label>
+                  <Input
+                    type="number" min={0} step={0.01} placeholder="0,00"
+                    value={form.price}
+                    onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5" /> Configurações da Mensalidade
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Valor mensal (R$) *</Label>
+                    <Input
+                      type="number" min={0} step={0.01} placeholder="0,00"
+                      value={form.monthlyPrice}
+                      onChange={(e) => setForm((f) => ({ ...f, monthlyPrice: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Dia de cobrança *</Label>
+                    <Input
+                      type="number" min={1} max={31}
+                      value={form.billingDay}
+                      onChange={(e) => setForm((f) => ({ ...f, billingDay: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    Limite de faltas creditadas por mês
+                    <span className="text-[10px] text-muted-foreground font-normal">(faltas acima deste limite não são creditadas)</span>
+                  </Label>
+                  <Select
+                    value={String(form.absenceCreditLimit)}
+                    onValueChange={(v) => setForm((f) => ({ ...f, absenceCreditLimit: Number(v) }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Sem crédito de faltas</SelectItem>
+                      <SelectItem value="1">1 falta creditada/mês</SelectItem>
+                      <SelectItem value="2">2 faltas creditadas/mês</SelectItem>
+                      <SelectItem value="3">3 faltas creditadas/mês</SelectItem>
+                      <SelectItem value="4">4 faltas creditadas/mês</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.absenceCreditLimit > 0 && (
+                    <p className="text-[10px] text-emerald-700 bg-emerald-50 rounded-lg p-2 flex gap-1.5">
+                      <Info className="h-3 w-3 shrink-0 mt-0.5" />
+                      Até {form.absenceCreditLimit} falta(s) por mês geram crédito de sessão para o próximo mês. Faltas adicionais não geram crédito.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Preview financeiro */}
+            {selectedProcedure && (
+              <div className="bg-muted/50 rounded-xl p-3 space-y-2 text-sm border">
+                <p className="text-xs font-semibold text-foreground">Resumo financeiro</p>
+                {form.packageType === "sessoes" ? (
+                  <>
+                    {pricePerSessionPkg !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Preço por sessão no pacote:</span>
+                        <span className="font-semibold">{formatCurrency(pricePerSessionPkg)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Preço avulso:</span>
+                      <span className="font-semibold">{formatCurrency(selectedProcedure.price)}</span>
+                    </div>
+                    {discount !== null && (
+                      <div className="flex justify-between pt-1 border-t">
+                        <span className="text-muted-foreground">Desconto para o paciente:</span>
+                        <span className={cn("font-bold", discount > 0 ? "text-emerald-600" : "text-red-500")}>
+                          {discount > 0 ? `-${discount.toFixed(0)}%` : `${Math.abs(discount).toFixed(0)}% acima do avulso`}
+                        </span>
+                      </div>
+                    )}
+                    {weeksEstimated !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Duração estimada:</span>
+                        <span className="font-semibold">~{weeksEstimated} semana(s)</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {mensal_sessoesMes !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Sessões/mês (estimado):</span>
+                        <span className="font-semibold">{mensal_sessoesMes} sessões</span>
+                      </div>
+                    )}
+                    {mensal_pricePerSession !== null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Custo por sessão no plano:</span>
+                        <span className="font-semibold">{formatCurrency(mensal_pricePerSession)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Preço avulso:</span>
+                      <span className="font-semibold">{formatCurrency(selectedProcedure.price)}</span>
+                    </div>
+                    {mensal_pricePerSession !== null && Number(selectedProcedure.price) > 0 && (
+                      <div className="flex justify-between pt-1 border-t">
+                        <span className="text-muted-foreground">Desconto mensal vs. avulso:</span>
+                        <span className={cn("font-bold",
+                          mensal_pricePerSession < Number(selectedProcedure.price) ? "text-emerald-600" : "text-red-500"
+                        )}>
+                          {mensal_pricePerSession < Number(selectedProcedure.price)
+                            ? `-${(((Number(selectedProcedure.price) - mensal_pricePerSession) / Number(selectedProcedure.price)) * 100).toFixed(0)}%`
+                            : `+${(((mensal_pricePerSession - Number(selectedProcedure.price)) / Number(selectedProcedure.price)) * 100).toFixed(0)}%`}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -573,6 +827,7 @@ export default function Pacotes() {
         </DialogContent>
       </Dialog>
 
+      {/* Confirmar exclusão */}
       <AlertDialog open={!!deletingPackage} onOpenChange={(open) => { if (!open) setDeletingPackage(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
