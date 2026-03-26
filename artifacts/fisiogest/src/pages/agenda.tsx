@@ -271,7 +271,7 @@ export default function Agenda() {
             <CalIcon className="w-5 h-5 text-primary" />
             <span className="text-lg font-bold font-display text-slate-800">Calendário</span>
           </div>
-          {activeSchedules.length > 0 && (
+          {activeSchedules.length >= 2 && (
             <div className="flex items-center gap-1.5">
               <select
                 value={selectedScheduleId ?? ""}
