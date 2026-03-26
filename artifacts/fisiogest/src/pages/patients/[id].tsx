@@ -19,7 +19,7 @@ import {
   useUpdatePatient,
   useDeletePatient,
 } from "@workspace/api-client-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,7 @@ import {
   MapPin, Stethoscope, Target, CheckCircle, Clock, XCircle, AlertCircle,
   LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock, Paperclip, Upload,
   FileImage, File, Download, ScrollText, Printer, BadgeCheck, CalendarDays,
-  ClipboardCheck, PenLine,
+  ClipboardCheck, PenLine, Package, Layers, RefreshCw, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -1237,6 +1237,333 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
   );
 }
 
+// ─── Treatment Plan Items Section ────────────────────────────────────────────────
+
+interface PkgOption {
+  id: number;
+  name: string;
+  procedureName: string;
+  packageType: "sessoes" | "mensal";
+  totalSessions?: number | null;
+  sessionsPerWeek: number;
+  validityDays?: number | null;
+  price: string | number;
+  monthlyPrice?: string | number | null;
+  billingDay?: number | null;
+  absenceCreditLimit: number;
+  procedurePricePerSession: string | number;
+}
+
+interface PlanProcedureItem {
+  id: number;
+  planId: number;
+  packageId?: number | null;
+  procedureId?: number | null;
+  sessionsPerWeek: number;
+  totalSessions?: number | null;
+  notes?: string | null;
+  packageName?: string | null;
+  procedureName?: string | null;
+  packageType?: string | null;
+  monthlyPrice?: string | null;
+  price?: string | null;
+}
+
+function fmtCur(v: string | number | null | undefined) {
+  if (v === null || v === undefined) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
+}
+
+function TreatmentPlanItemsSection({ planId, patientId }: { planId: number | undefined; patientId: number }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [addMode, setAddMode] = useState<"package" | "procedure" | null>(null);
+  const [selectedPkgId, setSelectedPkgId] = useState("");
+  const [selectedProcId, setSelectedProcId] = useState("");
+  const [itemSpw, setItemSpw] = useState(2);
+  const [itemSessions, setItemSessions] = useState<string>("");
+  const [itemNotes, setItemNotes] = useState("");
+
+  const planItemsKey = planId ? [`/api/treatment-plans/${planId}/procedures`] : null;
+
+  const { data: planItems = [] } = useQuery<PlanProcedureItem[]>({
+    queryKey: planItemsKey ?? ["plan-items-disabled"],
+    queryFn: () => fetch(`/api/treatment-plans/${planId}/procedures`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+    enabled: !!planId,
+  });
+
+  const { data: packages = [] } = useQuery<PkgOption[]>({
+    queryKey: ["packages"],
+    queryFn: () => fetch("/api/packages", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+  });
+
+  const { data: procedures = [] } = useQuery<{ id: number; name: string; price: string | number; durationMinutes: number }[]>({
+    queryKey: ["procedures-active"],
+    queryFn: () => fetch("/api/procedures", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (body: object) => fetch(`/api/treatment-plans/${planId}/procedures`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+      body: JSON.stringify(body),
+    }).then(async r => {
+      if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b?.message || "Erro ao adicionar"); }
+      return r.json();
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: planItemsKey ?? [] });
+      toast({ title: "Item adicionado ao plano!" });
+      setAddMode(null);
+      setSelectedPkgId(""); setSelectedProcId(""); setItemSpw(2); setItemSessions(""); setItemNotes("");
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (itemId: number) => fetch(`/api/treatment-plans/${planId}/procedures/${itemId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => { if (!r.ok) throw new Error("Erro ao remover"); }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: planItemsKey ?? [] });
+      toast({ title: "Item removido do plano." });
+    },
+    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+  });
+
+  function handleAddSubmit() {
+    if (!planId) return;
+    if (addMode === "package" && !selectedPkgId) { toast({ title: "Selecione um pacote", variant: "destructive" }); return; }
+    if (addMode === "procedure" && !selectedProcId) { toast({ title: "Selecione um procedimento", variant: "destructive" }); return; }
+
+    const body: any = {
+      sessionsPerWeek: itemSpw,
+      totalSessions: itemSessions ? Number(itemSessions) : null,
+      notes: itemNotes || null,
+    };
+    if (addMode === "package") body.packageId = Number(selectedPkgId);
+    else body.procedureId = Number(selectedProcId);
+
+    addMutation.mutate(body);
+  }
+
+  // Financial forecast
+  const totalMensal = planItems
+    .filter(i => i.packageType === "mensal")
+    .reduce((s, i) => s + Number(i.monthlyPrice ?? i.price ?? 0), 0);
+
+  const totalSessoes = planItems
+    .filter(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId))
+    .reduce((s, i) => s + Number(i.price ?? 0), 0);
+
+  const totalSessions = planItems.reduce((s, i) => s + (i.totalSessions ?? 0), 0);
+
+  const hasMensal = planItems.some(i => i.packageType === "mensal");
+  const hasSessoes = planItems.some(i => i.packageType === "sessoes" || (!i.packageType && i.procedureId));
+
+  if (!planId) return null;
+
+  return (
+    <div className="pt-4 border-t border-slate-100 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <Package className="w-4 h-4 text-primary" />
+          Procedimentos e Pacotes do Plano
+        </p>
+        {addMode === null && (
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => setAddMode("package")}>
+              <Plus className="h-3 w-3" /> Pacote
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => setAddMode("procedure")}>
+              <Plus className="h-3 w-3" /> Avulso
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Add form */}
+      {addMode !== null && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-600">
+            {addMode === "package" ? "Adicionar pacote ao plano" : "Adicionar procedimento avulso"}
+          </p>
+
+          {addMode === "package" ? (
+            <Select value={selectedPkgId} onValueChange={setSelectedPkgId}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Selecione o pacote..." />
+              </SelectTrigger>
+              <SelectContent>
+                {packages.map(p => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    <span className="flex items-center gap-2">
+                      {p.packageType === "mensal"
+                        ? <RefreshCw className="h-3 w-3 text-emerald-500 shrink-0" />
+                        : <Layers className="h-3 w-3 text-blue-500 shrink-0" />}
+                      <span>{p.name}</span>
+                      <span className="text-muted-foreground text-xs ml-1">
+                        {p.packageType === "mensal"
+                          ? `${fmtCur(p.monthlyPrice)}/mês`
+                          : `${p.totalSessions} sessões · ${fmtCur(p.price)}`}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select value={selectedProcId} onValueChange={setSelectedProcId}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Selecione o procedimento..." />
+              </SelectTrigger>
+              <SelectContent>
+                {procedures.map(p => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name} — {fmtCur(p.price)}/sessão
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            {addMode === "procedure" && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs">Sessões/semana</Label>
+                  <Select value={String(itemSpw)} onValueChange={v => setItemSpw(Number(v))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{[1,2,3,4,5].map(n=><SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Total de sessões</Label>
+                  <Input className="h-8 text-xs" type="number" min={1} placeholder="Ex: 20" value={itemSessions} onChange={e => setItemSessions(e.target.value)} />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Observações <span className="text-muted-foreground">(opcional)</span></Label>
+            <Input className="h-8 text-xs" placeholder="Ex: iniciar com baixa carga..." value={itemNotes} onChange={e => setItemNotes(e.target.value)} />
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAddMode(null); setSelectedPkgId(""); setSelectedProcId(""); }}>
+              Cancelar
+            </Button>
+            <Button size="sm" className="h-7 text-xs" onClick={handleAddSubmit} disabled={addMutation.isPending}>
+              {addMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+              Adicionar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Items list */}
+      {planItems.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-2 text-center">
+          Nenhum procedimento ou pacote vinculado ao plano ainda.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {planItems.map((item) => {
+            const isMensal = item.packageType === "mensal";
+            const isAvulso = !item.packageId;
+            return (
+              <div key={item.id} className="flex items-start justify-between gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    {item.packageId ? (
+                      isMensal
+                        ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> Mensal</span>
+                        : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex items-center gap-0.5"><Layers className="h-2.5 w-2.5" /> Sessões</span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">Avulso</span>
+                    )}
+                    <span className="text-xs font-semibold text-slate-800 truncate">
+                      {item.packageName ?? item.procedureName ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground mt-0.5">
+                    {item.sessionsPerWeek > 0 && !isMensal && (
+                      <span>{item.sessionsPerWeek}x/semana</span>
+                    )}
+                    {item.totalSessions && <span>{item.totalSessions} sessões</span>}
+                    {isMensal && <span>{fmtCur(item.monthlyPrice)}/mês · dia {(item as any).billingDay ?? "—"}</span>}
+                    {!isMensal && item.price && <span className="font-medium text-slate-700">{fmtCur(item.price)}</span>}
+                    {item.notes && <span className="text-slate-400 italic">{item.notes}</span>}
+                  </div>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-slate-400 hover:text-destructive shrink-0 mt-0.5"
+                  onClick={() => removeMutation.mutate(item.id)}
+                  disabled={removeMutation.isPending}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Financial Forecast */}
+      {planItems.length > 0 && (
+        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4 space-y-2">
+          <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+            <TrendingUp className="h-3.5 w-3.5" /> Previsão Financeira do Plano
+          </p>
+          <div className="space-y-1.5">
+            {hasSessoes && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Pacotes por sessões / avulsos:</span>
+                <span className="font-semibold">{fmtCur(totalSessoes)}</span>
+              </div>
+            )}
+            {hasMensal && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Mensalidades (recorrente):</span>
+                <span className="font-semibold">{fmtCur(totalMensal)}<span className="text-xs font-normal text-muted-foreground">/mês</span></span>
+              </div>
+            )}
+            {totalSessions > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Total de sessões previstas:</span>
+                <span className="font-semibold">{totalSessions} sessões</span>
+              </div>
+            )}
+            {hasSessoes && hasMensal && (
+              <div className="flex justify-between text-sm pt-1 border-t border-primary/20">
+                <span className="text-slate-600 font-semibold">Total na contratação:</span>
+                <span className="font-bold text-primary">{fmtCur(totalSessoes + totalMensal)}</span>
+              </div>
+            )}
+          </div>
+          {hasMensal && (
+            <p className="text-[10px] text-slate-500 flex gap-1 items-start mt-1">
+              <Info className="h-3 w-3 shrink-0 mt-0.5" />
+              Mensalidades são recorrentes. O valor acima representa apenas o primeiro mês.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Treatment Plan Tab ─────────────────────────────────────────────────────────
 
 function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
@@ -1429,6 +1756,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
             )}
           </div>
         )}
+
+        <TreatmentPlanItemsSection planId={data?.id} patientId={patientId} />
 
         <div className="pt-3 flex justify-end">
           <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
