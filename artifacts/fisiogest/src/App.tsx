@@ -14,6 +14,7 @@ import PatientsList from "./pages/patients/index";
 import PatientDetail from "./pages/patients/[id]";
 import Financial from "./pages/financial/index";
 import Procedimentos from "./pages/procedimentos";
+import Pacotes from "./pages/pacotes";
 import Relatorios from "./pages/relatorios";
 import Clinicas from "./pages/clinicas";
 import Configuracoes from "./pages/configuracoes";
@@ -121,6 +122,9 @@ function Router() {
       </Route>
       <Route path="/procedimentos">
         {() => <PermissionRoute component={Procedimentos} permission="procedures.manage" />}
+      </Route>
+      <Route path="/pacotes">
+        {() => <PermissionRoute component={Pacotes} permission="procedures.manage" />}
       </Route>
       <Route path="/financeiro">
         {() => <PermissionRoute component={Financial} permission="financial.read" />}

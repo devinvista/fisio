@@ -12,6 +12,7 @@ export const sessionCreditsTable = pgTable("session_credits", {
   quantity: integer("quantity").notNull().default(1),
   usedQuantity: integer("used_quantity").notNull().default(0),
   sourceAppointmentId: integer("source_appointment_id").references(() => appointmentsTable.id),
+  patientPackageId: integer("patient_package_id"),
   clinicId: integer("clinic_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

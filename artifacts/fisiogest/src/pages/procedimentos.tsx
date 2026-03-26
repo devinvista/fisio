@@ -54,6 +54,7 @@ interface Procedure {
   id: number;
   name: string;
   category: string;
+  modalidade: "individual" | "dupla" | "grupo";
   durationMinutes: number;
   price: string | number;
   cost: string | number;
@@ -131,6 +132,7 @@ export default function Procedimentos() {
   const [form, setForm] = useState({
     name: "",
     category: "fisioterapia",
+    modalidade: "individual" as "individual" | "dupla" | "grupo",
     durationMinutes: 60,
     price: "",
     cost: "",
@@ -239,7 +241,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "fisioterapia", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "porSessao", monthlyPrice: "", billingDay: "" });
+    setForm({ name: "", category: "fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, billingType: "porSessao", monthlyPrice: "", billingDay: "" });
   }
 
   function openEdit(proc: Procedure) {
@@ -247,6 +249,7 @@ export default function Procedimentos() {
     setForm({
       name: proc.name,
       category: proc.category,
+      modalidade: (proc.modalidade ?? "individual") as "individual" | "dupla" | "grupo",
       durationMinutes: proc.durationMinutes,
       price: String(proc.price),
       cost: String(proc.cost ?? "0"),
@@ -718,16 +721,29 @@ export default function Procedimentos() {
               />
             </div>
 
-            <div className="space-y-1">
-              <Label>Categoria *</Label>
-              <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fisioterapia">Fisioterapia</SelectItem>
-                  <SelectItem value="estetica">Estética</SelectItem>
-                  <SelectItem value="pilates">Pilates</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Categoria *</Label>
+                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fisioterapia">Fisioterapia</SelectItem>
+                    <SelectItem value="estetica">Estética</SelectItem>
+                    <SelectItem value="pilates">Pilates</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Modalidade *</Label>
+                <Select value={form.modalidade} onValueChange={v => setForm(f => ({ ...f, modalidade: v as "individual" | "dupla" | "grupo", maxCapacity: v === "individual" ? 1 : v === "dupla" ? 2 : f.maxCapacity < 3 ? 10 : f.maxCapacity }))}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual (1 pessoa)</SelectItem>
+                    <SelectItem value="dupla">Dupla (2 pessoas)</SelectItem>
+                    <SelectItem value="grupo">Grupo (3+ pessoas)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1061,8 +1077,13 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                       </span>
                     )}
                   </div>
-                  <div className="mt-1.5">
+                  <div className="mt-1.5 flex flex-wrap gap-1">
                     <CategoryBadge category={proc.category} />
+                    {proc.modalidade && proc.modalidade !== "individual" && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                        {proc.modalidade === "grupo" ? "Grupo" : "Dupla"}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

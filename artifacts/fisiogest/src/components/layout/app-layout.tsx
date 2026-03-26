@@ -13,6 +13,7 @@ import {
   Stethoscope,
   Building2,
   Settings2,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -39,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
   { href: "/pacientes", label: "Pacientes", icon: Users, permission: "patients.read" },
   { href: "/procedimentos", label: "Procedimentos", icon: Activity, permission: "procedures.manage" },
+  { href: "/pacotes", label: "Pacotes", icon: Package, permission: "procedures.manage" },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, permission: "reports.read" },
   {

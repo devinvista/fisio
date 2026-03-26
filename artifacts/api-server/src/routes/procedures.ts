@@ -40,7 +40,7 @@ router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest,
 
 router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
-    const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
+    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
     if (!name || !category || !durationMinutes || !price) {
       res.status(400).json({
         error: "Bad Request",
@@ -56,16 +56,19 @@ router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest
       });
       return;
     }
+    const resolvedModalidade = modalidade || "individual";
+    const resolvedMaxCapacity = maxCapacity ? parseInt(maxCapacity) : (resolvedModalidade === "individual" ? 1 : resolvedModalidade === "dupla" ? 2 : 10);
     const [procedure] = await db
       .insert(proceduresTable)
       .values({
         name,
         category,
+        modalidade: resolvedModalidade,
         durationMinutes: parseInt(durationMinutes),
         price: String(price),
         cost: cost ? String(cost) : "0",
         description,
-        maxCapacity: maxCapacity ? parseInt(maxCapacity) : 1,
+        maxCapacity: resolvedMaxCapacity,
         onlineBookingEnabled: Boolean(onlineBookingEnabled),
         billingType: resolvedBillingType,
         monthlyPrice: monthlyPrice ? String(monthlyPrice) : null,
@@ -84,7 +87,7 @@ router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest
 router.put("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
+    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
 
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(proceduresTable.id, id)
@@ -95,6 +98,7 @@ router.put("/:id", requirePermission("procedures.manage"), async (req: AuthReque
       .set({
         name,
         category,
+        modalidade: modalidade || undefined,
         durationMinutes: durationMinutes ? parseInt(durationMinutes) : undefined,
         price: price ? String(price) : undefined,
         cost: cost !== undefined ? String(cost) : undefined,

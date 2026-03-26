@@ -11,3 +11,5 @@ export * from "./blocked-slots";
 export * from "./subscriptions";
 export * from "./session-credits";
 export * from "./audit-log";
+export * from "./packages";
+export * from "./patient-packages";

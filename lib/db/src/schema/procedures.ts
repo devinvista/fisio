@@ -6,6 +6,7 @@ export const proceduresTable = pgTable("procedures", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   category: text("category").notNull(),
+  modalidade: text("modalidade").notNull().default("individual"),
   durationMinutes: integer("duration_minutes").notNull(),
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   cost: numeric("cost", { precision: 10, scale: 2 }).default("0"),
