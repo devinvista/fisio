@@ -47,7 +47,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: Settings2,
     permission: null,
     anyPermission: ["settings.manage", "users.manage"],
-    hideSuperAdmin: true,
   },
   { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
 ];
