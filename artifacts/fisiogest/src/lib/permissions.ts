@@ -18,6 +18,7 @@ export const ALL_PERMISSIONS = [
   "procedures.manage",
   "users.manage",
   "settings.manage",
+  "clinics.manage",
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
@@ -62,8 +63,17 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 };
 
-export function resolvePermissions(roles: string[]): Set<Permission> {
+export const SUPER_ADMIN_PERMISSIONS: Permission[] = [
+  ...ROLE_PERMISSIONS.admin,
+  "clinics.manage",
+];
+
+export function resolvePermissions(roles: string[], isSuperAdmin?: boolean): Set<Permission> {
   const perms = new Set<Permission>();
+  if (isSuperAdmin) {
+    for (const p of SUPER_ADMIN_PERMISSIONS) perms.add(p);
+    return perms;
+  }
   for (const role of roles) {
     const rolePerms = ROLE_PERMISSIONS[role as Role] ?? [];
     for (const p of rolePerms) perms.add(p);

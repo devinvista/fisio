@@ -1,0 +1,204 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { clinicsTable, usersTable, userRolesTable } from "@workspace/db";
+import type { Role } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
+import { requireSuperAdmin } from "../middleware/rbac.js";
+import bcrypt from "bcryptjs";
+import { generateToken } from "../middleware/auth.js";
+
+const router = Router();
+router.use(authMiddleware);
+
+router.get("/", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const clinics = await db
+      .select()
+      .from(clinicsTable)
+      .orderBy(desc(clinicsTable.createdAt));
+    res.json(clinics);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/", requireSuperAdmin(), async (req: AuthRequest, res) => {
+  try {
+    const { name, cnpj, phone, email, address } = req.body;
+    if (!name) {
+      res.status(400).json({ error: "Bad Request", message: "Nome é obrigatório" });
+      return;
+    }
+    const [clinic] = await db
+      .insert(clinicsTable)
+      .values({ name, cnpj, phone, email, address })
+      .returning();
+    res.status(201).json(clinic);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/:id", requireSuperAdmin(), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [clinic] = await db
+      .select()
+      .from(clinicsTable)
+      .where(eq(clinicsTable.id, id))
+      .limit(1);
+    if (!clinic) {
+      res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
+      return;
+    }
+    res.json(clinic);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.put("/:id", requireSuperAdmin(), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, cnpj, phone, email, address, isActive } = req.body;
+    const [clinic] = await db
+      .update(clinicsTable)
+      .set({
+        ...(name !== undefined && { name }),
+        ...(cnpj !== undefined && { cnpj }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(address !== undefined && { address }),
+        ...(isActive !== undefined && { isActive }),
+      })
+      .where(eq(clinicsTable.id, id))
+      .returning();
+    if (!clinic) {
+      res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
+      return;
+    }
+    res.json(clinic);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/:id", requireSuperAdmin(), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(clinicsTable).where(eq(clinicsTable.id, id));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/:id/users", requireSuperAdmin(), async (req, res) => {
+  try {
+    const clinicId = parseInt(req.params.id);
+    const rows = await db
+      .select({
+        userId: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: userRolesTable.role,
+        createdAt: usersTable.createdAt,
+      })
+      .from(userRolesTable)
+      .innerJoin(usersTable, eq(userRolesTable.userId, usersTable.id))
+      .where(eq(userRolesTable.clinicId, clinicId));
+
+    const userMap = new Map<number, { id: number; name: string; email: string | null; roles: Role[]; createdAt: Date }>();
+    for (const row of rows) {
+      if (!userMap.has(row.userId)) {
+        userMap.set(row.userId, { id: row.userId, name: row.name, email: row.email, roles: [], createdAt: row.createdAt });
+      }
+      userMap.get(row.userId)!.roles.push(row.role as Role);
+    }
+    res.json(Array.from(userMap.values()));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
+  try {
+    const clinicId = parseInt(req.params.id);
+    const { name, cpf, email, password, roles } = req.body;
+    const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles : ["profissional"];
+
+    if (!name || !cpf || !password) {
+      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e senha são obrigatórios" });
+      return;
+    }
+
+    const normalizedCpf = cpf.replace(/\D/g, "");
+    const existing = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.cpf, normalizedCpf))
+      .limit(1);
+
+    let user = existing[0];
+    if (!user) {
+      const passwordHash = await bcrypt.hash(password, 10);
+      const [newUser] = await db
+        .insert(usersTable)
+        .values({
+          name,
+          cpf: normalizedCpf,
+          email: email ? email.toLowerCase().trim() : null,
+          passwordHash,
+          clinicId,
+        })
+        .returning();
+      user = newUser;
+    }
+
+    const existingRole = await db
+      .select()
+      .from(userRolesTable)
+      .where(and(eq(userRolesTable.userId, user.id), eq(userRolesTable.clinicId, clinicId)))
+      .limit(1);
+
+    if (existingRole.length === 0) {
+      await db.insert(userRolesTable).values(
+        roleList.map((role) => ({ userId: user.id, clinicId, role }))
+      );
+    }
+
+    res.status(201).json({ id: user.id, name: user.name, email: user.email, roles: roleList });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/:id/impersonate", requireSuperAdmin(), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = parseInt(req.params.id);
+    const [clinic] = await db
+      .select()
+      .from(clinicsTable)
+      .where(eq(clinicsTable.id, clinicId))
+      .limit(1);
+    if (!clinic) {
+      res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
+      return;
+    }
+    const token = generateToken(req.userId!, ["admin"], clinicId, true);
+    res.json({ token, clinicId, clinicName: clinic.name });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+export default router;

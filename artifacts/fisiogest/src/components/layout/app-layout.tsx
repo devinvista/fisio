@@ -12,9 +12,11 @@ import {
   Menu,
   Stethoscope,
   UserCog,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ClinicSwitcher } from "@/components/layout/clinic-switcher";
 import { ROLE_LABELS } from "@/lib/permissions";
 import type { Permission, Role } from "@/lib/permissions";
 
@@ -38,10 +40,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, permission: "reports.read" },
   { href: "/usuarios", label: "Usuários", icon: UserCog, permission: "users.manage" },
+  { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
 ];
 
 export function AppLayout({ children, title }: AppLayoutProps) {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, clinics } = useAuth();
   const [location] = useLocation();
 
   const visibleNavItems = NAV_ITEMS.filter(
@@ -62,6 +65,12 @@ export function AppLayout({ children, title }: AppLayoutProps) {
           FisioGest <span className="text-primary-foreground/70">Pro</span>
         </span>
       </div>
+
+      {clinics.length > 1 && (
+        <div className="px-4 pt-3 pb-1">
+          <ClinicSwitcher />
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto py-6 px-4">
         <nav className="space-y-1">

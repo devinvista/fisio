@@ -43,9 +43,9 @@ export default function Login() {
     loginMutation.mutate(
       { data: { email: identifier, password } },
       {
-        onSuccess: (res) => {
+        onSuccess: (res: any) => {
           toast({ title: "Bem-vindo de volta!", description: "Login realizado com sucesso." });
-          login(res.token, res.user);
+          login(res.token, res.user, res.clinics);
         },
         onError: (err: any) => {
           toast({

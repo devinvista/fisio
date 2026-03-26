@@ -23,6 +23,7 @@ export default function Register() {
     email: "",
     cpf: "",
     password: "",
+    clinicName: "",
     role: "profissional" as const,
   });
 
@@ -33,11 +34,11 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     registerMutation.mutate(
-      { data: { ...formData, email: formData.email || undefined } as any },
+      { data: { ...formData, email: formData.email || undefined, clinicName: formData.clinicName || undefined } as any },
       {
-        onSuccess: (res) => {
+        onSuccess: (res: any) => {
           toast({ title: "Conta criada!", description: "Bem-vindo ao FisioGest Pro." });
-          login(res.token, res.user);
+          login(res.token, res.user, res.clinics);
         },
         onError: (err: any) => {
           toast({
@@ -66,6 +67,19 @@ export default function Register() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
+            <div className="space-y-2">
+              <Label htmlFor="clinicName">Nome da Clínica *</Label>
+              <Input
+                id="clinicName"
+                placeholder="Ex: Clínica Fisio São Paulo"
+                value={formData.clinicName}
+                onChange={(e) => setFormData({ ...formData, clinicName: e.target.value })}
+                required
+                autoComplete="organization"
+                className="h-12 rounded-xl"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="name">Nome Completo</Label>
               <Input

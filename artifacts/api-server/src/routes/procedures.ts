@@ -1,31 +1,32 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { proceduresTable, appointmentsTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { eq, and, count } from "drizzle-orm";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import type { Role } from "@workspace/db";
 
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/", requirePermission("procedures.manage"), async (req, res) => {
+router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const category = req.query.category as string | undefined;
     const includeInactive = req.query.includeInactive === "true";
 
-    const isAdmin = (req.userRoles ?? []).includes("admin" as Role);
-
-    let query = db.select().from(proceduresTable) as any;
+    const isAdmin = req.isSuperAdmin || (req.userRoles ?? []).includes("admin" as Role);
 
     const conditions: any[] = [];
+    if (!req.isSuperAdmin && req.clinicId) {
+      conditions.push(eq(proceduresTable.clinicId, req.clinicId));
+    }
     if (category) conditions.push(eq(proceduresTable.category, category));
     if (!isAdmin || !includeInactive) conditions.push(eq(proceduresTable.isActive, true));
 
+    let query = db.select().from(proceduresTable) as any;
     if (conditions.length === 1) {
       query = query.where(conditions[0]);
     } else if (conditions.length > 1) {
-      const { and } = await import("drizzle-orm");
       query = query.where(and(...conditions));
     }
 
@@ -37,7 +38,7 @@ router.get("/", requirePermission("procedures.manage"), async (req, res) => {
   }
 });
 
-router.post("/", requirePermission("procedures.manage"), async (req, res) => {
+router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
     if (!name || !category || !durationMinutes || !price) {
@@ -70,6 +71,7 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
         monthlyPrice: monthlyPrice ? String(monthlyPrice) : null,
         billingDay: billingDay ? parseInt(billingDay) : null,
         isActive: true,
+        clinicId: req.clinicId ?? null,
       })
       .returning();
     res.status(201).json(procedure);
@@ -79,10 +81,15 @@ router.post("/", requirePermission("procedures.manage"), async (req, res) => {
   }
 });
 
-router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
+router.put("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const { name, category, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
+
+    const condition = req.isSuperAdmin || !req.clinicId
+      ? eq(proceduresTable.id, id)
+      : and(eq(proceduresTable.id, id), eq(proceduresTable.clinicId, req.clinicId!));
+
     const [procedure] = await db
       .update(proceduresTable)
       .set({
@@ -98,7 +105,7 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
         monthlyPrice: monthlyPrice !== undefined ? (monthlyPrice ? String(monthlyPrice) : null) : undefined,
         billingDay: billingDay !== undefined ? (billingDay ? parseInt(billingDay) : null) : undefined,
       })
-      .where(eq(proceduresTable.id, id))
+      .where(condition)
       .returning();
 
     if (!procedure) {
@@ -112,16 +119,20 @@ router.put("/:id", requirePermission("procedures.manage"), async (req, res) => {
   }
 });
 
-router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async (req, res) => {
+router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
-    const isAdmin = (req.userRoles ?? []).includes("admin" as Role);
+    const isAdmin = req.isSuperAdmin || (req.userRoles ?? []).includes("admin" as Role);
     if (!isAdmin) {
       res.status(403).json({ error: "Forbidden", message: "Apenas administradores podem ativar/desativar procedimentos." });
       return;
     }
 
     const id = parseInt(req.params.id as string);
-    const existing = await db.select().from(proceduresTable).where(eq(proceduresTable.id, id)).limit(1);
+    const condition = req.isSuperAdmin || !req.clinicId
+      ? eq(proceduresTable.id, id)
+      : and(eq(proceduresTable.id, id), eq(proceduresTable.clinicId, req.clinicId!));
+
+    const existing = await db.select().from(proceduresTable).where(condition).limit(1);
     if (!existing[0]) {
       res.status(404).json({ error: "Not Found" });
       return;
@@ -140,7 +151,7 @@ router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async
   }
 });
 
-router.delete("/:id", requirePermission("procedures.manage"), async (req, res) => {
+router.delete("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
 

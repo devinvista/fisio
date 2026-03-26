@@ -19,6 +19,8 @@ const secret = JWT_SECRET || "fisiogest-dev-secret-key-do-not-use-in-production"
 export interface AuthRequest extends Request {
   userId?: number;
   userRoles?: Role[];
+  clinicId?: number | null;
+  isSuperAdmin?: boolean;
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
@@ -30,15 +32,27 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 
   const token = authHeader.substring(7);
   try {
-    const payload = jwt.verify(token, secret) as { userId: number; roles: Role[] };
+    const payload = jwt.verify(token, secret) as {
+      userId: number;
+      roles: Role[];
+      clinicId?: number | null;
+      isSuperAdmin?: boolean;
+    };
     req.userId = payload.userId;
     req.userRoles = payload.roles ?? [];
+    req.clinicId = payload.clinicId ?? null;
+    req.isSuperAdmin = payload.isSuperAdmin ?? false;
     next();
   } catch {
     res.status(401).json({ error: "Unauthorized", message: "Invalid token" });
   }
 }
 
-export function generateToken(userId: number, roles: Role[]): string {
-  return jwt.sign({ userId, roles }, secret, { expiresIn: "7d" });
+export function generateToken(
+  userId: number,
+  roles: Role[],
+  clinicId: number | null,
+  isSuperAdmin: boolean
+): string {
+  return jwt.sign({ userId, roles, clinicId, isSuperAdmin }, secret, { expiresIn: "7d" });
 }

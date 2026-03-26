@@ -9,29 +9,44 @@ import { logAudit } from "../lib/auditLog.js";
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/", requirePermission("patients.read"), async (req, res) => {
+function clinicFilter(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(patientsTable.clinicId, req.clinicId);
+}
+
+router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res) => {
   try {
     const search = req.query.search as string | undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
 
-    let query = db.select().from(patientsTable);
-    let countQuery = db.select({ count: sql<number>`count(*)` }).from(patientsTable);
+    const clinicCondition = clinicFilter(req);
+    const searchCondition = search
+      ? or(
+          ilike(patientsTable.name, `%${search}%`),
+          ilike(patientsTable.cpf, `%${search}%`),
+          ilike(patientsTable.phone, `%${search}%`)
+        )
+      : null;
 
-    if (search) {
-      const condition = or(
-        ilike(patientsTable.name, `%${search}%`),
-        ilike(patientsTable.cpf, `%${search}%`),
-        ilike(patientsTable.phone, `%${search}%`)
-      );
-      query = query.where(condition) as any;
-      countQuery = countQuery.where(condition) as any;
-    }
+    const whereCondition =
+      clinicCondition && searchCondition
+        ? and(clinicCondition, searchCondition)
+        : clinicCondition ?? searchCondition ?? undefined;
 
     const [patients, countResult] = await Promise.all([
-      query.orderBy(desc(patientsTable.createdAt)).limit(limit).offset(offset),
-      countQuery,
+      db
+        .select()
+        .from(patientsTable)
+        .where(whereCondition)
+        .orderBy(desc(patientsTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(patientsTable)
+        .where(whereCondition),
     ]);
 
     res.json({
@@ -46,7 +61,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
   }
 });
 
-router.post("/", requirePermission("patients.create"), async (req, res) => {
+router.post("/", requirePermission("patients.create"), async (req: AuthRequest, res) => {
   try {
     const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
     if (!name || !cpf || !phone) {
@@ -56,11 +71,22 @@ router.post("/", requirePermission("patients.create"), async (req, res) => {
 
     const [patient] = await db
       .insert(patientsTable)
-      .values({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
+      .values({
+        name,
+        cpf,
+        birthDate,
+        phone,
+        email,
+        address,
+        profession,
+        emergencyContact,
+        notes,
+        clinicId: req.clinicId ?? null,
+      })
       .returning();
 
     logAudit({
-      userId: (req as AuthRequest).userId,
+      userId: req.userId,
       patientId: patient?.id,
       action: "create",
       entityType: "patient",
@@ -78,13 +104,17 @@ router.post("/", requirePermission("patients.create"), async (req, res) => {
   }
 });
 
-router.get("/:id", requirePermission("patients.read"), async (req, res) => {
+router.get("/:id", requirePermission("patients.read"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const condition = req.isSuperAdmin || !req.clinicId
+      ? eq(patientsTable.id, id)
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
+
     const [patient] = await db
       .select()
       .from(patientsTable)
-      .where(eq(patientsTable.id, id));
+      .where(condition);
 
     if (!patient) {
       res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
@@ -124,15 +154,19 @@ router.get("/:id", requirePermission("patients.read"), async (req, res) => {
   }
 });
 
-router.put("/:id", requirePermission("patients.update"), async (req, res) => {
+router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
 
+    const condition = req.isSuperAdmin || !req.clinicId
+      ? eq(patientsTable.id, id)
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
+
     const [patient] = await db
       .update(patientsTable)
       .set({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
-      .where(eq(patientsTable.id, id))
+      .where(condition)
       .returning();
 
     if (!patient) {
@@ -140,7 +174,7 @@ router.put("/:id", requirePermission("patients.update"), async (req, res) => {
       return;
     }
     logAudit({
-      userId: (req as AuthRequest).userId,
+      userId: req.userId,
       patientId: id,
       action: "update",
       entityType: "patient",
@@ -154,19 +188,28 @@ router.put("/:id", requirePermission("patients.update"), async (req, res) => {
   }
 });
 
-router.delete("/:id", requirePermission("patients.delete"), async (req, res) => {
+router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
+
+    const condition = req.isSuperAdmin || !req.clinicId
+      ? eq(patientsTable.id, id)
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
 
     const [existing] = await db
       .select({ name: patientsTable.name })
       .from(patientsTable)
-      .where(eq(patientsTable.id, id));
+      .where(condition);
+
+    if (!existing) {
+      res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
+      return;
+    }
 
     await db.delete(patientsTable).where(eq(patientsTable.id, id));
 
     logAudit({
-      userId: (req as AuthRequest).userId,
+      userId: req.userId,
       patientId: null,
       action: "delete",
       entityType: "patient",

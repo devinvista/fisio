@@ -1,5 +1,6 @@
-import { pgTable, serial, text, integer, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
+import { clinicsTable } from "./clinics";
 
 export const ROLES = ["admin", "profissional", "secretaria"] as const;
 export type Role = (typeof ROLES)[number];
@@ -21,6 +22,7 @@ export const ALL_PERMISSIONS = [
   "procedures.manage",
   "users.manage",
   "settings.manage",
+  "clinics.manage",
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
@@ -65,8 +67,17 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 };
 
-export function resolvePermissions(roles: Role[]): Set<Permission> {
+export const SUPER_ADMIN_PERMISSIONS: Permission[] = [
+  ...ROLE_PERMISSIONS.admin,
+  "clinics.manage",
+];
+
+export function resolvePermissions(roles: Role[], isSuperAdmin?: boolean): Set<Permission> {
   const perms = new Set<Permission>();
+  if (isSuperAdmin) {
+    for (const p of SUPER_ADMIN_PERMISSIONS) perms.add(p);
+    return perms;
+  }
   for (const role of roles) {
     const rolePerms = ROLE_PERMISSIONS[role] ?? [];
     for (const p of rolePerms) perms.add(p);
@@ -74,17 +85,15 @@ export function resolvePermissions(roles: Role[]): Set<Permission> {
   return perms;
 }
 
-export const userRolesTable = pgTable(
-  "user_roles",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  }
-);
+export const userRolesTable = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinicsTable.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const permissionsTable = pgTable("permissions", {
   id: serial("id").primaryKey(),

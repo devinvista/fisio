@@ -6,6 +6,16 @@ import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
 
+function clinicCond(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(financialRecordsTable.clinicId, req.clinicId);
+}
+
+function apptClinicCond(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(appointmentsTable.clinicId, req.clinicId);
+}
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -24,7 +34,7 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
-router.get("/dashboard", requirePermission("financial.read"), async (req, res) => {
+router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
@@ -32,10 +42,17 @@ router.get("/dashboard", requirePermission("financial.read"), async (req, res) =
     const { start, end } = monthRange(year, month);
     const { startDate, endDate } = monthDateRange(year, month);
 
+    const cc = clinicCond(req);
+    const ac = apptClinicCond(req);
+
     const records = await db
       .select()
       .from(financialRecordsTable)
-      .where(and(gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end)));
+      .where(
+        cc
+          ? and(cc, gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          : and(gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+      );
 
     const monthlyRevenue = records
       .filter((r) => r.type === "receita")
@@ -49,17 +66,19 @@ router.get("/dashboard", requirePermission("financial.read"), async (req, res) =
       .select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
       .where(
-        and(
-          eq(appointmentsTable.status, "concluido"),
-          gte(appointmentsTable.date, startDate),
-          lte(appointmentsTable.date, endDate)
-        )
+        ac
+          ? and(ac, eq(appointmentsTable.status, "concluido"), gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate))
+          : and(eq(appointmentsTable.status, "concluido"), gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate))
       );
 
     const totalAppts = await db
       .select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
-      .where(and(gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate)));
+      .where(
+        ac
+          ? and(ac, gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate))
+          : and(gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate))
+      );
 
     const completedCount = Number(completedAppts[0]?.count ?? 0);
     const averageTicket = completedCount > 0 ? monthlyRevenue / completedCount : 0;
@@ -73,11 +92,9 @@ router.get("/dashboard", requirePermission("financial.read"), async (req, res) =
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
-        and(
-          eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end)
-        )
+        cc
+          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
       )
       .groupBy(proceduresTable.category);
 
@@ -90,11 +107,9 @@ router.get("/dashboard", requirePermission("financial.read"), async (req, res) =
       .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
-        and(
-          eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end)
-        )
+        cc
+          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
       )
       .groupBy(proceduresTable.name)
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
@@ -119,14 +134,16 @@ router.get("/dashboard", requirePermission("financial.read"), async (req, res) =
   }
 });
 
-router.get("/records", requirePermission("financial.read"), async (req, res) => {
+router.get("/records", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
     const type = req.query.type as string | undefined;
     const month = req.query.month ? parseInt(req.query.month as string) : undefined;
     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
 
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: any[] = [];
 
+    const cc = clinicCond(req);
+    if (cc) conditions.push(cc);
     if (type) conditions.push(eq(financialRecordsTable.type, type));
     if (month && year) {
       const { start, end } = monthRange(year, month);
@@ -159,7 +176,7 @@ router.get("/records", requirePermission("financial.read"), async (req, res) => 
   }
 });
 
-router.post("/records", requirePermission("financial.write"), async (req, res) => {
+router.post("/records", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const { type = "despesa", amount, description, category, patientId, procedureId } = req.body;
 
@@ -183,6 +200,7 @@ router.post("/records", requirePermission("financial.write"), async (req, res) =
         category: category || null,
         patientId: patientId ? parseInt(String(patientId)) : null,
         procedureId: procedureId ? parseInt(String(procedureId)) : null,
+        clinicId: req.clinicId ?? null,
       })
       .returning();
 

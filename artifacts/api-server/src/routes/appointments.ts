@@ -224,9 +224,14 @@ router.get("/", requirePermission("appointments.read"), async (req: AuthRequest,
 
     const conditions = [];
 
+    // Clinic isolation
+    if (!req.isSuperAdmin && req.clinicId) {
+      conditions.push(eq(appointmentsTable.clinicId, req.clinicId));
+    }
+
     // Profissional without admin permission sees only their own appointments
     const roles = (req.userRoles ?? []) as Role[];
-    const perms = resolvePermissions(roles);
+    const perms = resolvePermissions(roles, req.isSuperAdmin);
     const isAdminOrSecretary = perms.has("users.manage") || roles.includes("secretaria");
     if (!isAdminOrSecretary && roles.includes("profissional") && req.userId) {
       conditions.push(eq(appointmentsTable.professionalId, req.userId));
@@ -421,6 +426,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
         status: "agendado",
         notes,
         professionalId: req.userId,
+        clinicId: req.clinicId ?? null,
       })
       .returning();
 
