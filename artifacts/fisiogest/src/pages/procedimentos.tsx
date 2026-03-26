@@ -69,9 +69,9 @@ type ViewMode = "cards" | "list";
 
 const CATEGORIES = [
   { value: "all", label: "Todos" },
-  { value: "fisioterapia", label: "Fisioterapia" },
-  { value: "estetica", label: "Estética" },
-  { value: "pilates", label: "Pilates" },
+  { value: "Fisioterapia", label: "Fisioterapia" },
+  { value: "Estética", label: "Estética" },
+  { value: "Pilates", label: "Pilates" },
 ];
 
 const CATEGORY_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
