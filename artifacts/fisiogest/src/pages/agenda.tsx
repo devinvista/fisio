@@ -91,6 +91,21 @@ interface BlockedSlot {
   reason?: string | null;
 }
 
+interface ScheduleOption {
+  id: number;
+  clinicId: number;
+  name: string;
+  type: string;
+  professionalId: number | null;
+  workingDays: string;
+  startTime: string;
+  endTime: string;
+  slotDurationMinutes: number;
+  isActive: boolean;
+  color: string;
+  professional: { id: number; name: string } | null;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeToMinutes(time: string): number {
@@ -98,8 +113,8 @@ function timeToMinutes(time: string): number {
   return h * 60 + m;
 }
 
-function minutesToTop(minutes: number): number {
-  return ((minutes - HOUR_START * 60) / 60) * SLOT_HEIGHT;
+function minutesToTop(minutes: number, hourStart: number = HOUR_START): number {
+  return ((minutes - hourStart * 60) / 60) * SLOT_HEIGHT;
 }
 
 function minutesToHeight(minutes: number): number {
@@ -116,6 +131,30 @@ export default function Agenda() {
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; procedureId?: number } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+
+  const { data: schedules = [] } = useQuery<ScheduleOption[]>({
+    queryKey: ["schedules"],
+    queryFn: () => fetch("/api/schedules").then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  const activeSchedules = schedules.filter((s) => s.isActive);
+
+  const selectedSchedule = selectedScheduleId
+    ? schedules.find((s) => s.id === selectedScheduleId) ?? null
+    : null;
+
+  const activeHourStart = selectedSchedule
+    ? parseInt(selectedSchedule.startTime.split(":")[0])
+    : HOUR_START;
+  const activeHourEnd = selectedSchedule
+    ? parseInt(selectedSchedule.endTime.split(":")[0]) + (parseInt(selectedSchedule.endTime.split(":")[1]) > 0 ? 1 : 0)
+    : HOUR_END;
+  const activeTotalHours = activeHourEnd - activeHourStart;
+  const hours = Array.from({ length: activeTotalHours }).map((_, i) => activeHourStart + i);
+
+  const toTop = (minutes: number) => minutesToTop(minutes, activeHourStart);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const daysCount = view === "day" ? 1 : 6;
@@ -143,8 +182,6 @@ export default function Agenda() {
     },
     staleTime: 30_000,
   });
-
-  const hours = Array.from({ length: TOTAL_HOURS }).map((_, i) => HOUR_START + i);
 
   const weekLabel = useMemo(() => {
     if (view === "month") {
@@ -229,9 +266,31 @@ export default function Agenda() {
     <AppLayout title="Agenda">
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <CalIcon className="w-5 h-5 text-primary" />
-          <span className="text-lg font-bold font-display text-slate-800">Calendário</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalIcon className="w-5 h-5 text-primary" />
+            <span className="text-lg font-bold font-display text-slate-800">Calendário</span>
+          </div>
+          {activeSchedules.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedScheduleId ?? ""}
+                onChange={(e) => setSelectedScheduleId(e.target.value ? Number(e.target.value) : null)}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
+              >
+                <option value="">Todas as agendas</option>
+                {activeSchedules.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}{s.type === "professional" && s.professional ? ` — ${s.professional.name}` : ""}</option>
+                ))}
+              </select>
+              {selectedSchedule && (
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: selectedSchedule.color }}
+                />
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -435,14 +494,14 @@ export default function Agenda() {
                         "border-r border-slate-200 last:border-r-0 relative",
                         today && "bg-primary/[0.02]"
                       )}
-                      style={{ height: TOTAL_HOURS * SLOT_HEIGHT }}
+                      style={{ height: activeTotalHours * SLOT_HEIGHT }}
                     >
                       {/* Hour lines — split into two 30-min clickable halves */}
                       {hours.map((h) => (
                         <div
                           key={h}
                           className="absolute left-0 right-0 border-b border-slate-100"
-                          style={{ top: (h - HOUR_START) * SLOT_HEIGHT, height: SLOT_HEIGHT }}
+                          style={{ top: (h - activeHourStart) * SLOT_HEIGHT, height: SLOT_HEIGHT }}
                         >
                           {/* Top half: :00 */}
                           <div
@@ -474,13 +533,13 @@ export default function Agenda() {
                       ))}
 
                       {/* Current time line */}
-                      {today && <CurrentTimeLine />}
+                      {today && <CurrentTimeLine hourStart={activeHourStart} hourEnd={activeHourEnd} />}
 
                       {/* Blocked slots overlays */}
                       {dayBlocked.map((block) => {
                         const startMin = timeToMinutes(block.startTime);
                         const endMin = timeToMinutes(block.endTime);
-                        const top = minutesToTop(startMin);
+                        const top = toTop(startMin);
                         const height = Math.max(minutesToHeight(endMin - startMin), 20);
                         const short = height < 40;
                         return (
@@ -507,7 +566,7 @@ export default function Agenda() {
                           const { appointments: grpApts, startTime, endTime, maxCapacity, col, totalCols } = item;
                           const startMin = timeToMinutes(startTime);
                           const endMin = timeToMinutes(endTime);
-                          const top = minutesToTop(startMin);
+                          const top = toTop(startMin);
                           const height = Math.max(minutesToHeight(endMin - startMin), 28);
                           const widthPct = 100 / totalCols;
                           const leftPct = col * widthPct;
@@ -567,7 +626,7 @@ export default function Agenda() {
                         const { appointment: apt, col, totalCols } = item;
                         const startMin = timeToMinutes(apt.startTime);
                         const endMin = timeToMinutes(apt.endTime);
-                        const top = minutesToTop(startMin);
+                        const top = toTop(startMin);
                         const height = Math.max(minutesToHeight(endMin - startMin), 28);
                         const cfg = STATUS_CONFIG[apt.status] || STATUS_CONFIG.agendado;
                         const widthPct = 100 / totalCols;
@@ -634,6 +693,7 @@ export default function Agenda() {
             initialTime={selectedSlot?.time}
             initialProcedureId={selectedSlot?.procedureId}
             lockProcedure={!!selectedSlot?.procedureId}
+            scheduleId={selectedScheduleId ?? undefined}
             onSuccess={() => { setIsNewModalOpen(false); refetch(); }}
           />
         </DialogContent>
@@ -664,11 +724,11 @@ export default function Agenda() {
 
 // ─── Current Time Line ────────────────────────────────────────────────────────
 
-function CurrentTimeLine() {
+function CurrentTimeLine({ hourStart = HOUR_START, hourEnd = HOUR_END }: { hourStart?: number; hourEnd?: number }) {
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
-  if (minutes < HOUR_START * 60 || minutes > HOUR_END * 60) return null;
-  const top = minutesToTop(minutes);
+  if (minutes < hourStart * 60 || minutes > hourEnd * 60) return null;
+  const top = minutesToTop(minutes, hourStart);
   return (
     <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top }}>
       <div className="flex items-center">
@@ -1317,12 +1377,14 @@ function CreateAppointmentForm({
   initialTime,
   initialProcedureId,
   lockProcedure = false,
+  scheduleId,
   onSuccess,
 }: {
   initialDate?: string;
   initialTime?: string;
   initialProcedureId?: number;
   lockProcedure?: boolean;
+  scheduleId?: number;
   onSuccess: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
@@ -1410,7 +1472,7 @@ function CreateAppointmentForm({
     queryKey: ["available-slots", formData.date, formData.procedureId],
     queryFn: async () => {
       const res = await fetch(
-        `/api/appointments/available-slots?date=${formData.date}&procedureId=${formData.procedureId}&clinicStart=07:00&clinicEnd=19:00`
+        `/api/appointments/available-slots?date=${formData.date}&procedureId=${formData.procedureId}${scheduleId ? `&scheduleId=${scheduleId}` : "&clinicStart=07:00&clinicEnd=19:00"}`
       );
       return res.json();
     },
@@ -1491,7 +1553,8 @@ function CreateAppointmentForm({
           date: formData.date,
           startTime: formData.startTime,
           notes: formData.notes || undefined,
-        },
+          ...(scheduleId ? { scheduleId } : {}),
+        } as any,
       },
       {
         onSuccess: () => {
