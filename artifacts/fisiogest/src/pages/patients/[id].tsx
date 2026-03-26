@@ -1230,6 +1230,63 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
 // ─── Evaluations Tab ────────────────────────────────────────────────────────────
 
 const emptyEvalForm = { inspection: "", posture: "", rangeOfMotion: "", muscleStrength: "", orthopedicTests: "", functionalDiagnosis: "" };
+type EvalFormState = typeof emptyEvalForm;
+
+interface EvalFormProps {
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  title: string;
+  form: EvalFormState;
+  setForm: React.Dispatch<React.SetStateAction<EvalFormState>>;
+}
+
+function EvalForm({ onSave, onCancel, saving, title, form, setForm }: EvalFormProps) {
+  return (
+    <Card className="border-2 border-primary/20 shadow-md">
+      <CardHeader className="pb-3 border-b border-slate-100">
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { key: "inspection", label: "Inspeção", placeholder: "Postura geral, assimetrias observadas..." },
+            { key: "posture", label: "Postura", placeholder: "Análise anterior, posterior e lateral..." },
+            { key: "rangeOfMotion", label: "Amplitude de Movimento", placeholder: "Graus de movimento, limitações..." },
+            { key: "muscleStrength", label: "Força Muscular", placeholder: "Graus de força (0-5), grupos musculares..." },
+          ].map(f => (
+            <div key={f.key} className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">{f.label}</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
+                value={(form as any)[f.key]}
+                onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+                placeholder={f.placeholder} />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700">Testes Ortopédicos</Label>
+          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.orthopedicTests} onChange={e => setForm({ ...form, orthopedicTests: e.target.value })}
+            placeholder="Testes realizados e resultados..." />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700">Diagnóstico Funcional</Label>
+          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.functionalDiagnosis} onChange={e => setForm({ ...form, functionalDiagnosis: e.target.value })}
+            placeholder="Conclusão da avaliação e objetivos do tratamento..." />
+        </div>
+        <div className="flex gap-3 justify-end pt-2">
+          <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
+          <Button onClick={onSave} className="rounded-xl" disabled={saving}>
+            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+            Salvar Avaliação
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function EvaluationsTab({ patientId }: { patientId: number }) {
   const { data: evaluations = [], isLoading } = useListEvaluations(patientId);
@@ -1295,51 +1352,6 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
     });
   };
 
-  const EvalForm = ({ onSave, onCancel, saving, title }: { onSave: () => void; onCancel: () => void; saving: boolean; title: string }) => (
-    <Card className="border-2 border-primary/20 shadow-md">
-      <CardHeader className="pb-3 border-b border-slate-100">
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { key: "inspection", label: "Inspeção", placeholder: "Postura geral, assimetrias observadas..." },
-            { key: "posture", label: "Postura", placeholder: "Análise anterior, posterior e lateral..." },
-            { key: "rangeOfMotion", label: "Amplitude de Movimento", placeholder: "Graus de movimento, limitações..." },
-            { key: "muscleStrength", label: "Força Muscular", placeholder: "Graus de força (0-5), grupos musculares..." },
-          ].map(f => (
-            <div key={f.key} className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">{f.label}</Label>
-              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
-                value={(form as any)[f.key]}
-                onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                placeholder={f.placeholder} />
-            </div>
-          ))}
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Testes Ortopédicos</Label>
-          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
-            value={form.orthopedicTests} onChange={e => setForm({ ...form, orthopedicTests: e.target.value })}
-            placeholder="Testes realizados e resultados..." />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Diagnóstico Funcional</Label>
-          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
-            value={form.functionalDiagnosis} onChange={e => setForm({ ...form, functionalDiagnosis: e.target.value })}
-            placeholder="Conclusão da avaliação e objetivos do tratamento..." />
-        </div>
-        <div className="flex gap-3 justify-end pt-2">
-          <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
-          <Button onClick={onSave} className="rounded-xl" disabled={saving}>
-            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-            Salvar Avaliação
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
   return (
@@ -1360,6 +1372,8 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
           onSave={handleCreate}
           onCancel={() => { setShowForm(false); setForm(emptyEvalForm); }}
           saving={createMutation.isPending}
+          form={form}
+          setForm={setForm}
         />
       )}
 
@@ -1381,6 +1395,8 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
                   onSave={() => handleUpdate(ev.id)}
                   onCancel={() => { setEditingId(null); setForm(emptyEvalForm); }}
                   saving={updateMutation.isPending}
+                  form={form}
+                  setForm={setForm}
                 />
               ) : (
                 <Card className="border border-slate-200 shadow-sm overflow-hidden">
@@ -2271,6 +2287,81 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
 // ─── Evolutions Tab ─────────────────────────────────────────────────────────────
 
 const emptyEvoForm = { appointmentId: "" as string | number, description: "", patientResponse: "", clinicalNotes: "", complications: "" };
+type EvoFormState = typeof emptyEvoForm;
+
+interface EvoFormProps {
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  title: string;
+  form: EvoFormState;
+  setForm: React.Dispatch<React.SetStateAction<EvoFormState>>;
+  appointments: any[];
+}
+
+function EvoForm({ onSave, onCancel, saving, title, form, setForm, appointments }: EvoFormProps) {
+  return (
+    <Card className="border-2 border-primary/20 shadow-md">
+      <CardHeader className="pb-3 border-b border-slate-100">
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-5 space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700">Consulta Vinculada <span className="text-slate-400 font-normal">(opcional)</span></Label>
+          <Select
+            value={String(form.appointmentId || "")}
+            onValueChange={v => setForm({ ...form, appointmentId: v === "none" ? "" : v })}
+          >
+            <SelectTrigger className="bg-slate-50 border-slate-200">
+              <SelectValue placeholder="Selecionar consulta..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nenhuma consulta vinculada</SelectItem>
+              {appointments.map((appt: any) => (
+                <SelectItem key={appt.id} value={String(appt.id)}>
+                  {formatDate(appt.date)} — {appt.startTime} — {appt.procedure?.name || "Consulta"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700">Descrição da Sessão</Label>
+          <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+            placeholder="O que foi realizado na sessão de hoje..." />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Resposta do Paciente</Label>
+            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.patientResponse} onChange={e => setForm({ ...form, patientResponse: e.target.value })}
+              placeholder="Como o paciente respondeu ao tratamento..." />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Notas Clínicas</Label>
+            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.clinicalNotes} onChange={e => setForm({ ...form, clinicalNotes: e.target.value })}
+              placeholder="Observações clínicas relevantes..." />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700">Intercorrências</Label>
+          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.complications} onChange={e => setForm({ ...form, complications: e.target.value })}
+            placeholder="Alguma intercorrência ou evento adverso..." />
+        </div>
+        <div className="flex gap-3 justify-end pt-2">
+          <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
+          <Button onClick={onSave} className="rounded-xl" disabled={saving}>
+            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+            Salvar Evolução
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
   const { data: evolutions = [], isLoading } = useListEvolutions(patientId);
@@ -2355,68 +2446,6 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
     });
   };
 
-  const EvoForm = ({ onSave, onCancel, saving, title }: { onSave: () => void; onCancel: () => void; saving: boolean; title: string }) => (
-    <Card className="border-2 border-primary/20 shadow-md">
-      <CardHeader className="pb-3 border-b border-slate-100">
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-5 space-y-4">
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Consulta Vinculada <span className="text-slate-400 font-normal">(opcional)</span></Label>
-          <Select
-            value={String(form.appointmentId || "")}
-            onValueChange={v => setForm({ ...form, appointmentId: v === "none" ? "" : v })}
-          >
-            <SelectTrigger className="bg-slate-50 border-slate-200">
-              <SelectValue placeholder="Selecionar consulta..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Nenhuma consulta vinculada</SelectItem>
-              {appointments.map((appt: any) => (
-                <SelectItem key={appt.id} value={String(appt.id)}>
-                  {formatDate(appt.date)} — {appt.startTime} — {appt.procedure?.name || "Consulta"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Descrição da Sessão</Label>
-          <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 resize-none text-sm"
-            value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-            placeholder="O que foi realizado na sessão de hoje..." />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-semibold text-slate-700">Resposta do Paciente</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
-              value={form.patientResponse} onChange={e => setForm({ ...form, patientResponse: e.target.value })}
-              placeholder="Como o paciente respondeu ao tratamento..." />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-semibold text-slate-700">Notas Clínicas</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
-              value={form.clinicalNotes} onChange={e => setForm({ ...form, clinicalNotes: e.target.value })}
-              placeholder="Observações clínicas relevantes..." />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Intercorrências</Label>
-          <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
-            value={form.complications} onChange={e => setForm({ ...form, complications: e.target.value })}
-            placeholder="Alguma intercorrência ou evento adverso..." />
-        </div>
-        <div className="flex gap-3 justify-end pt-2">
-          <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
-          <Button onClick={onSave} className="rounded-xl" disabled={saving}>
-            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-            Salvar Evolução
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
   return (
@@ -2445,6 +2474,9 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
           onSave={handleCreate}
           onCancel={() => { setShowForm(false); setForm(emptyEvoForm); }}
           saving={createMutation.isPending}
+          form={form}
+          setForm={setForm}
+          appointments={appointments}
         />
       )}
 
@@ -2475,6 +2507,9 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
                         onSave={() => handleUpdate(ev.id)}
                         onCancel={() => { setEditingId(null); setForm(emptyEvoForm); }}
                         saving={updateMutation.isPending}
+                        form={form}
+                        setForm={setForm}
+                        appointments={appointments}
                       />
                     </div>
                   ) : (
