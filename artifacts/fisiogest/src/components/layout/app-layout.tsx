@@ -4,7 +4,6 @@ import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
   CalendarDays,
-  CalendarCog,
   Users,
   Activity,
   Wallet,
@@ -12,9 +11,8 @@ import {
   LogOut,
   Menu,
   Stethoscope,
-  UserCog,
   Building2,
-  Settings,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -32,19 +30,25 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   permission: Permission | null;
+  anyPermission?: Permission[];
   hideSuperAdmin?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: null },
   { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
-  { href: "/agendas", label: "Config. Agendas", icon: CalendarCog, permission: "settings.manage", hideSuperAdmin: true },
   { href: "/pacientes", label: "Pacientes", icon: Users, permission: "patients.read" },
   { href: "/procedimentos", label: "Procedimentos", icon: Activity, permission: "procedures.manage" },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, permission: "reports.read" },
-  { href: "/usuarios", label: "Usuários", icon: UserCog, permission: "users.manage" },
-  { href: "/configuracoes", label: "Minha Clínica", icon: Settings, permission: "settings.manage", hideSuperAdmin: true },
+  {
+    href: "/configuracoes",
+    label: "Configurações",
+    icon: Settings2,
+    permission: null,
+    anyPermission: ["settings.manage", "users.manage"],
+    hideSuperAdmin: true,
+  },
   { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
 ];
 
@@ -52,11 +56,12 @@ export function AppLayout({ children, title }: AppLayoutProps) {
   const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
   const [location] = useLocation();
 
-  const visibleNavItems = NAV_ITEMS.filter(
-    (item) =>
-      (item.permission === null || hasPermission(item.permission)) &&
-      !(item.hideSuperAdmin && isSuperAdmin)
-  );
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    const hasAccess = item.anyPermission
+      ? item.anyPermission.some((p) => hasPermission(p))
+      : item.permission === null || hasPermission(item.permission);
+    return hasAccess && !(item.hideSuperAdmin && isSuperAdmin);
+  });
 
   const roleLabels = (user?.roles ?? [])
     .map((r) => ROLE_LABELS[r as Role] ?? r)

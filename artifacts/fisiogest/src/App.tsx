@@ -15,11 +15,9 @@ import PatientDetail from "./pages/patients/[id]";
 import Financial from "./pages/financial/index";
 import Procedimentos from "./pages/procedimentos";
 import Relatorios from "./pages/relatorios";
-import Usuarios from "./pages/usuarios";
 import Clinicas from "./pages/clinicas";
 import Configuracoes from "./pages/configuracoes";
 import Agendar from "./pages/agendar";
-import Agendas from "./pages/agendas";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -46,6 +44,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function HashRedirect({ hash }: { hash: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(`/configuracoes`);
+    window.location.hash = hash;
+  }, [hash, setLocation]);
+  return null;
+}
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { token, isLoading } = useAuth();
@@ -122,13 +129,13 @@ function Router() {
         {() => <PermissionRoute component={Relatorios} permission="reports.read" />}
       </Route>
       <Route path="/usuarios">
-        {() => <PermissionRoute component={Usuarios} permission="users.manage" />}
+        {() => <HashRedirect hash="usuarios" />}
       </Route>
       <Route path="/configuracoes">
-        {() => <PermissionRoute component={Configuracoes} permission="settings.manage" />}
+        {() => <ProtectedRoute component={Configuracoes} />}
       </Route>
       <Route path="/agendas">
-        {() => <PermissionRoute component={Agendas} permission="settings.manage" />}
+        {() => <HashRedirect hash="agendas" />}
       </Route>
       <Route path="/clinicas">
         {() => <PermissionRoute component={Clinicas} permission="clinics.manage" />}
