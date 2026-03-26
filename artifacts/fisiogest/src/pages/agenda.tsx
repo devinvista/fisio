@@ -174,6 +174,10 @@ export default function Agenda() {
 
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
+  const filteredAppointments = selectedScheduleId
+    ? appointments.filter((a) => (a as any).scheduleId === selectedScheduleId)
+    : appointments;
+
   const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
     queryKey: ["blocked-slots", startDateStr, endDateStr],
     queryFn: async () => {
@@ -257,7 +261,7 @@ export default function Agenda() {
   };
 
   const getDayAppointments = (day: Date) =>
-    appointments.filter((a) => a.date === format(day, "yyyy-MM-dd"));
+    filteredAppointments.filter((a) => a.date === format(day, "yyyy-MM-dd"));
 
   const getDayBlockedSlots = (day: Date) =>
     blockedSlots.filter((b) => b.date === format(day, "yyyy-MM-dd"));
