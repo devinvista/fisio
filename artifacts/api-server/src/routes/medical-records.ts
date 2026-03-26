@@ -192,8 +192,9 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
       .from(treatmentPlansTable)
       .where(eq(treatmentPlansTable.patientId, patientId));
 
+    const isPlanUpdate = existing.length > 0;
     let plan;
-    if (existing.length > 0) {
+    if (isPlanUpdate) {
       [plan] = await db
         .update(treatmentPlansTable)
         .set({ objectives, techniques, frequency, estimatedSessions, status, updatedAt: new Date() })
@@ -205,6 +206,14 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
         .values({ patientId, objectives, techniques, frequency, estimatedSessions, status })
         .returning();
     }
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: isPlanUpdate ? "update" : "create",
+      entityType: "treatment_plan",
+      entityId: plan?.id,
+      summary: isPlanUpdate ? "Plano de tratamento atualizado" : "Plano de tratamento criado",
+    });
     res.json(plan);
   } catch (err) {
     console.error(err);
@@ -410,6 +419,14 @@ router.post("/financial", requirePermission("financial.write"), async (req: Requ
       .values({ type, amount: String(amount), description, category, patientId })
       .returning();
 
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "create",
+      entityType: "financial",
+      entityId: record?.id,
+      summary: `Lançamento financeiro: ${type === "receita" ? "receita" : "despesa"} — ${description}`,
+    });
     res.status(201).json(record);
   } catch (err: any) {
     if (err?.cause?.code === "23503" || err?.code === "23503") {
@@ -469,6 +486,14 @@ router.post("/attachments", requirePermission("medical.write"), async (req: Requ
       })
       .returning();
 
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "create",
+      entityType: "attachment",
+      entityId: attachment?.id,
+      summary: `Anexo adicionado: ${examTitle || originalFilename || "resultado de exame"}`,
+    });
     res.status(201).json(attachment);
   } catch (err) {
     console.error(err);
@@ -501,6 +526,14 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
     }
 
     await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "delete",
+      entityType: "attachment",
+      entityId: attachmentId,
+      summary: `Anexo excluído: ${existing.examTitle || existing.originalFilename || "resultado de exame"}`,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -551,6 +584,19 @@ router.post("/atestados", requirePermission("medical.write"), async (req: Reques
       })
       .returning();
 
+    const typeLabel: Record<string, string> = {
+      atestado: "Atestado médico",
+      declaracao: "Declaração de comparecimento",
+      encaminhamento: "Encaminhamento",
+    };
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "create",
+      entityType: "atestado",
+      entityId: atestado?.id,
+      summary: `${typeLabel[type] || "Atestado"} emitido por ${professionalName}`,
+    });
     res.status(201).json(atestado);
   } catch (err) {
     console.error(err);
@@ -574,6 +620,14 @@ router.delete("/atestados/:atestadoId", requirePermission("medical.write"), asyn
     }
 
     await db.delete(atestadosTable).where(eq(atestadosTable.id, atestadoId));
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "delete",
+      entityType: "atestado",
+      entityId: atestadoId,
+      summary: `Atestado excluído (tipo: ${existing.type})`,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error(err);

@@ -2,8 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "@workspace/db";
 import { eq, ilike, or, and, sql, desc } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { logAudit } from "../lib/auditLog.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -58,6 +59,14 @@ router.post("/", requirePermission("patients.create"), async (req, res) => {
       .values({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
       .returning();
 
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId: patient?.id,
+      action: "create",
+      entityType: "patient",
+      entityId: patient?.id,
+      summary: `Paciente cadastrado: ${name}`,
+    });
     res.status(201).json(patient);
   } catch (err: any) {
     if (err.code === "23505") {
@@ -130,6 +139,14 @@ router.put("/:id", requirePermission("patients.update"), async (req, res) => {
       res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
       return;
     }
+    logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId: id,
+      action: "update",
+      entityType: "patient",
+      entityId: id,
+      summary: `Dados cadastrais do paciente atualizados`,
+    });
     res.json(patient);
   } catch (err) {
     console.error(err);
