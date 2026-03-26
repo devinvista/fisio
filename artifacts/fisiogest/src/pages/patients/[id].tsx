@@ -202,6 +202,140 @@ function generatePlanHTML(patient: PatientBasic, plan: { objectives?: string; te
   `;
 }
 
+function generateContractHTML(
+  patient: PatientBasic,
+  plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string },
+  planItems: any[],
+) {
+  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
+
+  function fmtC(v: any) {
+    if (v === null || v === undefined) return "—";
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
+  }
+
+  let totalSessoesVal = 0;
+  let totalMensalVal = 0;
+  let totalSessionCount = 0;
+
+  const itemRows = planItems.map((item: any) => {
+    const isMensal = item.packageType === "mensal";
+    const isAvulso = !item.packageId;
+    const sessionCount = item.totalSessions ?? 0;
+    const pricePerSession = isAvulso ? Number(item.price ?? 0) : null;
+    const totalCost = isMensal
+      ? Number(item.monthlyPrice ?? 0)
+      : isAvulso
+        ? pricePerSession! * (sessionCount || 1)
+        : Number(item.price ?? 0);
+
+    if (isMensal) totalMensalVal += totalCost;
+    else { totalSessoesVal += totalCost; totalSessionCount += sessionCount; }
+
+    const label = item.packageName ?? item.procedureName ?? "—";
+    const badge = isMensal ? "Mensal" : item.packageId ? "Pacote" : "Avulso";
+    const costDetail = isMensal
+      ? `${fmtC(item.monthlyPrice)}/mês`
+      : isAvulso && sessionCount > 0
+        ? `${fmtC(pricePerSession)}/sessão × ${sessionCount} = ${fmtC(totalCost)}`
+        : fmtC(item.price);
+    const sessInfo = isMensal
+      ? `${item.sessionsPerWeek}x/semana (~${item.sessionsPerWeek * 4} sessões/mês)`
+      : sessionCount > 0
+        ? `${sessionCount} sessões · ${item.sessionsPerWeek ?? 1}x/semana`
+        : "—";
+    const weeks = (!isMensal && sessionCount > 0 && item.sessionsPerWeek > 0)
+      ? `~${Math.ceil(sessionCount / item.sessionsPerWeek)} sem.` : "";
+
+    return `<tr>
+      <td><strong>${label}</strong><br/><span style="font-size:8pt;color:#6b7280">${badge}</span></td>
+      <td style="text-align:center">${sessInfo}</td>
+      <td style="text-align:center">${weeks || "—"}</td>
+      <td style="text-align:right"><strong>${costDetail}</strong></td>
+    </tr>`;
+  }).join("");
+
+  const grandTotal = totalSessoesVal + totalMensalVal;
+
+  return `
+    <div class="header">
+      <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
+      <div class="subtitle">Serviços de Fisioterapia e Saúde</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Dados do Contratante (Paciente)</div>
+      <div class="patient-box">
+        <div class="row">
+          <div class="field"><div class="label">Nome Completo</div><div class="value"><strong>${patient.name}</strong></div></div>
+          <div class="field"><div class="label">CPF</div><div class="value">${cpfFmt}</div></div>
+          ${patient.phone ? `<div class="field"><div class="label">Telefone</div><div class="value">${patient.phone}</div></div>` : ""}
+        </div>
+        ${patient.birthDate ? `<div class="row"><div class="field"><div class="label">Data de Nascimento</div><div class="value">${format(parseISO(patient.birthDate), "dd/MM/yyyy")}</div></div></div>` : ""}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Objeto do Contrato — Plano de Tratamento</div>
+      ${plan.objectives ? `<p><strong>Objetivos:</strong> ${plan.objectives}</p>` : ""}
+      ${plan.techniques ? `<p><strong>Técnicas e recursos:</strong> ${plan.techniques}</p>` : ""}
+      ${plan.frequency ? `<p><strong>Frequência:</strong> ${plan.frequency}</p>` : ""}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Serviços Contratados e Estimativa de Investimento</div>
+      ${itemRows ? `
+      <table class="sessions-table">
+        <thead>
+          <tr>
+            <th>Serviço / Procedimento</th>
+            <th style="text-align:center">Sessões</th>
+            <th style="text-align:center">Duração</th>
+            <th style="text-align:right">Valor Estimado</th>
+          </tr>
+        </thead>
+        <tbody>${itemRows}</tbody>
+        <tfoot>
+          ${totalSessoesVal > 0 ? `<tr><td colspan="3" style="text-align:right;font-weight:600">Subtotal (sessões/pacotes):</td><td style="text-align:right;font-weight:600">${fmtC(totalSessoesVal)}</td></tr>` : ""}
+          ${totalMensalVal > 0 ? `<tr><td colspan="3" style="text-align:right;font-weight:600">Mensalidade recorrente:</td><td style="text-align:right;font-weight:600">${fmtC(totalMensalVal)}/mês</td></tr>` : ""}
+          <tr style="background:#f0f9ff"><td colspan="3" style="text-align:right;font-weight:700;color:#1e40af">TOTAL ESTIMADO:</td><td style="text-align:right;font-weight:700;color:#1e40af;font-size:11pt">${fmtC(grandTotal)}</td></tr>
+        </tfoot>
+      </table>
+      ` : "<p>Nenhum serviço vinculado ao plano.</p>"}
+      <p style="font-size:8pt;color:#6b7280;margin-top:8px">* Os valores acima são estimativas baseadas no plano de tratamento. O valor efetivo poderá variar conforme a evolução clínica do paciente.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Cláusulas Gerais</div>
+      <ol style="font-size:9pt;line-height:1.7;color:#374151">
+        <li>O presente contrato tem por objeto a prestação de serviços de fisioterapia descritos no plano de tratamento acima.</li>
+        <li>Os atendimentos serão realizados conforme agenda acordada entre as partes, podendo ser alterados mediante comunicação prévia de 24 horas.</li>
+        <li>Faltas não justificadas com antecedência mínima de 2 horas serão cobradas integralmente.</li>
+        <li>Os valores poderão ser reajustados anualmente, mediante comunicação prévia de 30 dias.</li>
+        <li>O contratante autoriza o uso de dados pessoais e clínicos exclusivamente para fins de acompanhamento terapêutico, em conformidade com a LGPD (Lei 13.709/2018).</li>
+        <li>As informações clínicas são confidenciais e regidas pelo Código de Ética do COFFITO.</li>
+        <li>Qualquer rescisão deverá ser comunicada por escrito com antecedência de 15 dias.</li>
+      </ol>
+    </div>
+
+    <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label"><strong>${patient.name}</strong></div>
+        <div class="sig-label">CPF: ${cpfFmt}</div>
+        <div class="sig-label">Contratante</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Fisioterapeuta / Prestador de Serviço</div>
+      </div>
+    </div>
+
+    <div class="footer">Contrato gerado em ${today} &bull; FisioGest Pro &bull; Os valores são estimativas sujeitas a ajuste clínico</div>
+  `;
+}
+
 // ─── Full Prontuário HTML Generator ─────────────────────────────────────────
 
 interface ProntuarioData {
@@ -1269,6 +1403,7 @@ interface PlanProcedureItem {
   billingDay?: number | null;
   absenceCreditLimit?: number;
   price?: string | null;
+  usedSessions?: number;
 }
 
 function fmtCur(v: string | number | null | undefined) {

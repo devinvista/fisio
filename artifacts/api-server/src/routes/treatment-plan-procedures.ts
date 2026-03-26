@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable, appointmentsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -40,6 +40,31 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
       return;
     }
 
+    const [plan] = await db
+      .select({ patientId: treatmentPlansTable.patientId })
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.id, planId))
+      .limit(1);
+
+    if (!plan) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const patientId = plan.patientId;
+
+    const completedAppts = await db
+      .select({ procedureId: appointmentsTable.procedureId })
+      .from(appointmentsTable)
+      .where(and(eq(appointmentsTable.patientId, patientId), eq(appointmentsTable.status, "concluido")));
+
+    const procedureUsageMap: Record<number, number> = {};
+    for (const a of completedAppts) {
+      if (a.procedureId) {
+        procedureUsageMap[a.procedureId] = (procedureUsageMap[a.procedureId] ?? 0) + 1;
+      }
+    }
+
     const rawItems = await db
       .select({
         id: treatmentPlanProceduresTable.id,
@@ -71,6 +96,7 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
               monthlyPrice: packagesTable.monthlyPrice,
               billingDay: packagesTable.billingDay,
               absenceCreditLimit: packagesTable.absenceCreditLimit,
+              procedureId: packagesTable.procedureId,
               procedureName: proceduresTable.name,
             })
             .from(packagesTable)
@@ -79,20 +105,23 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
             .limit(1);
 
           if (pkg) {
+            const usedSessions = procedureUsageMap[pkg.procedureId] ?? 0;
+            const effectiveTotalSessions = item.totalSessions ?? pkg.totalSessions ?? null;
             return {
               ...item,
               packageName: pkg.name,
               procedureName: pkg.procedureName,
               packageType: pkg.packageType,
-              totalSessions: item.totalSessions ?? pkg.totalSessions,
+              totalSessions: effectiveTotalSessions,
               sessionsPerWeek: item.sessionsPerWeek ?? pkg.sessionsPerWeek,
               price: pkg.price,
               monthlyPrice: pkg.monthlyPrice,
               billingDay: pkg.billingDay,
               absenceCreditLimit: pkg.absenceCreditLimit,
+              usedSessions,
             };
           }
-          return item;
+          return { ...item, usedSessions: 0 };
         }
 
         if (item.procedureId) {
@@ -110,18 +139,20 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
             .limit(1);
 
           if (proc) {
+            const usedSessions = procedureUsageMap[proc.id] ?? 0;
             return {
               ...item,
               procedureName: proc.name,
               packageType: null,
               price: proc.price,
               monthlyPrice: null,
+              usedSessions,
             };
           }
-          return item;
+          return { ...item, usedSessions: 0 };
         }
 
-        return item;
+        return { ...item, usedSessions: 0 };
       })
     );
 
