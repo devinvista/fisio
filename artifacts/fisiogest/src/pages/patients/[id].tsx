@@ -172,7 +172,7 @@ function generatePlanHTML(
   planItems: PlanProcedureItem[] = []
 ) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-  const completedAppts = [...appointments].filter((a) => a.status === "concluido")
+  const completedAppts = [...appointments].filter((a) => a.status === "concluido" || a.status === "presenca")
     .sort((a, b) => new Date(b.date + "T" + (b.startTime || "00:00")).getTime() - new Date(a.date + "T" + (a.startTime || "00:00")).getTime());
   const totalCompleted = completedAppts.length;
   const estimated = plan.estimatedSessions ? Number(plan.estimatedSessions) : 0;
@@ -443,7 +443,7 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
     new Date(a.date + "T" + (a.startTime || "00:00")).getTime() -
     new Date(b.date + "T" + (b.startTime || "00:00")).getTime()
   );
-  const completedAppts = appointments.filter(a => a.status === "concluido");
+  const completedAppts = appointments.filter(a => a.status === "concluido" || a.status === "presenca");
 
   const section = (title: string, icon: string, content: string) => `
     <div class="psection">
@@ -1490,12 +1490,12 @@ function fmtCur(v: string | number | null | undefined) {
 
 function TreatmentPlanItemsSection({
   planId,
-  patientId,
-  onItemsChange,
+  planItems,
+  planItemsKey,
 }: {
   planId: number | undefined;
-  patientId: number;
-  onItemsChange?: (items: PlanProcedureItem[]) => void;
+  planItems: PlanProcedureItem[];
+  planItemsKey: string[] | null;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1507,24 +1507,16 @@ function TreatmentPlanItemsSection({
   const [itemSessions, setItemSessions] = useState<string>("");
   const [itemNotes, setItemNotes] = useState("");
   const [itemDiscount, setItemDiscount] = useState<string>("0");
+  const [itemDiscountType, setItemDiscountType] = useState<"reais" | "percent">("reais");
+  const [itemCustomPrice, setItemCustomPrice] = useState<string>("");
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editSpw, setEditSpw] = useState(1);
   const [editSessions, setEditSessions] = useState<string>("");
   const [editNotes, setEditNotes] = useState("");
   const [editDiscount, setEditDiscount] = useState<string>("0");
-
-  const planItemsKey = planId ? [`/api/treatment-plans/${planId}/procedures`] : null;
-
-  const { data: planItems = [] } = useQuery<PlanProcedureItem[]>({
-    queryKey: planItemsKey ?? ["plan-items-disabled"],
-    queryFn: () => fetch(`/api/treatment-plans/${planId}/procedures`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
-    }).then(r => r.json()),
-    enabled: !!planId,
-  });
-
-  useEffect(() => { onItemsChange?.(planItems); }, [planItems]);
+  const [editDiscountType, setEditDiscountType] = useState<"reais" | "percent">("reais");
+  const [editCustomPrice, setEditCustomPrice] = useState<string>("");
 
   const { data: packages = [] } = useQuery<PkgOption[]>({
     queryKey: ["packages"],
@@ -1543,6 +1535,12 @@ function TreatmentPlanItemsSection({
   const selectedPkg = packages.find(p => String(p.id) === selectedPkgId) ?? null;
   const selectedProc = procedures.find(p => String(p.id) === selectedProcId) ?? null;
 
+  function resolveDiscountAmount(discountStr: string, discType: "reais" | "percent", basePrice: number): number {
+    const d = Number(discountStr) || 0;
+    if (discType === "percent") return Math.max(0, (d / 100) * basePrice);
+    return Math.max(0, d);
+  }
+
   const addMutation = useMutation({
     mutationFn: (body: object) => fetch(`/api/treatment-plans/${planId}/procedures`, {
       method: "POST",
@@ -1556,7 +1554,7 @@ function TreatmentPlanItemsSection({
       queryClient.invalidateQueries({ queryKey: planItemsKey ?? [] });
       toast({ title: "Item adicionado ao plano!" });
       setAddMode(null);
-      setSelectedPkgId(""); setSelectedProcId(""); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0");
+      setSelectedPkgId(""); setSelectedProcId(""); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); setItemDiscountType("reais"); setItemCustomPrice("");
     },
     onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
   });
@@ -1600,17 +1598,25 @@ function TreatmentPlanItemsSection({
       sessionsPerWeek: itemSpw,
       totalSessions: itemSessions ? Number(itemSessions) : null,
       notes: itemNotes || null,
-      discount: Number(itemDiscount) || 0,
     };
+
     if (addMode === "package" && selectedPkg) {
+      const isMensal = selectedPkg.packageType === "mensal";
+      const effectivePrice = itemCustomPrice ? Number(itemCustomPrice) : (isMensal ? Number(selectedPkg.monthlyPrice ?? 0) : Number(selectedPkg.price ?? 0));
+      const discAmt = resolveDiscountAmount(itemDiscount, itemDiscountType, effectivePrice);
       body.packageId = selectedPkg.id;
-      body.unitPrice = selectedPkg.price;
-      body.unitMonthlyPrice = selectedPkg.monthlyPrice ?? null;
+      body.unitPrice = itemCustomPrice ? Number(itemCustomPrice) : selectedPkg.price;
+      body.unitMonthlyPrice = isMensal ? (itemCustomPrice ? Number(itemCustomPrice) : selectedPkg.monthlyPrice ?? null) : null;
+      body.discount = discAmt;
       body.sessionsPerWeek = itemSpw || selectedPkg.sessionsPerWeek;
       body.totalSessions = itemSessions ? Number(itemSessions) : (selectedPkg.totalSessions ?? null);
     } else if (selectedProc) {
+      const effectivePrice = Number(itemCustomPrice || selectedProc.price || 0);
+      const sessCount = Number(itemSessions) || 1;
+      const discAmt = resolveDiscountAmount(itemDiscount, itemDiscountType, effectivePrice * sessCount);
       body.procedureId = selectedProc.id;
-      body.unitPrice = selectedProc.price;
+      body.unitPrice = itemCustomPrice ? Number(itemCustomPrice) : selectedProc.price;
+      body.discount = discAmt;
     }
     addMutation.mutate(body);
   }
@@ -1621,18 +1627,24 @@ function TreatmentPlanItemsSection({
     setEditSessions(String(item.totalSessions ?? ""));
     setEditNotes(item.notes ?? "");
     setEditDiscount(String(item.discount ?? "0"));
+    setEditDiscountType("reais");
+    setEditCustomPrice(String(item.unitPrice ?? item.price ?? ""));
   }
 
   function handleEditSave(item: PlanProcedureItem) {
-    updateMutation.mutate({
-      id: item.id,
-      body: {
-        sessionsPerWeek: editSpw,
-        totalSessions: editSessions ? Number(editSessions) : null,
-        notes: editNotes || null,
-        discount: Number(editDiscount) || 0,
-      },
-    });
+    const isMensal = item.packageType === "mensal";
+    const baseUnitPrice = Number(editCustomPrice || item.unitPrice || item.price || 0);
+    const sessCount = Number(editSessions) || item.totalSessions || 1;
+    const baseForDiscount = isMensal ? baseUnitPrice : baseUnitPrice * sessCount;
+    const discAmt = resolveDiscountAmount(editDiscount, editDiscountType, baseForDiscount);
+    const updateBody: Record<string, unknown> = {
+      sessionsPerWeek: editSpw,
+      totalSessions: editSessions ? Number(editSessions) : null,
+      notes: editNotes || null,
+      discount: discAmt,
+    };
+    if (editCustomPrice) updateBody.unitPrice = Number(editCustomPrice);
+    updateMutation.mutate({ id: item.id, body: updateBody });
   }
 
   function calcItemTotal(item: PlanProcedureItem): { gross: number; discount: number; net: number } {
@@ -1673,10 +1685,10 @@ function TreatmentPlanItemsSection({
         </p>
         {addMode === null && editingId === null && (
           <div className="flex gap-1.5">
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("package"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); }}>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("package"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); setItemDiscountType("reais"); setItemCustomPrice(""); }}>
               <Plus className="h-3 w-3" /> Pacote
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("procedure"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); }}>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 px-2.5" onClick={() => { setAddMode("procedure"); setItemSpw(2); setItemSessions(""); setItemNotes(""); setItemDiscount("0"); setItemDiscountType("reais"); setItemCustomPrice(""); }}>
               <Plus className="h-3 w-3" /> Avulso
             </Button>
           </div>
@@ -1694,7 +1706,7 @@ function TreatmentPlanItemsSection({
             <Select value={selectedPkgId} onValueChange={v => {
               setSelectedPkgId(v);
               const pkg = packages.find(p => String(p.id) === v);
-              if (pkg) { setItemSpw(pkg.sessionsPerWeek); setItemSessions(String(pkg.totalSessions ?? "")); }
+              if (pkg) { setItemSpw(pkg.sessionsPerWeek); setItemSessions(String(pkg.totalSessions ?? "")); setItemCustomPrice(""); }
             }}>
               <SelectTrigger className="text-sm"><SelectValue placeholder="Selecione o pacote..." /></SelectTrigger>
               <SelectContent>
@@ -1714,7 +1726,7 @@ function TreatmentPlanItemsSection({
               </SelectContent>
             </Select>
           ) : (
-            <Select value={selectedProcId} onValueChange={v => { setSelectedProcId(v); }}>
+            <Select value={selectedProcId} onValueChange={v => { setSelectedProcId(v); setItemCustomPrice(""); }}>
               <SelectTrigger className="text-sm"><SelectValue placeholder="Selecione o procedimento..." /></SelectTrigger>
               <SelectContent>
                 {procedures.map(p => (
@@ -1724,19 +1736,19 @@ function TreatmentPlanItemsSection({
             </Select>
           )}
 
-          {/* Price preview */}
+          {/* Catalog price info */}
           {(selectedPkg || selectedProc) && (
             <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-slate-600 flex gap-4 flex-wrap">
               {selectedPkg && (
                 <>
                   <span>Procedimento: <strong>{selectedPkg.procedureName}</strong></span>
                   {selectedPkg.packageType === "mensal"
-                    ? <span>Mensalidade: <strong className="text-primary">{fmtCur(selectedPkg.monthlyPrice)}</strong></span>
-                    : <span>Valor do pacote: <strong className="text-primary">{fmtCur(selectedPkg.price)}</strong></span>}
+                    ? <span>Mensalidade catálogo: <strong className="text-primary">{fmtCur(selectedPkg.monthlyPrice)}</strong></span>
+                    : <span>Valor catálogo: <strong className="text-primary">{fmtCur(selectedPkg.price)}</strong></span>}
                 </>
               )}
               {selectedProc && (
-                <span>Valor/sessão: <strong className="text-primary">{fmtCur(selectedProc.price)}</strong></span>
+                <span>Valor catálogo: <strong className="text-primary">{fmtCur(selectedProc.price)}</strong>/sessão</span>
               )}
             </div>
           )}
@@ -1749,7 +1761,7 @@ function TreatmentPlanItemsSection({
                 <SelectContent>{[1,2,3,4,5].map(n=><SelectItem key={n} value={String(n)}>{n}x/sem</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            {addMode === "procedure" || (selectedPkg && selectedPkg.packageType === "sessoes") ? (
+            {(addMode === "procedure" || (selectedPkg && selectedPkg.packageType === "sessoes")) ? (
               <div className="space-y-1">
                 <Label className="text-xs">Total de sessões</Label>
                 <Input className="h-8 text-xs" type="number" min={1} placeholder="Ex: 20" value={itemSessions} onChange={e => setItemSessions(e.target.value)} />
@@ -1757,42 +1769,88 @@ function TreatmentPlanItemsSection({
             ) : <div />}
           </div>
 
+          {/* Price override + discount */}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Desconto (R$) <span className="text-muted-foreground">(opcional)</span></Label>
-              <Input className="h-8 text-xs" type="number" min={0} step={0.01} placeholder="0,00" value={itemDiscount} onChange={e => setItemDiscount(e.target.value)} />
+              <Label className="text-xs">
+                Preço negociado <span className="text-slate-400 font-normal">(deixe vazio p/ usar catálogo)</span>
+              </Label>
+              <Input
+                className="h-8 text-xs"
+                type="number" min={0} step={0.01}
+                placeholder={
+                  selectedPkg
+                    ? selectedPkg.packageType === "mensal"
+                      ? `Catálogo: ${fmtCur(selectedPkg.monthlyPrice)}/mês`
+                      : `Catálogo: ${fmtCur(selectedPkg.price)}`
+                    : selectedProc
+                      ? `Catálogo: ${fmtCur(selectedProc.price)}/sessão`
+                      : "Preço unitário..."
+                }
+                value={itemCustomPrice}
+                onChange={e => setItemCustomPrice(e.target.value)}
+              />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Observações <span className="text-muted-foreground">(opcional)</span></Label>
-              <Input className="h-8 text-xs" placeholder="Ex: iniciar com baixa carga..." value={itemNotes} onChange={e => setItemNotes(e.target.value)} />
+              <Label className="text-xs">Desconto <span className="text-slate-400 font-normal">(opcional)</span></Label>
+              <div className="flex gap-1">
+                <Input
+                  className="h-8 text-xs flex-1"
+                  type="number" min={0}
+                  step={itemDiscountType === "percent" ? 1 : 0.01}
+                  max={itemDiscountType === "percent" ? 100 : undefined}
+                  placeholder="0"
+                  value={itemDiscount}
+                  onChange={e => setItemDiscount(e.target.value)}
+                />
+                <Select value={itemDiscountType} onValueChange={(v: "reais" | "percent") => { setItemDiscountType(v); setItemDiscount("0"); }}>
+                  <SelectTrigger className="h-8 text-xs w-16"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="reais">R$</SelectItem>
+                    <SelectItem value="percent">%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
-          {/* Estimated cost preview */}
-          {(selectedPkg || selectedProc) && (
-            <div className="text-xs text-right font-medium text-slate-700">
-              {(() => {
-                const disc = Number(itemDiscount) || 0;
-                if (selectedPkg) {
-                  if (selectedPkg.packageType === "mensal") {
-                    const gross = Number(selectedPkg.monthlyPrice ?? 0);
-                    return <>Estimativa: <span className="text-primary">{fmtCur(Math.max(0, gross - disc))}</span>/mês{disc > 0 && <span className="text-slate-400 ml-1">(desconto: {fmtCur(disc)})</span>}</>;
-                  } else {
-                    const gross = Number(selectedPkg.price ?? 0);
-                    return <>Estimativa: <span className="text-primary">{fmtCur(Math.max(0, gross - disc))}</span>{disc > 0 && <span className="text-slate-400 ml-1">(desconto: {fmtCur(disc)})</span>}</>;
-                  }
-                } else if (selectedProc) {
-                  const sessions = Number(itemSessions) || 0;
-                  const gross = Number(selectedProc.price ?? 0) * (sessions || 1);
-                  return <>{sessions > 0 ? <>Estimativa: <span className="text-primary">{fmtCur(gross - disc)}</span> ({sessions} sessões × {fmtCur(selectedProc.price)}{disc > 0 ? ` – desc. ${fmtCur(disc)}` : ""})</> : <span className="text-slate-400">Informe o total de sessões</span>}</>;
-                }
-                return null;
-              })()}
-            </div>
-          )}
+          <div className="space-y-1">
+            <Label className="text-xs">Observações <span className="text-slate-400 font-normal">(opcional)</span></Label>
+            <Input className="h-8 text-xs" placeholder="Ex: iniciar com baixa carga..." value={itemNotes} onChange={e => setItemNotes(e.target.value)} />
+          </div>
+
+          {/* Estimated net price preview */}
+          {(selectedPkg || selectedProc) && (() => {
+            const isMensal = selectedPkg?.packageType === "mensal";
+            const baseUnit = itemCustomPrice
+              ? Number(itemCustomPrice)
+              : selectedPkg
+                ? isMensal ? Number(selectedPkg.monthlyPrice ?? 0) : Number(selectedPkg.price ?? 0)
+                : Number(selectedProc?.price ?? 0);
+            const sessCount = Number(itemSessions) || (addMode === "procedure" ? 1 : selectedPkg?.totalSessions ?? 1);
+            const baseForDiscount = isMensal ? baseUnit : baseUnit * sessCount;
+            const discAmt = resolveDiscountAmount(itemDiscount, itemDiscountType, baseForDiscount);
+            const net = Math.max(0, baseForDiscount - discAmt);
+            return (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs flex items-center justify-between gap-2">
+                <span className="text-slate-600">
+                  {discAmt > 0 && <span className="line-through text-slate-400 mr-1.5">{fmtCur(baseForDiscount)}</span>}
+                  Valor final estimado: <strong className="text-emerald-700 text-sm">{fmtCur(net)}</strong>
+                  {isMensal && <span className="text-slate-500">/mês</span>}
+                  {!isMensal && sessCount > 1 && <span className="text-slate-500 ml-1">({sessCount} × {fmtCur(baseUnit)})</span>}
+                </span>
+                {discAmt > 0 && (
+                  <span className="text-emerald-600 font-semibold whitespace-nowrap">
+                    Desc: {fmtCur(discAmt)}
+                    {itemDiscountType === "percent" && <span className="text-slate-400 ml-0.5">({itemDiscount}%)</span>}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAddMode(null); setSelectedPkgId(""); setSelectedProcId(""); }}>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAddMode(null); setSelectedPkgId(""); setSelectedProcId(""); setItemCustomPrice(""); setItemDiscountType("reais"); setItemDiscount("0"); }}>
               Cancelar
             </Button>
             <Button size="sm" className="h-7 text-xs" onClick={handleAddSubmit} disabled={addMutation.isPending}>
@@ -1862,7 +1920,10 @@ function TreatmentPlanItemsSection({
                         {planned > 0 && (
                           <div className="mt-2 space-y-0.5">
                             <div className="flex justify-between text-[10px] text-slate-500">
-                              <span>{used} de {planned} sessões realizadas</span>
+                              <span className="flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3 text-green-500" />
+                                <strong className="text-green-700">{used}</strong> realizadas · <strong>{Math.max(0, planned - used)}</strong> restantes de {planned}
+                              </span>
                               <span className={pct >= 100 ? "text-green-600 font-semibold" : "text-slate-500"}>
                                 {pct >= 100 ? "✓ Concluído" : `${pct.toFixed(0)}%`}
                               </span>
@@ -1873,6 +1934,11 @@ function TreatmentPlanItemsSection({
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
+                          </div>
+                        )}
+                        {planned === 0 && isMensal && used > 0 && (
+                          <div className="mt-1.5 text-[10px] text-slate-400 flex items-center gap-1">
+                            <Activity className="h-3 w-3" /> {used} sessão(ões) realizada(s)
                           </div>
                         )}
                       </>
@@ -1896,13 +1962,26 @@ function TreatmentPlanItemsSection({
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
-                            <Label className="text-[10px]">Desconto (R$)</Label>
-                            <Input className="h-7 text-xs" type="number" min={0} step={0.01} value={editDiscount} onChange={e => setEditDiscount(e.target.value)} />
+                            <Label className="text-[10px]">Preço unitário</Label>
+                            <Input className="h-7 text-xs" type="number" min={0} step={0.01} placeholder={String(item.unitPrice ?? item.price ?? "")} value={editCustomPrice} onChange={e => setEditCustomPrice(e.target.value)} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-[10px]">Observações</Label>
-                            <Input className="h-7 text-xs" value={editNotes} onChange={e => setEditNotes(e.target.value)} />
+                            <Label className="text-[10px]">Desconto</Label>
+                            <div className="flex gap-1">
+                              <Input className="h-7 text-xs flex-1" type="number" min={0} step={editDiscountType === "percent" ? 1 : 0.01} max={editDiscountType === "percent" ? 100 : undefined} value={editDiscount} onChange={e => setEditDiscount(e.target.value)} />
+                              <Select value={editDiscountType} onValueChange={(v: "reais" | "percent") => { setEditDiscountType(v); setEditDiscount("0"); }}>
+                                <SelectTrigger className="h-7 text-xs w-14"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="reais">R$</SelectItem>
+                                  <SelectItem value="percent">%</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">Observações</Label>
+                          <Input className="h-7 text-xs" value={editNotes} onChange={e => setEditNotes(e.target.value)} />
                         </div>
                         <div className="flex gap-1.5 justify-end">
                           <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setEditingId(null)}>Cancelar</Button>
@@ -2041,7 +2120,15 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [planItems, setPlanItems] = useState<PlanProcedureItem[]>([]);
+  // Plan items query hoisted here to avoid the callback/infinite-loop pattern
+  const planItemsKey = data?.id ? [`/api/treatment-plans/${data.id}/procedures`] : null;
+  const { data: planItems = [] } = useQuery<PlanProcedureItem[]>({
+    queryKey: planItemsKey ?? ["plan-items-disabled"],
+    queryFn: () => fetch(`/api/treatment-plans/${data!.id}/procedures`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+    enabled: !!data?.id,
+  });
 
   const { data: appointments = [] } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/appointments`],
@@ -2051,13 +2138,10 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
     enabled: !!patientId,
   });
 
-  const completedAppts = [...appointments]
-    .filter((a: any) => a.status === "concluido")
-    .sort((a: any, b: any) =>
-      new Date(b.date + "T" + (b.startTime || "00:00")).getTime() -
-      new Date(a.date + "T" + (a.startTime || "00:00")).getTime()
-    );
-  const completedSessions = completedAppts.length;
+  // Count sessions where patient actually attended ("presenca" = attended, "concluido" = marked completed)
+  const completedSessions = appointments.filter(
+    (a: any) => a.status === "concluido" || a.status === "presenca"
+  ).length;
 
   const [form, setForm] = useState({
     objectives: "", techniques: "", frequency: "",
@@ -2245,32 +2329,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           </div>
         )}
 
-        {/* Recent sessions */}
-        {completedAppts.length > 0 && (
-          <div className="pt-2 space-y-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5 text-green-500" /> Últimas sessões concluídas
-            </p>
-            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              {completedAppts.slice(0, 10).map((a: any, i: number) => (
-                <div key={a.id} className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 rounded-lg text-xs border border-slate-100">
-                  <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-                    {completedAppts.length - i}
-                  </span>
-                  <span className="font-medium text-slate-700">{formatDate(a.date)}</span>
-                  {a.startTime && <span className="text-slate-400">{a.startTime}</span>}
-                  <span className="text-slate-500 ml-auto truncate max-w-[120px]">{a.procedure?.name || "Sessão"}</span>
-                </div>
-              ))}
-            </div>
-            {completedAppts.length > 10 && (
-              <p className="text-xs text-slate-400 text-center">+{completedAppts.length - 10} sessão(ões) anteriores</p>
-            )}
-          </div>
-        )}
-
-        {/* Items section */}
-        <TreatmentPlanItemsSection planId={data?.id} patientId={patientId} onItemsChange={setPlanItems} />
+        {/* Items section — procedures/packages with progress and financial forecast */}
+        <TreatmentPlanItemsSection planId={data?.id} planItems={planItems} planItemsKey={planItemsKey} />
 
         {/* Save button */}
         <div className="pt-3 flex justify-end">

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable, appointmentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -56,7 +56,10 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
     const completedAppts = await db
       .select({ procedureId: appointmentsTable.procedureId })
       .from(appointmentsTable)
-      .where(and(eq(appointmentsTable.patientId, patientId), eq(appointmentsTable.status, "concluido")));
+      .where(and(
+        eq(appointmentsTable.patientId, patientId),
+        or(eq(appointmentsTable.status, "concluido"), eq(appointmentsTable.status, "presenca"))
+      ));
 
     const procedureUsageMap: Record<number, number> = {};
     for (const a of completedAppts) {

@@ -409,7 +409,7 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Cadastro e busca de pacientes | ✅ Completo |
 | Prontuário — Anamnese | ✅ Completo |
 | Prontuário — Avaliações físicas (CRUD) | ✅ Completo |
-| Prontuário — Plano de Tratamento | ✅ Completo |
+| Prontuário — Plano de Tratamento | ✅ Completo (bug loop infinito corrigido, desconto R$/%,  preço negociado, consumo por item) |
 | Prontuário — Evoluções de sessão (CRUD) | ✅ Completo |
 | Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
 | Agenda semanal + criação por clique | ✅ Completo |
