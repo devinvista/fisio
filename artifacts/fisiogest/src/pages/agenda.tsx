@@ -625,12 +625,15 @@ export default function Agenda() {
       <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
         <DialogContent className="sm:max-w-[500px] border-none shadow-2xl rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Agendar Consulta</DialogTitle>
+            <DialogTitle className="font-display text-2xl">
+              {selectedSlot?.procedureId ? "Adicionar Paciente à Sessão" : "Agendar Consulta"}
+            </DialogTitle>
           </DialogHeader>
           <CreateAppointmentForm
             initialDate={selectedSlot?.date}
             initialTime={selectedSlot?.time}
             initialProcedureId={selectedSlot?.procedureId}
+            lockProcedure={!!selectedSlot?.procedureId}
             onSuccess={() => { setIsNewModalOpen(false); refetch(); }}
           />
         </DialogContent>
@@ -1313,11 +1316,13 @@ function CreateAppointmentForm({
   initialDate,
   initialTime,
   initialProcedureId,
+  lockProcedure = false,
   onSuccess,
 }: {
   initialDate?: string;
   initialTime?: string;
   initialProcedureId?: number;
+  lockProcedure?: boolean;
   onSuccess: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
@@ -1552,7 +1557,11 @@ function CreateAppointmentForm({
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    setFormData({ ...formData, patientId: p.id.toString(), procedureId: "" });
+                    setFormData({
+                      ...formData,
+                      patientId: p.id.toString(),
+                      procedureId: lockProcedure ? formData.procedureId : "",
+                    });
                   }}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
@@ -1643,63 +1652,79 @@ function CreateAppointmentForm({
           </div>
 
           {/* Procedimento */}
-          <div className="space-y-1.5">
-            <Label>Procedimento *</Label>
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-0.5">
-              {procedures?.map((p) => {
-                const isSelected = formData.procedureId === p.id.toString();
-                const isLast = lastProcedureId === p.id;
-                const isGroup = (p as any).maxCapacity > 1;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, procedureId: p.id.toString() })}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
-                      isSelected
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                      isSelected ? "bg-primary text-white" : isGroup ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"
-                    )}>
-                      {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-semibold text-slate-800">{p.name}</span>
-                        {isLast && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                            <History className="w-2.5 h-2.5" /> Última sessão
-                          </span>
-                        )}
-                        {hasActivePlan && isLast && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
-                            <Sparkles className="w-2.5 h-2.5" /> Recomendado
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-400">
-                        {p.durationMinutes} min
-                        {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
-                      </p>
-                    </div>
-                    {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
-                  </button>
-                );
-              })}
+          {lockProcedure && selectedProcedure ? (
+            <div className="flex items-center gap-3 px-3 py-3 rounded-xl border border-violet-200 bg-violet-50">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 text-violet-600">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800">{selectedProcedure.name}</p>
+                <p className="text-xs text-violet-600">
+                  {selectedProcedure.durationMinutes} min
+                  {(selectedProcedure as any).maxCapacity > 1 ? ` · até ${(selectedProcedure as any).maxCapacity} simultâneos` : ""}
+                </p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-200 text-violet-700 shrink-0">Sessão em grupo</span>
             </div>
-            {selectedProcedure && (
-              <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
-                <Clock className="w-3 h-3" />
-                {selectedProcedure.durationMinutes} min
-                {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
-              </p>
-            )}
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Procedimento *</Label>
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-0.5">
+                {procedures?.map((p) => {
+                  const isSelected = formData.procedureId === p.id.toString();
+                  const isLast = lastProcedureId === p.id;
+                  const isGroup = (p as any).maxCapacity > 1;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, procedureId: p.id.toString() })}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
+                        isSelected
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                        isSelected ? "bg-primary text-white" : isGroup ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"
+                      )}>
+                        {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                          {isLast && (
+                            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              <History className="w-2.5 h-2.5" /> Última sessão
+                            </span>
+                          )}
+                          {hasActivePlan && isLast && (
+                            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                              <Sparkles className="w-2.5 h-2.5" /> Recomendado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {p.durationMinutes} min
+                          {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
+                        </p>
+                      </div>
+                      {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedProcedure && (
+                <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
+                  <Clock className="w-3 h-3" />
+                  {selectedProcedure.durationMinutes} min
+                  {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Data + Horário */}
           <div className="grid grid-cols-2 gap-3">
@@ -1774,7 +1799,8 @@ function CreateAppointmentForm({
         />
       </div>
 
-      {/* Recorrência toggle */}
+      {/* Recorrência toggle — hidden when adding to an existing session */}
+      {!lockProcedure && (
       <div className="rounded-2xl border border-slate-200 overflow-hidden">
         <div
           role="button"
@@ -1856,6 +1882,7 @@ function CreateAppointmentForm({
           </div>
         )}
       </div>
+      )}
 
           <Button
             type="submit"
@@ -1863,7 +1890,9 @@ function CreateAppointmentForm({
             disabled={!formData.patientId || !formData.procedureId || !formData.startTime || isBusy}
           >
             {isBusy ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isRecurring ? "Criando recorrência..." : "Agendando..."}</>
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {lockProcedure ? "Adicionando..." : isRecurring ? "Criando recorrência..." : "Agendando..."}</>
+            ) : lockProcedure ? (
+              <><Users className="w-4 h-4 mr-2" /> Adicionar à Sessão</>
             ) : isRecurring ? (
               <><Repeat className="w-4 h-4 mr-2" /> Criar {recurSessions} sessão(ões) recorrente(s)</>
             ) : (
