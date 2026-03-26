@@ -127,6 +127,39 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
   }
 });
 
+router.put("/:id", requirePermission("appointments.create"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { startTime, endTime, reason } = req.body;
+
+    if (!startTime || !endTime) {
+      res.status(400).json({ error: "Bad Request", message: "startTime e endTime são obrigatórios" });
+      return;
+    }
+    if (startTime >= endTime) {
+      res.status(400).json({ error: "Bad Request", message: "startTime deve ser anterior ao endTime" });
+      return;
+    }
+
+    const [existing] = await db.select().from(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
+    if (!existing) {
+      res.status(404).json({ error: "Not Found", message: "Bloqueio não encontrado" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(blockedSlotsTable)
+      .set({ startTime, endTime, reason: reason ?? null })
+      .where(eq(blockedSlotsTable.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);

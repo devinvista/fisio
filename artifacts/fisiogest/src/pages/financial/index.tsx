@@ -8,11 +8,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TrendingUp, TrendingDown, DollarSign, Plus, Loader2,
-  Ticket, Stethoscope, CalendarDays, Link2,
+  Ticket, Stethoscope, CalendarDays, Link2, Trash2,
+  RefreshCw, CalendarCheck2, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,6 +62,12 @@ export default function Financial() {
   const [year, setYear] = useState(currentYear);
   const [typeFilter, setTypeFilter] = useState<"all" | "receita" | "despesa">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; description: string; amount: number } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [billingRunning, setBillingRunning] = useState(false);
+  const [billingResult, setBillingResult] = useState<{ generated: number; recordIds: number[] } | null>(null);
+  const [showBillingConfirm, setShowBillingConfirm] = useState(false);
+  const { toast } = useToast();
 
   const { data: dashboard, isLoading: dashLoading, refetch: refetchDash } =
     useGetFinancialDashboard({ month, year });
@@ -100,11 +107,67 @@ export default function Financial() {
     refetchRec();
   };
 
+  const handleDeleteRecord = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/financial/records/${deleteTarget.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Erro ao excluir", description: data.message ?? "Não foi possível excluir o registro." });
+      } else {
+        toast({ title: "Registro excluído com sucesso." });
+        setDeleteTarget(null);
+        refetchDash();
+        refetchRec();
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao excluir registro financeiro." });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRunBilling = async () => {
+    setBillingRunning(true);
+    setBillingResult(null);
+    try {
+      const res = await fetch("/api/subscriptions/run-billing", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Erro na cobrança mensal", description: data.message ?? "Verifique e tente novamente." });
+      } else {
+        setBillingResult(data);
+        if (data.generated > 0) {
+          toast({ title: `Cobrança executada!`, description: `${data.generated} lançamento(s) gerado(s) com sucesso.` });
+          refetchDash();
+          refetchRec();
+        } else {
+          toast({ title: "Cobrança executada", description: "Nenhuma assinatura com vencimento hoje ou já cobradas este mês." });
+        }
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao executar cobrança mensal." });
+    } finally {
+      setBillingRunning(false);
+      setShowBillingConfirm(false);
+    }
+  };
+
   return (
     <AppLayout title="Controle Financeiro">
 
+      {/* Top action bar: period selector + billing trigger */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+
       {/* Period selector */}
-      <div className="flex flex-wrap items-center gap-3 mb-8 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 w-fit">
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-2xl p-3 shadow-sm border border-slate-200 w-fit">
         <CalendarDays className="w-5 h-5 text-slate-400 ml-1" />
         <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
           <SelectTrigger className="h-9 w-36 rounded-xl border-slate-200 text-sm font-medium">
@@ -130,6 +193,34 @@ export default function Financial() {
           {MONTH_NAMES[month - 1]} {year}
         </span>
       </div>
+
+      {/* Monthly billing trigger */}
+      <div className="flex items-center gap-3 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5">
+        <div className="p-1.5 rounded-lg bg-violet-100">
+          <CalendarCheck2 className="w-4 h-4 text-violet-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-violet-800">Cobrança Mensal</p>
+          <p className="text-[11px] text-violet-600 leading-tight">Gera lançamentos das assinaturas com vencimento hoje</p>
+        </div>
+        {billingResult !== null && (
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${billingResult.generated > 0 ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+            {billingResult.generated > 0 ? `${billingResult.generated} gerado(s)` : "Nenhum hoje"}
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl border-violet-300 text-violet-700 hover:bg-violet-100 shrink-0 h-8 text-xs font-semibold"
+          onClick={() => setShowBillingConfirm(true)}
+          disabled={billingRunning}
+        >
+          {billingRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+          Executar
+        </Button>
+      </div>
+
+      </div>{/* end top action bar */}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -280,11 +371,12 @@ export default function Financial() {
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Categoria / Procedimento</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                      <th className="py-3 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {records.map((record) => (
-                      <tr key={record.id} className="hover:bg-slate-50/60 transition-colors">
+                      <tr key={record.id} className="group hover:bg-slate-50/60 transition-colors">
                         <td className="py-3.5 px-5 text-sm text-slate-500 whitespace-nowrap">
                           {format(new Date(record.createdAt), "dd/MM/yy")}
                         </td>
@@ -321,6 +413,15 @@ export default function Financial() {
                         }`}>
                           {record.type === "receita" ? "+" : "−"}{formatCurrency(Number(record.amount))}
                         </td>
+                        <td className="py-3.5 px-3 w-10">
+                          <button
+                            onClick={() => setDeleteTarget({ id: record.id, description: record.description, amount: Number(record.amount) })}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-100 text-slate-300 hover:text-red-500 transition-all"
+                            title="Excluir registro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -351,6 +452,7 @@ export default function Financial() {
                             {formatCurrency(totalReceitas - totalDespesas)}
                           </span>
                         </td>
+                        <td />
                       </tr>
                     </tfoot>
                   )}
@@ -370,6 +472,65 @@ export default function Financial() {
           <CreateRecordForm onSuccess={handleSuccess} />
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <DialogContent className="border-none shadow-2xl rounded-3xl sm:max-w-[420px]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-red-100">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <DialogTitle className="font-display text-xl">Excluir Registro?</DialogTitle>
+            </div>
+            <DialogDescription className="text-slate-600 pt-1">
+              Esta ação não pode ser desfeita. O registro será permanentemente removido.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-sm my-1">
+              <p className="font-semibold text-slate-800 truncate">{deleteTarget.description}</p>
+              <p className="text-slate-500 text-xs mt-0.5">{formatCurrency(deleteTarget.amount)}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
+            <Button variant="outline" className="rounded-xl" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" className="rounded-xl" onClick={handleDeleteRecord} disabled={isDeleting}>
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Excluir Permanentemente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Billing trigger confirmation dialog */}
+      <Dialog open={showBillingConfirm} onOpenChange={setShowBillingConfirm}>
+        <DialogContent className="border-none shadow-2xl rounded-3xl sm:max-w-[420px]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-violet-100">
+                <CalendarCheck2 className="w-5 h-5 text-violet-600" />
+              </div>
+              <DialogTitle className="font-display text-xl">Executar Cobrança Mensal</DialogTitle>
+            </div>
+            <DialogDescription className="text-slate-600 pt-1">
+              Serão gerados lançamentos financeiros pendentes para todas as assinaturas ativas cujo dia de vencimento é hoje. Assinaturas já cobradas neste mês serão ignoradas automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
+            <Button variant="outline" className="rounded-xl" onClick={() => setShowBillingConfirm(false)} disabled={billingRunning}>
+              Cancelar
+            </Button>
+            <Button className="rounded-xl bg-violet-600 hover:bg-violet-700" onClick={handleRunBilling} disabled={billingRunning}>
+              {billingRunning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              Confirmar e Executar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </AppLayout>
   );
 }

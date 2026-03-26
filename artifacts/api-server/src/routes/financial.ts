@@ -2,8 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt, gt } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { logAudit } from "../lib/auditLog.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -310,6 +311,38 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
     }
 
     res.json(record);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/records/:id", requirePermission("financial.write"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+
+    const [record] = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(eq(financialRecordsTable.id, id));
+
+    if (!record) {
+      res.status(404).json({ error: "Not Found", message: "Registro financeiro não encontrado" });
+      return;
+    }
+
+    await db.delete(financialRecordsTable).where(eq(financialRecordsTable.id, id));
+
+    await logAudit({
+      userId: req.userId,
+      action: "delete",
+      entityType: "financial_record",
+      entityId: id,
+      patientId: record.patientId ?? null,
+      summary: `Registro financeiro excluído: ${record.description} (R$ ${Number(record.amount).toFixed(2)})`,
+    });
+
+    res.status(204).send();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

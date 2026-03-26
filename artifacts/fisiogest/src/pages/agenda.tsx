@@ -56,7 +56,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -2052,6 +2052,8 @@ function BlockedSlotModal({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [deleteGroupId, setDeleteGroupId] = useState<{ id: number; groupId: string | null } | null>(null);
+  const [editSlot, setEditSlot] = useState<{ id: number; startTime: string; endTime: string; reason: string } | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const { data: existingBlocks = [], refetch: refetchList } = useQuery<BlockedSlot[]>({
     queryKey: ["blocked-slots-modal", form.date],
@@ -2148,6 +2150,36 @@ function BlockedSlotModal({
       toast({ variant: "destructive", title: "Erro ao remover bloqueio." });
     } finally {
       setDeleteGroupId(null);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editSlot) return;
+    if (editSlot.startTime >= editSlot.endTime) {
+      toast({ variant: "destructive", title: "Horário inválido", description: "O horário de início deve ser anterior ao término." });
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/blocked-slots/${editSlot.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ startTime: editSlot.startTime, endTime: editSlot.endTime, reason: editSlot.reason }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Erro ao salvar", description: data.message ?? "Tente novamente." });
+      } else {
+        toast({ title: "Bloqueio atualizado com sucesso." });
+        setEditSlot(null);
+        refetchList();
+        onSuccess();
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao atualizar bloqueio." });
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -2294,13 +2326,22 @@ function BlockedSlotModal({
                         </span>
                       )}
                     </div>
-                    <button
-                      className="ml-2 p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
-                      onClick={() => handleDelete(b.id, (b as any).recurrenceGroupId || null)}
-                      title="Remover bloqueio"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 ml-2 shrink-0">
+                      <button
+                        className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors"
+                        onClick={() => setEditSlot({ id: b.id, startTime: b.startTime, endTime: b.endTime, reason: (b as any).reason ?? "" })}
+                        title="Editar bloqueio"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                        onClick={() => handleDelete(b.id, (b as any).recurrenceGroupId || null)}
+                        title="Remover bloqueio"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2325,6 +2366,60 @@ function BlockedSlotModal({
                 Toda a série recorrente
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit blocked slot dialog */}
+      {editSlot && (
+        <Dialog open onOpenChange={() => setEditSlot(null)}>
+          <DialogContent className="sm:max-w-[360px] border-none shadow-2xl rounded-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-slate-100">
+                  <Pencil className="w-4 h-4 text-slate-600" />
+                </div>
+                <DialogTitle className="font-display text-lg">Editar Bloqueio</DialogTitle>
+              </div>
+            </DialogHeader>
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Início</Label>
+                  <TimeInputPTBR
+                    value={editSlot.startTime}
+                    onChange={(v) => setEditSlot({ ...editSlot, startTime: v })}
+                    className="h-10 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Término</Label>
+                  <TimeInputPTBR
+                    value={editSlot.endTime}
+                    onChange={(v) => setEditSlot({ ...editSlot, endTime: v })}
+                    className="h-10 rounded-xl"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Motivo</Label>
+                <Input
+                  placeholder="Ex: Almoço, Reunião..."
+                  value={editSlot.reason}
+                  onChange={(e) => setEditSlot({ ...editSlot, reason: e.target.value })}
+                  className="h-10 rounded-xl"
+                />
+              </div>
+            </div>
+            <DialogFooter className="pt-2 gap-2">
+              <Button variant="outline" className="rounded-xl flex-1" onClick={() => setEditSlot(null)} disabled={isSavingEdit}>
+                Cancelar
+              </Button>
+              <Button className="rounded-xl flex-1" onClick={handleSaveEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Pencil className="w-4 h-4 mr-1.5" />}
+                Salvar
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
