@@ -149,17 +149,19 @@ async function checkConflict(
   endTime: string,
   procedureId: number,
   maxCapacity: number,
-  excludeId?: number
+  excludeId?: number,
+  scheduleId?: number | null
 ): Promise<{ conflict: boolean; currentCount: number; reason?: string }> {
   if (maxCapacity > 1) {
     // Rule: all patients in a group session must share the exact same startTime (and endTime).
-    // 1. Count bookings already in this exact group session.
-    const sameSessionConds = [
+    // 1. Count bookings already in this exact group session (scoped to the same schedule when provided).
+    const sameSessionConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
       eq(appointmentsTable.startTime, startTime),
       sql`status NOT IN ('cancelado', 'faltou')`,
     ];
+    if (scheduleId) sameSessionConds.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) sameSessionConds.push(ne(appointmentsTable.id, excludeId));
 
     const sameSession = await db
@@ -171,15 +173,15 @@ async function checkConflict(
       return { conflict: true, currentCount: sameSession.length, reason: "full" };
     }
 
-    // 2. Ensure no other group session of this procedure overlaps this time slot.
-    // (A session at a different startTime that still overlaps blocks the professional.)
-    const overlapConds = [
+    // 2. Ensure no other group session of this procedure overlaps this time slot within the same schedule.
+    const overlapConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
       sql`status NOT IN ('cancelado', 'faltou')`,
       sql`start_time != ${startTime}`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
+    if (scheduleId) overlapConds.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) overlapConds.push(ne(appointmentsTable.id, excludeId));
 
     const overlapping = await db
@@ -194,13 +196,13 @@ async function checkConflict(
     return { conflict: false, currentCount: sameSession.length };
   } else {
     // Rule: next slot is only free after the previous one ends.
-    // Overlap = start_time < newEndTime AND end_time > newStartTime.
-    // A new appointment starting exactly when another ends (end_time = newStartTime) is NOT a conflict.
-    const conditions = [
+    // When a scheduleId is provided, only check conflicts within the same schedule.
+    const conditions: any[] = [
       eq(appointmentsTable.date, date),
       sql`status NOT IN ('cancelado', 'faltou')`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
+    if (scheduleId) conditions.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) conditions.push(ne(appointmentsTable.id, excludeId));
 
     const existing = await db
@@ -265,20 +267,24 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
   try {
     const { date, procedureId, scheduleId } = req.query;
     let { clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
+    let slotStep = 30; // default step in minutes
 
     if (!date || !procedureId) {
       res.status(400).json({ error: "date e procedureId são obrigatórios" });
       return;
     }
 
+    let resolvedScheduleId: number | null = null;
     if (scheduleId) {
+      resolvedScheduleId = parseInt(scheduleId as string);
       const [schedule] = await db
         .select()
         .from(schedulesTable)
-        .where(eq(schedulesTable.id, parseInt(scheduleId as string)));
+        .where(eq(schedulesTable.id, resolvedScheduleId));
       if (schedule) {
         clinicStart = schedule.startTime;
         clinicEnd = schedule.endTime;
+        slotStep = schedule.slotDurationMinutes ?? 30;
       }
     }
 
@@ -297,6 +303,15 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
     const duration = procedure.durationMinutes;
     const maxCap = procedure.maxCapacity ?? 1;
 
+    // Fetch only appointments from the relevant schedule (or all if no schedule filter)
+    const apptConditions: any[] = [
+      eq(appointmentsTable.date, date as string),
+      sql`status NOT IN ('cancelado', 'faltou')`,
+    ];
+    if (resolvedScheduleId) {
+      apptConditions.push(eq(appointmentsTable.scheduleId, resolvedScheduleId));
+    }
+
     const existingAppts = await db
       .select({
         id: appointmentsTable.id,
@@ -305,12 +320,7 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
         endTime: appointmentsTable.endTime,
       })
       .from(appointmentsTable)
-      .where(
-        and(
-          eq(appointmentsTable.date, date as string),
-          sql`status NOT IN ('cancelado', 'faltou')`
-        )
-      );
+      .where(and(...apptConditions));
 
     const blockedSlots = await db
       .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })
@@ -319,7 +329,10 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
 
     const slots: { time: string; available: boolean; spotsLeft: number }[] = [];
 
-    for (let start = openMin; start + duration <= closeMin; start += 30) {
+    // Use the schedule's slot step so the grid aligns with the configured agenda
+    const effectiveStep = Math.min(slotStep, duration > 0 ? duration : slotStep);
+
+    for (let start = openMin; start + duration <= closeMin; start += effectiveStep) {
       const startTime = minutesToTime(start);
       const slotEnd = start + duration;
 
@@ -336,7 +349,6 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
 
       if (maxCap > 1) {
         // Group procedures: all patients share the exact same startTime.
-        // Count bookings already in this specific group session.
         const sameSessionCount = existingAppts.filter(
           (a) => a.procedureId === procedure.id && a.startTime === startTime
         ).length;
@@ -357,7 +369,6 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
         }
       } else {
         // Individual procedures: blocked if any appointment overlaps this slot.
-        // A slot starting exactly when another ends is NOT blocked (end_time > start → strict).
         const occupiedCount = existingAppts.filter(
           (a) =>
             timeToMinutes(a.startTime) < slotEnd &&
@@ -410,8 +421,10 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
     const endTime = addMinutes(startTime, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
 
+    const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
+
     const { conflict, currentCount, reason } = await checkConflict(
-      date, startTime, endTime, procedure.id, maxCapacity
+      date, startTime, endTime, procedure.id, maxCapacity, undefined, resolvedScheduleId
     );
 
     if (conflict) {
@@ -439,7 +452,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
         notes,
         professionalId: req.userId,
         clinicId: req.clinicId ?? null,
-        scheduleId: scheduleId ?? null,
+        scheduleId: resolvedScheduleId,
       })
       .returning();
 
@@ -474,6 +487,7 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     let endTime: string | undefined;
     let maxCapacity = 1;
     let effectiveProcedureId = procedureId;
+    let effectiveScheduleId: number | null = null;
 
     if (startTime) {
       if (procedureId) {
@@ -491,12 +505,13 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
           endTime = addMinutes(startTime, current.procedure.durationMinutes);
           maxCapacity = (current.procedure as any).maxCapacity ?? 1;
           effectiveProcedureId = current.procedureId;
+          effectiveScheduleId = (current as any).scheduleId ?? null;
         }
       }
 
       if (date && endTime) {
         const { conflict, currentCount, reason } = await checkConflict(
-          date, startTime, endTime, effectiveProcedureId, maxCapacity, id
+          date, startTime, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId
         );
 
         if (conflict) {

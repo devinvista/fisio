@@ -400,6 +400,19 @@ export default function Agenda() {
               <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-slate-300" />
               <span className="text-xs text-slate-600">Bloqueado</span>
             </div>
+            {activeSchedules.length >= 2 && (
+              <>
+                <div className="border-t border-slate-100 mt-2 pt-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Agendas</p>
+                  {activeSchedules.map((s) => (
+                    <div key={s.id} className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                      <span className="text-xs text-slate-600 truncate">{s.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -579,6 +592,10 @@ export default function Agenda() {
                           const spotsLeft = maxCapacity - occupancy;
                           const firstApt = grpApts[0];
 
+                          const grpScheduleColor = !selectedScheduleId && (firstApt as any).scheduleId
+                            ? schedules.find((s) => s.id === (firstApt as any).scheduleId)?.color
+                            : undefined;
+
                           return (
                             <div
                               key={`group-${item.procedureId}-${startTime}`}
@@ -591,6 +608,13 @@ export default function Agenda() {
                               }}
                               onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
                             >
+                              {grpScheduleColor && (
+                                <span
+                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
+                                  style={{ backgroundColor: grpScheduleColor }}
+                                  title={schedules.find((s) => s.id === (firstApt as any).scheduleId)?.name}
+                                />
+                              )}
                               {short ? (
                                 <div className="flex items-center gap-1">
                                   <Users className="w-2.5 h-2.5 shrink-0 opacity-80" />
@@ -637,6 +661,10 @@ export default function Agenda() {
                         const leftPct = col * widthPct;
                         const short = height < 48;
 
+                        const aptScheduleColor = !selectedScheduleId && (apt as any).scheduleId
+                          ? schedules.find((s) => s.id === (apt as any).scheduleId)?.color
+                          : undefined;
+
                         return (
                           <div
                             key={apt.id}
@@ -652,6 +680,13 @@ export default function Agenda() {
                             }}
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
+                            {aptScheduleColor && (
+                              <span
+                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
+                                style={{ backgroundColor: aptScheduleColor }}
+                                title={schedules.find((s) => s.id === (apt as any).scheduleId)?.name}
+                              />
+                            )}
                             {short ? (
                               <div className="flex items-center gap-1">
                                 {(apt as any).source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-90" />}
@@ -1473,11 +1508,21 @@ function CreateAppointmentForm({
 
   const canFetchSlots = !!(formData.date && formData.procedureId);
   const { data: slotsData, isFetching: slotsFetching } = useQuery({
-    queryKey: ["available-slots", formData.date, formData.procedureId],
+    queryKey: ["available-slots", formData.date, formData.procedureId, scheduleId ?? null],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/appointments/available-slots?date=${formData.date}&procedureId=${formData.procedureId}${scheduleId ? `&scheduleId=${scheduleId}` : "&clinicStart=07:00&clinicEnd=19:00"}`
-      );
+      const params = new URLSearchParams({
+        date: formData.date,
+        procedureId: formData.procedureId,
+      });
+      if (scheduleId) {
+        params.set("scheduleId", String(scheduleId));
+      } else {
+        params.set("clinicStart", "07:00");
+        params.set("clinicEnd", "19:00");
+      }
+      const res = await fetch(`/api/appointments/available-slots?${params}`, {
+        credentials: "include",
+      });
       return res.json();
     },
     enabled: canFetchSlots,

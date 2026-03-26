@@ -21,7 +21,7 @@ async function getScheduleWithProfessional(id: number) {
   return { ...schedule, professional: professional ?? null };
 }
 
-router.get("/", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
+router.get("/", requirePermission("appointments.read"), async (req: AuthRequest, res) => {
   try {
     const conditions = [];
     if (!req.isSuperAdmin && req.clinicId) {
@@ -53,7 +53,7 @@ router.get("/", requirePermission("settings.manage"), async (req: AuthRequest, r
   }
 });
 
-router.get("/:id", requirePermission("settings.manage"), async (req, res) => {
+router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const schedule = await getScheduleWithProfessional(id);
