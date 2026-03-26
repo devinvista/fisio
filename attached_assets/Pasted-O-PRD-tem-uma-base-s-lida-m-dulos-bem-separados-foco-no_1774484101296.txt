@@ -1,0 +1,89 @@
+O PRD tem uma base sólida: módulos bem separados, foco no público certo, stack técnica coerente e consciência de compliance (LGPD, COFFITO). A separação MVP vs. Roadmap também está bem feita.
+Lacunas críticas já identificadas (regulatório)
+
+Esses itens já foram mapeados nos documentos de análise do projeto, mas ainda não estão implementados:
+Item	Impacto	Status
+Alta fisioterapêutica (motivo, resultado, recomendações)	Exigência do COFFITO — sem isso o prontuário é inválido juridicamente	Não implementado
+Edição e exclusão de avaliações/evoluções	Correção de erros é obrigação em prontuário clínico	Não implementado
+Vínculo evolução ↔ consulta na UI	Campo existe no banco mas não aparece no formulário	Incompleto
+Cabeçalho do paciente sem profissão, contato de emergência e idade calculada	Dados que existem no banco mas sumidos na UI	Incompleto
+INNER JOIN no financeiro do paciente	Registros avulsos sem consulta vinculada somem	Bug real
+Lacunas no PRD que devem ser adicionadas ao documento
+
+O PRD é bom como rascunho inicial, mas está raso em vários módulos que o produto já implementou ou precisará implementar:
+1. Módulo de Planos de Assinatura (ausente no PRD)
+
+O sistema já tem tabela subscriptions e lida com billingType = mensal, mas o PRD não menciona planos de assinatura recorrentes como produto. Isso é o principal modelo de negócio do Pilates e precisa estar no PRD com:
+
+    Ciclo de cobrança, vencimento dinâmico, crédito de sessões, controle de inadimplência
+
+2. Crédito de sessões (ausente no PRD)
+
+O banco já tem session_credits e a lógica de creditoSessao/usoCredito existe nas rotas. O PRD não descreve esse fluxo — e é fundamental para Pilates com planos mensais onde o paciente falta e o crédito precisa ser controlado.
+3. Slot bloqueado na agenda (ausente no PRD)
+
+A tabela blocked_slots existe no banco, mas o PRD menciona apenas "bloquear horários" sem especificar: bloqueio recorrente (almoço todo dia), bloqueio por período (férias), motivo do bloqueio.
+4. Módulo de Estética — muito genérico no PRD
+
+O PRD menciona "registro fotográfico antes/depois" em apenas 4 linhas. Para o público de estéticas, o PRD deveria detalhar:
+
+    Ficha de anamnese estética separada da fisioterapêutica (CONITEC/ANVISA têm orientações distintas)
+    Histórico de procedimentos estéticos por área corporal
+    Termos de consentimento específicos por procedimento (Escleroterapia, Carboxiterapia têm riscos próprios)
+
+5. Relatório COFFITO ausente
+
+O PRD menciona "relatórios" de forma genérica (receita, lucro, ocupação). Mas fisioterapeutas precisam de relatórios para o COFFITO: número de atendimentos por período, CID mais frequentes, alta com desfecho documentado. Isso diferencia o produto dos concorrentes genéricos.
+6. Multiusuário dentro da clínica (persona 2 subdesenvolvida)
+
+O PRD menciona "clínica com 2–6 profissionais" como persona, mas não especifica como seria o sistema multiusuário: cada profissional vê só seus pacientes? A recepcionista agenda por qualquer profissional? Há separação de caixa por profissional? Esses fluxos precisam estar documentados antes de implementar.
+7. Agendamento online pelo cliente (Módulo 4) — fluxo incompleto
+
+O PRD descreve o fluxo feliz em 5 passos, mas não cobre:
+
+    O que acontece se o cliente cancelar? Há regra de cancelamento com antecedência mínima?
+    Confirmação automática vs. aprovação manual do profissional?
+    Limite de remarcações?
+    O cliente precisa pagar para confirmar? (integração de pagamento é "fora do MVP" mas isso quebra o fluxo de agendamento online)
+
+8. Lembretes e notificações (V2 no roadmap, mas deveria ser MVP)
+
+Lembretes por WhatsApp estão no V2, mas reduzir faltas é o objetivo primário #2 do produto. Sem lembrete automatizado (mesmo que seja só por e-mail no MVP), esse objetivo nunca será atingido. Mover pelo menos lembrete por e-mail/SMS para o MVP.
+Melhorias técnicas não cobertas no PRD
+Item	Justificativa
+Backup e retenção de dados	O PRD menciona "backup automático" em 1 linha como requisito não funcional. Dados de saúde são sensíveis — precisa especificar frequência, retenção mínima (LGPD: prazo de guarda de prontuário é 5 anos pelo CFM)
+Auditoria de alterações (audit log)	Prontuários clínicos exigem rastreabilidade: quem editou o quê e quando. Hoje o sistema não tem isso
+Exportação do prontuário em PDF	COFFITO exige que o paciente possa obter cópia do prontuário. Ausente no PRD e na implementação
+Assinatura digital do prontuário	Evoluções e alta deveriam poder ser assinadas digitalmente pelo profissional (integração com GOV.BR ou certificado ICP-Brasil no roadmap)
+Rate limiting e segurança de API	PRD menciona JWT mas não cobre rate limiting, CORS restrito, proteção contra scraping de dados clínicos
+SLA e tempo de resposta por endpoint	PRD diz "< 2 segundos" de forma genérica. Endpoints de agenda e financeiro têm requisitos diferentes
+Melhorias estratégicas e de modelo de negócio
+Precificação SaaS ausente no PRD
+
+O PRD define o produto mas não define como ele vai cobrar dos profissionais. Sugestão de modelo:
+
+    Plano Solo — 1 profissional, X pacientes ativos — R$ 79–99/mês
+    Plano Clínica — até 5 profissionais — R$ 199–249/mês
+    Plano Enterprise — multi-clínica, API, white-label
+
+Isso impacta diretamente a arquitetura (tabela tenants, isolamento de dados por clínica).
+Diferenciais frágeis no PRD
+
+O PRD lista como diferenciais: "prontuário integrado, financeiro por procedimento, agenda inteligente, foco em fisio e estética". Todos os concorrentes (Ninsaúde, Fisio App, Tecnofit) dizem a mesma coisa. O diferencial real que o FisioGest Pro tem e não está documentado:
+
+    Controle de planos mensais com crédito de sessão — nenhum concorrente faz isso bem
+    Margem por procedimento (custo vs. receita) — raro no segmento
+    Escleroterapia, Carboxiterapia no cadastro de procedimentos — nicho que concorrentes ignoram
+
+Priorização sugerida para o backlog
+Prioridade	Item	Motivo
+🔴 Imediato	Alta fisioterapêutica no prontuário	Requisito legal COFFITO
+🔴 Imediato	Exportar prontuário em PDF	Direito do paciente (LGPD + CFM)
+🔴 Imediato	Corrigir INNER JOIN no financeiro	Bug que oculta dados reais
+🟠 Curto prazo	Editar/excluir avaliações e evoluções	Usabilidade clínica básica
+🟠 Curto prazo	Lembrete de consulta por e-mail	Objetivo primário do produto
+🟡 Médio prazo	Ficha de anamnese estética separada	Diferencial de nicho
+🟡 Médio prazo	Relatório COFFITO	Diferencial regulatório
+🟡 Médio prazo	Audit log de prontuário	Segurança jurídica
+🟢 Roadmap	Multiusuário com perfis	Persona 2 (clínica)
+🟢 Roadmap	WhatsApp / pagamento online	V2 já previsto
