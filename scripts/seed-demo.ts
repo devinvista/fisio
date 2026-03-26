@@ -40,11 +40,11 @@ function rnd(min: number, max: number) { return Math.floor(Math.random() * (max 
 
 // ── Dados mestres ──────────────────────────────────────────────────────────
 const USERS = [
-  { name: "Admin Sistema",    email: "admin@fisiogest.com.br",      password: "123456", roles: ["admin"] },
-  { name: "Dra. Mariana Costa", email: "fisio@fisiogest.com.br",    password: "123456", roles: ["profissional"] },
-  { name: "Dr. Rodrigo Alves", email: "rodrigo@fisiogest.com.br",   password: "123456", roles: ["profissional"] },
-  { name: "Maria Secretária", email: "secretaria@fisiogest.com.br", password: "123456", roles: ["secretaria"] },
-  { name: "Dra. Marta Oliveira", email: "marta@fisiogest.com.br",   password: "123456", roles: ["admin", "profissional"] },
+  { name: "Admin Sistema",    cpf: "00000000001", email: "admin@fisiogest.com.br",      password: "123456", roles: ["admin"] },
+  { name: "Dra. Mariana Costa", cpf: "00000000002", email: "fisio@fisiogest.com.br",    password: "123456", roles: ["profissional"] },
+  { name: "Dr. Rodrigo Alves", cpf: "00000000003", email: "rodrigo@fisiogest.com.br",   password: "123456", roles: ["profissional"] },
+  { name: "Maria Secretária", cpf: "00000000004", email: "secretaria@fisiogest.com.br", password: "123456", roles: ["secretaria"] },
+  { name: "Dra. Marta Oliveira", cpf: "00000000005", email: "marta@fisiogest.com.br",   password: "123456", roles: ["admin", "profissional"] },
 ];
 
 const PROCS = [
@@ -120,7 +120,7 @@ async function seed() {
   const userMap: Record<string, number> = {};
   for (const u of USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
-    const [user] = await db.insert(usersTable).values({ name: u.name, email: u.email, passwordHash }).returning();
+    const [user] = await db.insert(usersTable).values({ name: u.name, cpf: u.cpf, email: u.email, passwordHash }).returning();
     userMap[u.email] = user.id;
     await db.insert(userRolesTable).values(u.roles.map((role) => ({ userId: user.id, role })));
     console.log(`  ✅ ${u.name} [${u.roles.join(", ")}]`);

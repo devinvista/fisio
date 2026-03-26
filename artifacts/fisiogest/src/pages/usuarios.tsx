@@ -30,7 +30,8 @@ import type { Role } from "@/lib/permissions";
 interface SystemUser {
   id: number;
   name: string;
-  email: string;
+  cpf: string;
+  email?: string | null;
   roles: string[];
   createdAt: string;
 }
@@ -47,9 +48,25 @@ async function fetchUsers(): Promise<SystemUser[]> {
   return res.json();
 }
 
+function formatCpf(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatCpfDisplay(cpf: string): string {
+  if (!cpf) return "—";
+  const d = cpf.replace(/\D/g, "");
+  if (d.length !== 11) return cpf;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
 async function createUser(data: {
   name: string;
-  email: string;
+  cpf: string;
+  email?: string;
   password: string;
   roles: Role[];
 }): Promise<SystemUser> {
@@ -67,7 +84,7 @@ async function createUser(data: {
 
 async function updateUser(
   id: number,
-  data: { name: string; email: string; roles: Role[]; password?: string }
+  data: { name: string; cpf?: string; email?: string; roles: Role[]; password?: string }
 ): Promise<SystemUser> {
   const res = await fetch(`/api/users/${id}`, {
     method: "PUT",
@@ -89,7 +106,7 @@ async function deleteUser(id: number): Promise<void> {
   }
 }
 
-const EMPTY_FORM = { name: "", email: "", password: "", roles: ["profissional"] as Role[] };
+const EMPTY_FORM = { name: "", cpf: "", email: "", password: "", roles: ["profissional"] as Role[] };
 
 export default function Usuarios() {
   const { user: currentUser } = useAuth();
@@ -149,7 +166,7 @@ export default function Usuarios() {
 
   function openEdit(u: SystemUser) {
     setEditingUser(u);
-    setForm({ name: u.name, email: u.email, password: "", roles: u.roles as Role[] });
+    setForm({ name: u.name, cpf: formatCpfDisplay(u.cpf), email: u.email ?? "", password: "", roles: u.roles as Role[] });
     setDialogOpen(true);
   }
 
@@ -175,10 +192,15 @@ export default function Usuarios() {
       toast({ title: "Selecione pelo menos um perfil", variant: "destructive" });
       return;
     }
+    if (!form.cpf) {
+      toast({ title: "CPF é obrigatório", variant: "destructive" });
+      return;
+    }
     if (editingUser) {
       const data: Parameters<typeof updateUser>[1] = {
         name: form.name,
-        email: form.email,
+        cpf: form.cpf,
+        email: form.email || undefined,
         roles: form.roles,
       };
       if (form.password) data.password = form.password;
@@ -190,7 +212,8 @@ export default function Usuarios() {
       }
       createMutation.mutate({
         name: form.name,
-        email: form.email,
+        cpf: form.cpf,
+        email: form.email || undefined,
         password: form.password,
         roles: form.roles,
       });
@@ -225,6 +248,7 @@ export default function Usuarios() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
+                <TableHead>CPF</TableHead>
                 <TableHead>E-mail</TableHead>
                 <TableHead>Perfis</TableHead>
                 <TableHead>Cadastrado em</TableHead>
@@ -234,14 +258,14 @@ export default function Usuarios() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     Nenhum usuário encontrado
                   </TableCell>
                 </TableRow>
@@ -259,7 +283,8 @@ export default function Usuarios() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-sm">{formatCpfDisplay(u.cpf)}</TableCell>
+                    <TableCell className="text-muted-foreground">{u.email ?? <span className="text-slate-300">—</span>}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {u.roles.map((r) => (
@@ -330,14 +355,30 @@ export default function Usuarios() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="cpf">CPF *</Label>
+              <Input
+                id="cpf"
+                type="text"
+                inputMode="numeric"
+                value={form.cpf}
+                onChange={(e) => setForm((p) => ({ ...p, cpf: formatCpf(e.target.value) }))}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">
+                E-mail{" "}
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
               <Input
                 id="email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                 placeholder="usuario@clinica.com.br"
-                required
               />
             </div>
 

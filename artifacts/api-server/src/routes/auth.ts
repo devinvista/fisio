@@ -42,31 +42,30 @@ router.post("/register", async (req, res) => {
       ? roles
       : ["profissional"];
 
-    if (!name || !email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Nome, e-mail e senha são obrigatórios" });
+    if (!name || !cpf || !password) {
+      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e senha são obrigatórios" });
       return;
     }
 
-    const existing = await db
+    const normalizedCpf = normalizeCpf(cpf);
+    const existingCpf = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email))
+      .where(eq(usersTable.cpf, normalizedCpf))
       .limit(1);
-
-    if (existing.length > 0) {
-      res.status(400).json({ error: "Bad Request", message: "E-mail já cadastrado" });
+    if (existingCpf.length > 0) {
+      res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
       return;
     }
 
-    if (cpf) {
-      const normalizedCpf = normalizeCpf(cpf);
-      const existingCpf = await db
+    if (email) {
+      const existing = await db
         .select()
         .from(usersTable)
-        .where(eq(usersTable.cpf, normalizedCpf))
+        .where(eq(usersTable.email, email.toLowerCase().trim()))
         .limit(1);
-      if (existingCpf.length > 0) {
-        res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
+      if (existing.length > 0) {
+        res.status(400).json({ error: "Bad Request", message: "E-mail já cadastrado" });
         return;
       }
     }
@@ -76,8 +75,8 @@ router.post("/register", async (req, res) => {
       .insert(usersTable)
       .values({
         name,
-        email,
-        cpf: cpf ? normalizeCpf(cpf) : null,
+        cpf: normalizedCpf,
+        email: email ? email.toLowerCase().trim() : null,
         passwordHash,
       })
       .returning();

@@ -95,13 +95,13 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
             <div className="space-y-2">
-              <Label htmlFor="identifier">E-mail ou CPF</Label>
+              <Label htmlFor="identifier">CPF ou E-mail</Label>
               <div className="relative">
                 <Input
                   id="identifier"
                   type="text"
                   inputMode={isCpfMode ? "numeric" : "email"}
-                  placeholder="seu@email.com ou 000.000.000-00"
+                  placeholder="000.000.000-00 ou seu@email.com"
                   value={identifier}
                   onChange={handleIdentifierChange}
                   required

@@ -33,7 +33,7 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     registerMutation.mutate(
-      { data: { ...formData, cpf: formData.cpf || undefined } as any },
+      { data: { ...formData, email: formData.email || undefined } as any },
       {
         onSuccess: (res) => {
           toast({ title: "Conta criada!", description: "Bem-vindo ao FisioGest Pro." });
@@ -80,24 +80,7 @@ export default function Register() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-                autoComplete="email"
-                className="h-12 rounded-xl"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="cpf">
-                CPF{" "}
-                <span className="text-muted-foreground font-normal text-xs">(opcional — permite login pelo CPF)</span>
-              </Label>
+              <Label htmlFor="cpf">CPF *</Label>
               <Input
                 id="cpf"
                 type="text"
@@ -106,7 +89,24 @@ export default function Register() {
                 value={formData.cpf}
                 onChange={(e) => setFormData({ ...formData, cpf: formatCpf(e.target.value) })}
                 maxLength={14}
+                required
                 autoComplete="off"
+                className="h-12 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">
+                E-mail{" "}
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                autoComplete="email"
                 className="h-12 rounded-xl"
               />
             </div>

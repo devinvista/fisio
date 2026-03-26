@@ -62,31 +62,43 @@ router.get("/", requirePermission("users.manage"), async (_req, res) => {
 
 router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
-    const { name, email, password, roles } = req.body;
+    const { name, cpf, email, password, roles } = req.body;
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0
       ? roles
       : ["profissional"];
 
-    if (!name || !email || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Nome, e-mail e senha são obrigatórios" });
+    if (!name || !cpf || !password) {
+      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e senha são obrigatórios" });
       return;
     }
 
-    const existing = await db
+    const normalizedCpf = cpf.replace(/\D/g, "");
+    const existingCpf = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email))
+      .where(eq(usersTable.cpf, normalizedCpf))
       .limit(1);
-
-    if (existing.length > 0) {
-      res.status(400).json({ error: "Bad Request", message: "E-mail já cadastrado" });
+    if (existingCpf.length > 0) {
+      res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
       return;
+    }
+
+    if (email) {
+      const existing = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, email.toLowerCase().trim()))
+        .limit(1);
+      if (existing.length > 0) {
+        res.status(400).json({ error: "Bad Request", message: "E-mail já cadastrado" });
+        return;
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const [user] = await db
       .insert(usersTable)
-      .values({ name, email, passwordHash })
+      .values({ name, cpf: normalizedCpf, email: email ? email.toLowerCase().trim() : null, passwordHash })
       .returning();
 
     await db.insert(userRolesTable).values(roleList.map((role) => ({ userId: user.id, role })));
@@ -107,11 +119,12 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
 router.put("/:id", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, email, roles, password } = req.body;
+    const { name, cpf, email, roles, password } = req.body;
 
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;
-    if (email) updateData.email = email;
+    if (cpf) updateData.cpf = cpf.replace(/\D/g, "");
+    if (email !== undefined) updateData.email = email ? email.toLowerCase().trim() : null;
     if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
 
     const [user] = await db
