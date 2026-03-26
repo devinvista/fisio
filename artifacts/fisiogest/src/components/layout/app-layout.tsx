@@ -53,10 +53,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
 ];
 
-export function AppLayout({ children, title }: AppLayoutProps) {
-  const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
-  const [location] = useLocation();
+interface SidebarContentProps {
+  user: { name?: string; roles?: string[] } | null;
+  logout: () => void;
+  hasPermission: (p: Permission) => boolean;
+  clinics: unknown[];
+  isSuperAdmin: boolean;
+  location: string;
+}
 
+function SidebarContent({ user, logout, hasPermission, clinics, isSuperAdmin, location }: SidebarContentProps) {
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     const hasAccess = item.anyPermission
       ? item.anyPermission.some((p) => hasPermission(p))
@@ -64,11 +70,11 @@ export function AppLayout({ children, title }: AppLayoutProps) {
     return hasAccess && !(item.hideSuperAdmin && isSuperAdmin);
   });
 
-  const roleLabels = (user?.roles ?? [])
-    .map((r) => ROLE_LABELS[r as Role] ?? r)
+  const roleLabels = ((user as any)?.roles ?? [])
+    .map((r: string) => ROLE_LABELS[r as Role] ?? r)
     .join(", ");
 
-  const SidebarContent = () => (
+  return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-3 px-6 bg-black/10">
         <div className="bg-primary/20 p-2 rounded-lg">
@@ -133,11 +139,25 @@ export function AppLayout({ children, title }: AppLayoutProps) {
       </div>
     </div>
   );
+}
+
+export function AppLayout({ children, title }: AppLayoutProps) {
+  const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
+  const [location] = useLocation();
+
+  const sidebarProps: SidebarContentProps = {
+    user,
+    logout,
+    hasPermission,
+    clinics,
+    isSuperAdmin,
+    location,
+  };
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
       <aside className="hidden lg:block w-72 shrink-0 border-r border-sidebar-border shadow-2xl z-20">
-        <SidebarContent />
+        <SidebarContent {...sidebarProps} />
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden relative">
@@ -150,7 +170,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 p-0 border-none">
-                <SidebarContent />
+                <SidebarContent {...sidebarProps} />
               </SheetContent>
             </Sheet>
             <h1 className="font-display text-2xl font-bold text-foreground">{title}</h1>
