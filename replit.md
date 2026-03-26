@@ -399,6 +399,7 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
 | Agenda semanal + criação por clique | ✅ Completo |
 | Agenda — detalhe, edição, cancelamento | ✅ Completo |
+| Agendas independentes por clínica (geral e por profissional) | ✅ Completo |
 | Governança de horários (endTime calculado, conflitos) | ✅ Completo |
 | Procedimentos com vagas múltiplas (maxCapacity) | ✅ Completo |
 | Endpoint de vagas disponíveis | ✅ Completo |

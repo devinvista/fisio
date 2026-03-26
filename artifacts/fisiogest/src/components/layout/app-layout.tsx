@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
   CalendarDays,
+  CalendarCog,
   Users,
   Activity,
   Wallet,
@@ -37,6 +38,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: null },
   { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
+  { href: "/agendas", label: "Config. Agendas", icon: CalendarCog, permission: "settings.manage", hideSuperAdmin: true },
   { href: "/pacientes", label: "Pacientes", icon: Users, permission: "patients.read" },
   { href: "/procedimentos", label: "Procedimentos", icon: Activity, permission: "procedures.manage" },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },

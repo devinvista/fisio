@@ -19,6 +19,7 @@ import Usuarios from "./pages/usuarios";
 import Clinicas from "./pages/clinicas";
 import Configuracoes from "./pages/configuracoes";
 import Agendar from "./pages/agendar";
+import Agendas from "./pages/agendas";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -125,6 +126,9 @@ function Router() {
       </Route>
       <Route path="/configuracoes">
         {() => <PermissionRoute component={Configuracoes} permission="settings.manage" />}
+      </Route>
+      <Route path="/agendas">
+        {() => <PermissionRoute component={Agendas} permission="settings.manage" />}
       </Route>
       <Route path="/clinicas">
         {() => <PermissionRoute component={Clinicas} permission="clinics.manage" />}

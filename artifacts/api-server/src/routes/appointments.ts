@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -263,11 +263,23 @@ router.get("/", requirePermission("appointments.read"), async (req: AuthRequest,
 
 router.get("/available-slots", requirePermission("appointments.read"), async (req, res) => {
   try {
-    const { date, procedureId, clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
+    const { date, procedureId, scheduleId } = req.query;
+    let { clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
 
     if (!date || !procedureId) {
       res.status(400).json({ error: "date e procedureId são obrigatórios" });
       return;
+    }
+
+    if (scheduleId) {
+      const [schedule] = await db
+        .select()
+        .from(schedulesTable)
+        .where(eq(schedulesTable.id, parseInt(scheduleId as string)));
+      if (schedule) {
+        clinicStart = schedule.startTime;
+        clinicEnd = schedule.endTime;
+      }
     }
 
     const [procedure] = await db
@@ -375,7 +387,7 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
 
 router.post("/", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
-    const { patientId, procedureId, date, startTime, notes } = req.body;
+    const { patientId, procedureId, date, startTime, notes, scheduleId } = req.body;
 
     if (!patientId || !procedureId || !date || !startTime) {
       res.status(400).json({
@@ -427,6 +439,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
         notes,
         professionalId: req.userId,
         clinicId: req.clinicId ?? null,
+        scheduleId: scheduleId ?? null,
       })
       .returning();
 
