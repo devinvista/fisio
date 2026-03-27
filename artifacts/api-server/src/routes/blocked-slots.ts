@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { blockedSlotsTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { blockedSlotsTable, schedulesTable } from "@workspace/db";
+import { eq, and, gte, lte, inArray, isNull, or } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { randomUUID } from "crypto";
@@ -25,12 +25,13 @@ function dateStrIsAfter(a: string, b: string): boolean {
 
 router.get("/", requirePermission("appointments.read"), async (req: AuthRequest, res) => {
   try {
-    const { startDate, endDate, date } = req.query;
+    const { startDate, endDate, date, scheduleId } = req.query;
     const conditions: any[] = [];
 
     if (date) conditions.push(eq(blockedSlotsTable.date, date as string));
     if (startDate) conditions.push(gte(blockedSlotsTable.date, startDate as string));
     if (endDate) conditions.push(lte(blockedSlotsTable.date, endDate as string));
+    if (scheduleId) conditions.push(eq(blockedSlotsTable.scheduleId, parseInt(scheduleId as string)));
 
     if (!req.isSuperAdmin && req.clinicId) {
       conditions.push(eq(blockedSlotsTable.clinicId, req.clinicId));
@@ -54,6 +55,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       startTime,
       endTime,
       reason,
+      scheduleId: rawScheduleId,
       recurrenceType,
       recurrenceDays,
       recurrenceEndDate,
@@ -70,12 +72,27 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
     }
 
     const clinicId = req.clinicId ?? null;
+
+    // Resolve scheduleId: use provided value, or auto-detect if clinic has a single active schedule
+    let resolvedScheduleId: number | null = rawScheduleId ? parseInt(String(rawScheduleId)) : null;
+
+    if (!resolvedScheduleId && clinicId) {
+      const activeSchedules = await db
+        .select({ id: schedulesTable.id })
+        .from(schedulesTable)
+        .where(and(eq(schedulesTable.clinicId, clinicId), eq(schedulesTable.isActive, true)));
+
+      if (activeSchedules.length === 1) {
+        resolvedScheduleId = activeSchedules[0].id;
+      }
+    }
+
     const isRecurring = recurrenceType && recurrenceType !== "none";
 
     if (!isRecurring) {
       const [slot] = await db
         .insert(blockedSlotsTable)
-        .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null, clinicId })
+        .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null, clinicId, scheduleId: resolvedScheduleId })
         .returning();
       res.status(201).json({ slots: [slot], count: 1 });
       return;
@@ -122,6 +139,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       reason: reason || null,
       userId: req.userId ?? null,
       clinicId,
+      scheduleId: resolvedScheduleId,
       recurrenceGroupId: groupId,
     }));
 

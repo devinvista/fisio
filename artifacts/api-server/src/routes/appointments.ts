@@ -355,6 +355,10 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
     if (!authReq.isSuperAdmin && authReq.clinicId) {
       blockedConditions.push(eq(blockedSlotsTable.clinicId, authReq.clinicId));
     }
+    // When a specific schedule is requested, only apply blocks for that schedule
+    if (resolvedScheduleId) {
+      blockedConditions.push(eq(blockedSlotsTable.scheduleId, resolvedScheduleId));
+    }
 
     const blockedSlots = await db
       .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })

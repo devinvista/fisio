@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useListAppointments,
@@ -54,6 +54,7 @@ import {
   History,
   ArrowRight,
   ClipboardList,
+  CalendarDays,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -89,6 +90,8 @@ interface BlockedSlot {
   startTime: string;
   endTime: string;
   reason?: string | null;
+  scheduleId?: number | null;
+  recurrenceGroupId?: string | null;
 }
 
 interface ScheduleOption {
@@ -196,9 +199,11 @@ export default function Agenda() {
     : appointments;
 
   const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
-    queryKey: ["blocked-slots", startDateStr, endDateStr],
+    queryKey: ["blocked-slots", startDateStr, endDateStr, selectedScheduleId],
     queryFn: async () => {
-      const res = await fetch(`/api/blocked-slots?startDate=${startDateStr}&endDate=${endDateStr}`, { credentials: "include" });
+      const params = new URLSearchParams({ startDate: startDateStr, endDate: endDateStr });
+      if (selectedScheduleId) params.set("scheduleId", String(selectedScheduleId));
+      const res = await fetch(`/api/blocked-slots?${params}`, { credentials: "include" });
       return res.json();
     },
     staleTime: 30_000,
@@ -775,6 +780,8 @@ export default function Agenda() {
         open={isBlockModalOpen}
         onOpenChange={setIsBlockModalOpen}
         onSuccess={() => { setIsBlockModalOpen(false); refetchBlocked(); }}
+        activeSchedules={activeSchedules}
+        defaultScheduleId={selectedScheduleId ?? undefined}
       />
     </AppLayout>
   );
@@ -2292,10 +2299,14 @@ function BlockedSlotModal({
   open,
   onOpenChange,
   onSuccess,
+  activeSchedules = [],
+  defaultScheduleId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
+  activeSchedules?: ScheduleOption[];
+  defaultScheduleId?: number;
 }) {
   const { toast } = useToast();
   const [form, setForm] = useState({
@@ -2303,6 +2314,7 @@ function BlockedSlotModal({
     startTime: "12:00",
     endTime: "13:00",
     reason: "",
+    scheduleId: null as number | null,
     recurrenceType: "none" as "none" | "daily" | "weekly",
     recurrenceDays: [] as number[],
     recurrenceEndDate: "",
@@ -2312,10 +2324,28 @@ function BlockedSlotModal({
   const [editSlot, setEditSlot] = useState<{ id: number; startTime: string; endTime: string; reason: string } | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  // On open, auto-set scheduleId based on context
+  useEffect(() => {
+    if (open) {
+      if (defaultScheduleId) {
+        setForm(f => ({ ...f, scheduleId: defaultScheduleId }));
+      } else if (activeSchedules.length === 1) {
+        setForm(f => ({ ...f, scheduleId: activeSchedules[0].id }));
+      } else {
+        setForm(f => ({ ...f, scheduleId: null }));
+      }
+    }
+  }, [open, defaultScheduleId, activeSchedules]);
+
+  const resolvedScheduleId = form.scheduleId
+    ?? (activeSchedules.length === 1 ? activeSchedules[0].id : null);
+
   const { data: existingBlocks = [], refetch: refetchList } = useQuery<BlockedSlot[]>({
-    queryKey: ["blocked-slots-modal", form.date],
+    queryKey: ["blocked-slots-modal", form.date, resolvedScheduleId],
     queryFn: async () => {
-      const res = await fetch(`/api/blocked-slots?date=${form.date}`, { credentials: "include" });
+      const params = new URLSearchParams({ date: form.date });
+      if (resolvedScheduleId) params.set("scheduleId", String(resolvedScheduleId));
+      const res = await fetch(`/api/blocked-slots?${params}`, { credentials: "include" });
       return res.json();
     },
     enabled: open,
@@ -2355,6 +2385,7 @@ function BlockedSlotModal({
         endTime: form.endTime,
         reason: form.reason || undefined,
         recurrenceType: form.recurrenceType,
+        scheduleId: resolvedScheduleId ?? undefined,
       };
       if (isRecurring) {
         body.recurrenceEndDate = form.recurrenceEndDate;
@@ -2454,6 +2485,31 @@ function BlockedSlotModal({
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4 pt-1">
+            {/* Schedule selector — shown only when clinic has multiple active schedules */}
+            {activeSchedules.length > 1 && (
+              <div className="space-y-1.5">
+                <Label>Agenda *</Label>
+                <select
+                  className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  value={form.scheduleId ?? ""}
+                  onChange={(e) => setForm(f => ({ ...f, scheduleId: e.target.value ? parseInt(e.target.value) : null }))}
+                  required
+                >
+                  <option value="">Selecione a agenda…</option>
+                  {activeSchedules.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* Auto-selected single schedule — display only */}
+            {activeSchedules.length === 1 && (
+              <div className="flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
+                <CalendarDays className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="text-sm text-slate-600">Agenda: <span className="font-medium text-slate-800">{activeSchedules[0].name}</span></span>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label>Data inicial *</Label>
               <DatePickerPTBR
@@ -2566,7 +2622,11 @@ function BlockedSlotModal({
                 Bloqueios neste dia
               </p>
               <div className="space-y-1.5">
-                {existingBlocks.map((b) => (
+                {existingBlocks.map((b) => {
+                  const schedName = b.scheduleId
+                    ? activeSchedules.find((s) => s.id === b.scheduleId)?.name
+                    : null;
+                  return (
                   <div
                     key={b.id}
                     className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-200"
@@ -2577,7 +2637,12 @@ function BlockedSlotModal({
                       {b.reason && (
                         <span className="text-xs text-slate-500 truncate">{b.reason}</span>
                       )}
-                      {(b as any).recurrenceGroupId && (
+                      {schedName && (
+                        <span className="text-[10px] font-semibold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded shrink-0">
+                          {schedName}
+                        </span>
+                      )}
+                      {b.recurrenceGroupId && (
                         <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded shrink-0">
                           Recorrente
                         </span>
@@ -2600,7 +2665,8 @@ function BlockedSlotModal({
                       </button>
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
             </div>
           )}
