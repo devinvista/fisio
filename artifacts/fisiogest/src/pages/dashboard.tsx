@@ -72,7 +72,7 @@ export default function Dashboard() {
           <CardContent className="p-6">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-muted-foreground font-medium mb-1">Total de Pacientes</p>
+                <p className="text-muted-foreground font-medium mb-1">Pacientes Ativos</p>
                 <h3 className="font-display text-3xl font-bold text-foreground">{data?.totalPatients || 0}</h3>
               </div>
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -80,7 +80,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4 flex items-center text-sm text-muted-foreground gap-1">
-              <span>Pacientes ativos na clínica</span>
+              <span>Com plano de tratamento ativo</span>
             </div>
           </CardContent>
         </Card>

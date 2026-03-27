@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, treatmentPlansTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -98,9 +98,10 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       );
 
     const totalPatientsResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(patientsTable)
-      .where(patFilter ?? undefined);
+      .select({ count: sql<number>`count(distinct ${treatmentPlansTable.patientId})` })
+      .from(treatmentPlansTable)
+      .innerJoin(patientsTable, eq(treatmentPlansTable.patientId, patientsTable.id))
+      .where(and(eq(treatmentPlansTable.status, "ativo"), patFilter ?? undefined));
 
     const totalMonthAppts = await db.select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
