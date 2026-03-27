@@ -145,12 +145,29 @@ export default function Agenda() {
     ? schedules.find((s) => s.id === selectedScheduleId) ?? null
     : null;
 
-  const activeHourStart = selectedSchedule
-    ? parseInt(selectedSchedule.startTime.split(":")[0])
+  // Determine visible hour range based on schedule configuration:
+  // - If a specific schedule is selected → use its hours
+  // - If there's only 1 active schedule → use it automatically
+  // - If multiple schedules with none selected → span min start to max end
+  // - Fallback to hardcoded constants only when no schedules are configured
+  const effectiveSchedules = selectedSchedule
+    ? [selectedSchedule]
+    : activeSchedules.length > 0
+      ? activeSchedules
+      : null;
+
+  const activeHourStart = effectiveSchedules
+    ? Math.min(...effectiveSchedules.map((s) => parseInt(s.startTime.split(":")[0])))
     : HOUR_START;
-  const activeHourEnd = selectedSchedule
-    ? parseInt(selectedSchedule.endTime.split(":")[0]) + (parseInt(selectedSchedule.endTime.split(":")[1]) > 0 ? 1 : 0)
+
+  const activeHourEnd = effectiveSchedules
+    ? Math.max(...effectiveSchedules.map((s) => {
+        const h = parseInt(s.endTime.split(":")[0]);
+        const m = parseInt(s.endTime.split(":")[1]);
+        return m > 0 ? h + 1 : h;
+      }))
     : HOUR_END;
+
   const activeTotalHours = activeHourEnd - activeHourStart;
   const hours = Array.from({ length: activeTotalHours }).map((_, i) => activeHourStart + i);
 
