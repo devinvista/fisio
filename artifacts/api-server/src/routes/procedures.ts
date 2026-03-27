@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { proceduresTable, appointmentsTable } from "@workspace/db";
-import { eq, and, count, ilike, isNull, or } from "drizzle-orm";
+import { eq, and, count, ilike, isNull, or, sql } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import type { Role } from "@workspace/db";
@@ -91,7 +91,10 @@ router.put("/:id", requirePermission("procedures.manage"), async (req: AuthReque
 
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(proceduresTable.id, id)
-      : and(eq(proceduresTable.id, id), eq(proceduresTable.clinicId, req.clinicId!));
+      : and(
+          eq(proceduresTable.id, id),
+          or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, req.clinicId!))
+        );
 
     const [procedure] = await db
       .update(proceduresTable)
@@ -134,7 +137,10 @@ router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async
     const id = parseInt(req.params.id as string);
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(proceduresTable.id, id)
-      : and(eq(proceduresTable.id, id), eq(proceduresTable.clinicId, req.clinicId!));
+      : and(
+          eq(proceduresTable.id, id),
+          or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, req.clinicId!))
+        );
 
     const existing = await db.select().from(proceduresTable).where(condition).limit(1);
     if (!existing[0]) {
@@ -159,6 +165,13 @@ router.delete("/:id", requirePermission("procedures.manage"), async (req: AuthRe
   try {
     const id = parseInt(req.params.id as string);
 
+    const deleteCondition = req.isSuperAdmin || !req.clinicId
+      ? eq(proceduresTable.id, id)
+      : and(
+          eq(proceduresTable.id, id),
+          or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, req.clinicId!))
+        );
+
     const [{ total }] = await db
       .select({ total: count() })
       .from(appointmentsTable)
@@ -172,7 +185,7 @@ router.delete("/:id", requirePermission("procedures.manage"), async (req: AuthRe
       return;
     }
 
-    await db.delete(proceduresTable).where(eq(proceduresTable.id, id));
+    await db.delete(proceduresTable).where(deleteCondition);
     res.status(204).send();
   } catch (err) {
     console.error(err);

@@ -109,8 +109,8 @@ function CategoryBadge({ category }: { category: string }) {
 export default function Procedimentos() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { hasRole } = useAuth();
-  const isAdmin = hasRole("admin");
+  const { hasRole, isSuperAdmin } = useAuth();
+  const isAdmin = hasRole("admin") || isSuperAdmin;
 
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [search, setSearch] = useState("");
