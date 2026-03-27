@@ -174,7 +174,7 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
   }
 });
 
-router.post("/", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.post("/", requirePermission("medical.write"), async (req: AuthRequest, res) => {
   try {
     const planId = parseInt(req.params.planId as string);
     const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes, unitPrice, unitMonthlyPrice, discount } = req.body;
@@ -212,7 +212,7 @@ router.post("/", requirePermission("patients.write"), async (req: AuthRequest, r
   }
 });
 
-router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.put("/:id", requirePermission("medical.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const { procedureId, packageId, sessionsPerWeek, totalSessions, priority, notes, unitPrice, unitMonthlyPrice, discount } = req.body;
@@ -250,7 +250,7 @@ router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest,
   }
 });
 
-router.delete("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.delete("/:id", requirePermission("medical.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
 
