@@ -2949,6 +2949,7 @@ function AuditLogTab({ patientId }: { patientId: number }) {
 // ─── Appointment History Tab ────────────────────────────────────────────────────
 
 function HistoryTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
+  const { isSuperAdmin } = useAuth();
   const { data: appointments = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/appointments`],
     queryFn: () => fetch(`/api/patients/${patientId}/appointments`, {
@@ -3021,7 +3022,7 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
         defaultType="comparecimento"
       />
 
-      <AuditLogSection patientId={patientId} />
+      {isSuperAdmin && <AuditLogSection patientId={patientId} />}
     </div>
   );
 }
@@ -4434,7 +4435,7 @@ export default function PatientDetail() {
   const [, setLocation] = useLocation();
   const patientId = Number(id);
   const { data: patient, isLoading, refetch } = useGetPatient(patientId);
-  const { hasPermission } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const deleteMutation = useDeletePatient();
   const queryClient = useQueryClient();
@@ -4663,12 +4664,14 @@ export default function PatientDetail() {
                 >
                   <LogOut className="w-3.5 h-3.5 shrink-0" /> Alta Fisioterapêutica
                 </TabsTrigger>
-                <TabsTrigger
-                  value="auditoria"
-                  className="flex-1 rounded-lg data-[state=active]:bg-slate-800 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
-                >
-                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Auditoria
-                </TabsTrigger>
+                {isSuperAdmin && (
+                  <TabsTrigger
+                    value="auditoria"
+                    className="flex-1 rounded-lg data-[state=active]:bg-slate-800 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Auditoria
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -4686,9 +4689,11 @@ export default function PatientDetail() {
             <TabsContent value="discharge">
               <DischargeTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} />
             </TabsContent>
-            <TabsContent value="auditoria">
-              <AuditLogTab patientId={patientId} />
-            </TabsContent>
+            {isSuperAdmin && (
+              <TabsContent value="auditoria">
+                <AuditLogTab patientId={patientId} />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>

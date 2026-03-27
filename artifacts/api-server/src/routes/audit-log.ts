@@ -3,12 +3,12 @@ import { db } from "@workspace/db";
 import { auditLogTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { requireSuperAdmin } from "../middleware/rbac.js";
 
 const router = Router();
 router.use(authMiddleware);
 
-router.get("/patients/:patientId", requirePermission("medical.read"), async (req, res) => {
+router.get("/patients/:patientId", requireSuperAdmin(), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
     const logs = await db
