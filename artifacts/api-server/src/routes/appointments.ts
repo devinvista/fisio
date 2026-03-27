@@ -350,10 +350,16 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
       .from(appointmentsTable)
       .where(and(...apptConditions));
 
+    const blockedConditions: any[] = [eq(blockedSlotsTable.date, date as string)];
+    const authReq = req as AuthRequest;
+    if (!authReq.isSuperAdmin && authReq.clinicId) {
+      blockedConditions.push(eq(blockedSlotsTable.clinicId, authReq.clinicId));
+    }
+
     const blockedSlots = await db
       .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })
       .from(blockedSlotsTable)
-      .where(eq(blockedSlotsTable.date, date as string));
+      .where(and(...blockedConditions));
 
     const slots: { time: string; available: boolean; spotsLeft: number }[] = [];
 

@@ -23,14 +23,18 @@ function dateStrIsAfter(a: string, b: string): boolean {
   return a > b;
 }
 
-router.get("/", requirePermission("appointments.read"), async (req, res) => {
+router.get("/", requirePermission("appointments.read"), async (req: AuthRequest, res) => {
   try {
     const { startDate, endDate, date } = req.query;
-    const conditions = [];
+    const conditions: any[] = [];
 
     if (date) conditions.push(eq(blockedSlotsTable.date, date as string));
     if (startDate) conditions.push(gte(blockedSlotsTable.date, startDate as string));
     if (endDate) conditions.push(lte(blockedSlotsTable.date, endDate as string));
+
+    if (!req.isSuperAdmin && req.clinicId) {
+      conditions.push(eq(blockedSlotsTable.clinicId, req.clinicId));
+    }
 
     const slots = conditions.length > 0
       ? await db.select().from(blockedSlotsTable).where(and(...conditions)).orderBy(blockedSlotsTable.date, blockedSlotsTable.startTime)
@@ -65,12 +69,13 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       return;
     }
 
+    const clinicId = req.clinicId ?? null;
     const isRecurring = recurrenceType && recurrenceType !== "none";
 
     if (!isRecurring) {
       const [slot] = await db
         .insert(blockedSlotsTable)
-        .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null })
+        .values({ date, startTime, endTime, reason: reason || null, userId: req.userId ?? null, clinicId })
         .returning();
       res.status(201).json({ slots: [slot], count: 1 });
       return;
@@ -116,6 +121,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       endTime,
       reason: reason || null,
       userId: req.userId ?? null,
+      clinicId,
       recurrenceGroupId: groupId,
     }));
 
@@ -127,7 +133,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
   }
 });
 
-router.put("/:id", requirePermission("appointments.create"), async (req, res) => {
+router.put("/:id", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const { startTime, endTime, reason } = req.body;
@@ -147,6 +153,11 @@ router.put("/:id", requirePermission("appointments.create"), async (req, res) =>
       return;
     }
 
+    if (!req.isSuperAdmin && req.clinicId && existing.clinicId !== req.clinicId) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este bloqueio" });
+      return;
+    }
+
     const [updated] = await db
       .update(blockedSlotsTable)
       .set({ startTime, endTime, reason: reason ?? null })
@@ -160,13 +171,21 @@ router.put("/:id", requirePermission("appointments.create"), async (req, res) =>
   }
 });
 
-router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
+router.delete("/:id", requirePermission("appointments.delete"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const deleteGroup = req.query.group === "true";
 
     if (deleteGroup) {
       const [slot] = await db.select().from(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
+      if (!slot) {
+        res.status(404).json({ error: "Not Found", message: "Bloqueio não encontrado" });
+        return;
+      }
+      if (!req.isSuperAdmin && req.clinicId && slot.clinicId !== req.clinicId) {
+        res.status(403).json({ error: "Forbidden", message: "Acesso negado a este bloqueio" });
+        return;
+      }
       if (slot?.recurrenceGroupId) {
         const groupSlots = await db
           .select({ id: blockedSlotsTable.id })
@@ -179,6 +198,16 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
         res.json({ deleted: ids.length });
         return;
       }
+    }
+
+    const [slot] = await db.select().from(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
+    if (!slot) {
+      res.status(404).json({ error: "Not Found", message: "Bloqueio não encontrado" });
+      return;
+    }
+    if (!req.isSuperAdmin && req.clinicId && slot.clinicId !== req.clinicId) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este bloqueio" });
+      return;
     }
 
     await db.delete(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
