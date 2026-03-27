@@ -2949,7 +2949,6 @@ function AuditLogTab({ patientId }: { patientId: number }) {
 // ─── Appointment History Tab ────────────────────────────────────────────────────
 
 function HistoryTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
-  const { isSuperAdmin } = useAuth();
   const { data: appointments = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/appointments`],
     queryFn: () => fetch(`/api/patients/${patientId}/appointments`, {
@@ -3022,7 +3021,6 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
         defaultType="comparecimento"
       />
 
-      {isSuperAdmin && <AuditLogSection patientId={patientId} />}
     </div>
   );
 }
