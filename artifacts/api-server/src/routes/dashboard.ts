@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
@@ -24,14 +24,34 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
+function apptClinicFilter(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(appointmentsTable.clinicId, req.clinicId);
+}
+
+function patientClinicFilter(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(patientsTable.clinicId, req.clinicId);
+}
+
+function financialClinicFilter(req: AuthRequest) {
+  if (req.isSuperAdmin || !req.clinicId) return null;
+  return eq(financialRecordsTable.clinicId, req.clinicId);
+}
+
 router.get("/", requirePermission("patients.read"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const today = new Date().toISOString().split("T")[0];
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const { start, end } = monthRange(year, month);
     const { startDate, endDate } = monthDateRange(year, month);
+
+    const apptFilter = apptClinicFilter(authReq);
+    const patFilter = patientClinicFilter(authReq);
+    const finFilter = financialClinicFilter(authReq);
 
     const todayAppts = await db
       .select({
@@ -42,7 +62,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .from(appointmentsTable)
       .leftJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
-      .where(eq(appointmentsTable.date, today))
+      .where(and(eq(appointmentsTable.date, today), apptFilter ?? undefined))
       .orderBy(appointmentsTable.startTime);
 
     const upcomingAppts = await db
@@ -57,7 +77,8 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .where(
         and(
           gte(appointmentsTable.date, today),
-          sql`status NOT IN ('cancelado', 'concluido', 'faltou')`
+          sql`${appointmentsTable.status} NOT IN ('cancelado', 'concluido', 'faltou')`,
+          apptFilter ?? undefined
         )
       )
       .orderBy(appointmentsTable.date, appointmentsTable.startTime)
@@ -71,18 +92,23 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
         and(
           eq(financialRecordsTable.type, "receita"),
           gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end)
+          lt(financialRecordsTable.createdAt, end),
+          finFilter ?? undefined
         )
       );
 
-    const totalPatientsResult = await db.select({ count: sql<number>`count(*)` }).from(patientsTable);
+    const totalPatientsResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(patientsTable)
+      .where(patFilter ?? undefined);
 
     const totalMonthAppts = await db.select({ count: sql<number>`count(*)` })
       .from(appointmentsTable)
       .where(
         and(
           gte(appointmentsTable.date, startDate),
-          lte(appointmentsTable.date, endDate)
+          lte(appointmentsTable.date, endDate),
+          apptFilter ?? undefined
         )
       );
 
@@ -92,7 +118,8 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
         and(
           eq(appointmentsTable.status, "concluido"),
           gte(appointmentsTable.date, startDate),
-          lte(appointmentsTable.date, endDate)
+          lte(appointmentsTable.date, endDate),
+          apptFilter ?? undefined
         )
       );
 
@@ -101,7 +128,8 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .where(and(
         eq(appointmentsTable.status, "faltou"),
         gte(appointmentsTable.date, startDate),
-        lte(appointmentsTable.date, endDate)
+        lte(appointmentsTable.date, endDate),
+        apptFilter ?? undefined
       ));
 
     const totalMonth = Number(totalMonthAppts[0]?.count ?? 0);
