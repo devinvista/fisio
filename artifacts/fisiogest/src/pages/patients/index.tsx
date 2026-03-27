@@ -23,6 +23,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { maskCpf, maskPhone } from "@/lib/masks";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { cn } from "@/lib/utils";
 
@@ -427,7 +428,7 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
             <Input
               required
               value={formData.cpf}
-              onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, cpf: maskCpf(e.target.value) })}
               placeholder="000.000.000-00"
               className="h-11"
             />
@@ -437,7 +438,7 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
             <Input
               required
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, phone: maskPhone(e.target.value) })}
               placeholder="(11) 99999-0000"
               className="h-11"
             />

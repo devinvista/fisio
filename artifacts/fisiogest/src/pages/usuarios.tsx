@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { maskCpf, displayCpf } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,20 +49,6 @@ async function fetchUsers(): Promise<SystemUser[]> {
   return res.json();
 }
 
-function formatCpf(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
-
-function formatCpfDisplay(cpf: string): string {
-  if (!cpf) return "—";
-  const d = cpf.replace(/\D/g, "");
-  if (d.length !== 11) return cpf;
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
 
 async function createUser(data: {
   name: string;
@@ -166,7 +153,7 @@ export default function Usuarios() {
 
   function openEdit(u: SystemUser) {
     setEditingUser(u);
-    setForm({ name: u.name, cpf: formatCpfDisplay(u.cpf), email: u.email ?? "", password: "", roles: u.roles as Role[] });
+    setForm({ name: u.name, cpf: maskCpf(u.cpf), email: u.email ?? "", password: "", roles: u.roles as Role[] });
     setDialogOpen(true);
   }
 
@@ -283,7 +270,7 @@ export default function Usuarios() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-sm">{formatCpfDisplay(u.cpf)}</TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-sm">{displayCpf(u.cpf)}</TableCell>
                     <TableCell className="text-muted-foreground">{u.email ?? <span className="text-slate-300">—</span>}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -361,7 +348,7 @@ export default function Usuarios() {
                 type="text"
                 inputMode="numeric"
                 value={form.cpf}
-                onChange={(e) => setForm((p) => ({ ...p, cpf: formatCpf(e.target.value) }))}
+                onChange={(e) => setForm((p) => ({ ...p, cpf: maskCpf(e.target.value) }))}
                 placeholder="000.000.000-00"
                 maxLength={14}
                 required

@@ -48,6 +48,7 @@ import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/auth-context";
+import { maskCpf, maskPhone } from "@/lib/masks";
 
 // ─── Print utilities ─────────────────────────────────────────────────────────
 
@@ -4230,8 +4231,8 @@ function EditPatientDialog({
 
   const [form, setForm] = useState({
     name: patient.name ?? "",
-    cpf: patient.cpf ?? "",
-    phone: patient.phone ?? "",
+    cpf: maskCpf(patient.cpf ?? ""),
+    phone: maskPhone(patient.phone ?? ""),
     email: patient.email ?? "",
     birthDate: patient.birthDate ?? "",
     address: patient.address ?? "",
@@ -4244,8 +4245,8 @@ function EditPatientDialog({
     if (open) {
       setForm({
         name: patient.name ?? "",
-        cpf: patient.cpf ?? "",
-        phone: patient.phone ?? "",
+        cpf: maskCpf(patient.cpf ?? ""),
+        phone: maskPhone(patient.phone ?? ""),
         email: patient.email ?? "",
         birthDate: patient.birthDate ?? "",
         address: patient.address ?? "",
@@ -4317,7 +4318,7 @@ function EditPatientDialog({
                   required
                   disabled={!isAdmin}
                   value={form.cpf}
-                  onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+                  onChange={(e) => setForm({ ...form, cpf: maskCpf(e.target.value) })}
                   placeholder="000.000.000-00"
                   className="h-10 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                 />
@@ -4334,7 +4335,7 @@ function EditPatientDialog({
                 <Input
                   required
                   value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
                   placeholder="(11) 99999-0000"
                   className="h-10"
                 />

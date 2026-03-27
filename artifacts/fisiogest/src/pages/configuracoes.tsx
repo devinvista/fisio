@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { maskCpf, maskPhone, maskCnpj, displayCpf } from "@/lib/masks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/lib/auth-context";
@@ -197,22 +198,6 @@ const EMPTY_USER_FORM = {
 
 /* ─── Helpers ───────────────────────────────────────────────── */
 
-function formatCpf(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9)
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
-
-function formatCpfDisplay(cpf: string): string {
-  if (!cpf) return "—";
-  const d = cpf.replace(/\D/g, "");
-  if (d.length !== 11) return cpf;
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
 function parseDays(workingDays: string): string[] {
   if (!workingDays) return [];
   return workingDays
@@ -336,7 +321,7 @@ function ClinicaSection() {
             <Input
               id="clinic-cnpj"
               value={formData.cnpj}
-              onChange={(e) => setFormData((p) => ({ ...p, cnpj: e.target.value }))}
+              onChange={(e) => setFormData((p) => ({ ...p, cnpj: maskCnpj(e.target.value) }))}
               placeholder="00.000.000/0001-00"
             />
           </div>
@@ -357,7 +342,7 @@ function ClinicaSection() {
               <Input
                 id="clinic-phone"
                 value={formData.phone}
-                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                onChange={(e) => setFormData((p) => ({ ...p, phone: maskPhone(e.target.value) }))}
                 placeholder="(11) 99999-9999"
               />
             </div>
@@ -511,7 +496,7 @@ function UsuariosSection() {
     setEditingUser(u);
     setForm({
       name: u.name,
-      cpf: formatCpfDisplay(u.cpf),
+      cpf: maskCpf(u.cpf),
       email: u.email ?? "",
       password: "",
       roles: u.roles as Role[],
@@ -634,7 +619,7 @@ function UsuariosSection() {
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-sm">
-                    {formatCpfDisplay(u.cpf)}
+                    {displayCpf(u.cpf)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {u.email ?? <span className="text-slate-300">—</span>}
@@ -714,7 +699,7 @@ function UsuariosSection() {
                 type="text"
                 inputMode="numeric"
                 value={form.cpf}
-                onChange={(e) => setForm((p) => ({ ...p, cpf: formatCpf(e.target.value) }))}
+                onChange={(e) => setForm((p) => ({ ...p, cpf: maskCpf(e.target.value) }))}
                 placeholder="000.000.000-00"
                 maxLength={14}
                 required

@@ -7,14 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Stethoscope, Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-function formatCpfInput(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
+import { maskCpf } from "@/lib/masks";
 
 function looksLikeCpf(value: string): boolean {
   return /^\d/.test(value.trim()) && !value.includes("@");
@@ -32,7 +25,7 @@ export default function Login() {
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     if (looksLikeCpf(raw)) {
-      setIdentifier(formatCpfInput(raw));
+      setIdentifier(maskCpf(raw));
     } else {
       setIdentifier(raw);
     }

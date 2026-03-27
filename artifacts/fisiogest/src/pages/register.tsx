@@ -8,14 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Stethoscope, Loader2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-function formatCpf(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
+import { maskCpf } from "@/lib/masks";
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -101,7 +94,7 @@ export default function Register() {
                 inputMode="numeric"
                 placeholder="000.000.000-00"
                 value={formData.cpf}
-                onChange={(e) => setFormData({ ...formData, cpf: formatCpf(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, cpf: maskCpf(e.target.value) })}
                 maxLength={14}
                 required
                 autoComplete="off"

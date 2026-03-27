@@ -50,6 +50,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { maskCpf, maskPhone, maskCnpj } from "@/lib/masks";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
@@ -575,7 +576,7 @@ export default function Clinicas() {
                 <div className="space-y-1.5">
                   <Label className="text-xs">CPF *</Label>
                   <Input placeholder="000.000.000-00" value={addUserForm.cpf}
-                    onChange={(e) => setAddUserForm((p) => ({ ...p, cpf: e.target.value }))} required />
+                    onChange={(e) => setAddUserForm((p) => ({ ...p, cpf: maskCpf(e.target.value) }))} required />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">E-mail</Label>
@@ -778,14 +779,14 @@ function ClinicForm({
       <div className="space-y-2">
         <Label htmlFor="cnpj">CNPJ</Label>
         <Input id="cnpj" value={formData.cnpj}
-          onChange={(e) => setFormData((p: any) => ({ ...p, cnpj: e.target.value }))}
+          onChange={(e) => setFormData((p: any) => ({ ...p, cnpj: maskCnpj(e.target.value) }))}
           placeholder="00.000.000/0001-00" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label htmlFor="phone">Telefone</Label>
           <Input id="phone" value={formData.phone}
-            onChange={(e) => setFormData((p: any) => ({ ...p, phone: e.target.value }))}
+            onChange={(e) => setFormData((p: any) => ({ ...p, phone: maskPhone(e.target.value) }))}
             placeholder="(11) 99999-9999" />
         </div>
         <div className="space-y-2">
