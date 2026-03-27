@@ -38,6 +38,35 @@ async function getUserWithRolesForClinic(userId: number, clinicId: number | null
   };
 }
 
+router.get("/professionals", async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId) return res.json([]);
+
+    const rows = await db
+      .select({
+        userId: userRolesTable.userId,
+        name: usersTable.name,
+        role: userRolesTable.role,
+      })
+      .from(userRolesTable)
+      .innerJoin(usersTable, eq(userRolesTable.userId, usersTable.id))
+      .where(eq(userRolesTable.clinicId, clinicId));
+
+    const userMap = new Map<number, { id: number; name: string; roles: string[] }>();
+    for (const row of rows) {
+      if (!userMap.has(row.userId)) {
+        userMap.set(row.userId, { id: row.userId, name: row.name, roles: [] });
+      }
+      userMap.get(row.userId)!.roles.push(row.role);
+    }
+    return res.json(Array.from(userMap.values()));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
     if (req.isSuperAdmin || !req.clinicId) {

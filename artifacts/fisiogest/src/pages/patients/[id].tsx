@@ -2160,6 +2160,15 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
     (a: any) => a.status === "concluido" || a.status === "presenca"
   ).length;
 
+  const planItemsInitRef = useRef(false);
+
+  const { data: professionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
+    queryKey: ["/api/users/professionals"],
+    queryFn: () => fetch("/api/users/professionals", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+  });
+
   const [form, setForm] = useState({
     objectives: "", techniques: "", frequency: "",
     estimatedSessions: "" as string | number,
@@ -2181,6 +2190,26 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
       });
     }
   }, [data]);
+
+  // Auto-sync estimatedSessions and frequency from planItems when items change
+  useEffect(() => {
+    if (!planItemsInitRef.current) {
+      planItemsInitRef.current = true;
+      return;
+    }
+    if (planItems.length === 0) return;
+
+    const totalSess = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
+    const spwValues = planItems.map(i => i.sessionsPerWeek ?? 0).filter(v => v > 0);
+    const maxSpw = spwValues.length > 0 ? Math.max(...spwValues) : 0;
+    const freqStr = maxSpw > 0 ? `${maxSpw}x/semana` : "";
+
+    setForm(f => ({
+      ...f,
+      ...(totalSess > 0 ? { estimatedSessions: totalSess } : {}),
+      ...(freqStr ? { frequency: freqStr } : {}),
+    }));
+  }, [planItems]);
 
   // Auto-suggest total sessions from planItems
   const suggestedSessions = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
@@ -2265,15 +2294,33 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-primary" /> Profissional Responsável
           </Label>
-          <Input className="bg-slate-50 border-slate-200 focus:bg-white"
-            value={form.responsibleProfessional} onChange={e => setForm({ ...form, responsibleProfessional: e.target.value })}
-            placeholder="Nome do fisioterapeuta / CREFITO..." />
+          <Select
+            value={form.responsibleProfessional}
+            onValueChange={v => setForm({ ...form, responsibleProfessional: v })}
+          >
+            <SelectTrigger className="bg-slate-50 border-slate-200 focus:bg-white">
+              <SelectValue placeholder="Selecionar profissional..." />
+            </SelectTrigger>
+            <SelectContent>
+              {professionals.length === 0 && (
+                <SelectItem value="__none" disabled>Nenhum profissional cadastrado</SelectItem>
+              )}
+              {professionals.map(p => (
+                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Frequency, start date, estimated sessions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Frequência</Label>
+            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              Frequência
+              {planItems.length > 0 && (
+                <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>
+              )}
+            </Label>
             <Input className="bg-slate-50 border-slate-200 focus:bg-white"
               value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}
               placeholder="Ex: 3x/semana..." />
@@ -2286,14 +2333,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
           <div className="space-y-2">
             <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
               Sessões Estimadas
-              {suggestedSessions > 0 && Number(form.estimatedSessions) !== suggestedSessions && (
-                <button
-                  className="text-[10px] text-primary underline font-normal"
-                  onClick={() => setForm(f => ({ ...f, estimatedSessions: suggestedSessions }))}
-                  type="button"
-                >
-                  usar {suggestedSessions} (dos itens)
-                </button>
+              {planItems.length > 0 && (
+                <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>
               )}
             </Label>
             <Input type="number" min={1} className="bg-slate-50 border-slate-200 focus:bg-white"
