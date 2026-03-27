@@ -298,6 +298,21 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
         clinicStart = schedule.startTime;
         clinicEnd = schedule.endTime;
         slotStep = schedule.slotDurationMinutes ?? 30;
+
+        // Validate that the requested date is a working day for this schedule
+        if (schedule.workingDays) {
+          const workingDayNums = schedule.workingDays.split(",").map(Number);
+          const dateDow = new Date((date as string) + "T12:00:00Z").getUTCDay();
+          if (!workingDayNums.includes(dateDow)) {
+            res.json({
+              date,
+              procedure: { id: 0, name: "", durationMinutes: 0, maxCapacity: 1 },
+              slots: [],
+              notWorkingDay: true,
+            });
+            return;
+          }
+        }
       }
     }
 
@@ -545,9 +560,18 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     const currentAppt = await getWithDetails(id);
     const oldStatus = currentAppt?.status ?? "agendado";
 
+    const updateFields: Record<string, any> = {};
+    if (patientId !== undefined) updateFields.patientId = patientId;
+    if (procedureId !== undefined) updateFields.procedureId = procedureId;
+    if (date !== undefined) updateFields.date = date;
+    if (startTime !== undefined) updateFields.startTime = startTime;
+    if (endTime !== undefined) updateFields.endTime = endTime;
+    if (status !== undefined) updateFields.status = status;
+    if (notes !== undefined) updateFields.notes = notes;
+
     const [appointment] = await db
       .update(appointmentsTable)
-      .set({ patientId, procedureId, date, startTime, endTime, status, notes })
+      .set(updateFields)
       .where(eq(appointmentsTable.id, id))
       .returning();
 
@@ -581,7 +605,7 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
 
 router.post("/recurring", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
-    const { patientId, procedureId, date, startTime, notes, recurrence } = req.body;
+    const { patientId, procedureId, date, startTime, notes, recurrence, scheduleId } = req.body;
 
     if (!patientId || !procedureId || !date || !startTime || !recurrence) {
       res.status(400).json({ error: "Bad Request", message: "patientId, procedureId, date, startTime e recurrence são obrigatórios" });
@@ -601,6 +625,8 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
       return;
     }
 
+    const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
+
     const endTimeFn = (st: string) => addMinutes(st, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
     const recurrenceGroupId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -610,7 +636,6 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
 
     let sessionCount = 0;
     let cursor = new Date(date + "T12:00:00Z");
-    // advance to first matching day of week
     let safetyLimit = 0;
 
     while (sessionCount < totalSessions && safetyLimit < 500) {
@@ -619,7 +644,7 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
       if (daysOfWeek.includes(dow)) {
         const sessionDate = cursor.toISOString().slice(0, 10);
         const et = endTimeFn(startTime);
-        const { conflict, reason, currentCount } = await checkConflict(sessionDate, startTime, et, procedure.id, maxCapacity);
+        const { conflict, reason, currentCount } = await checkConflict(sessionDate, startTime, et, procedure.id, maxCapacity, undefined, resolvedScheduleId);
         if (conflict) {
           skipped.push({ date: sessionDate, reason: reason || "conflict", currentCount });
         } else {
@@ -632,6 +657,8 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
             status: "agendado",
             notes: notes || undefined,
             professionalId: req.userId,
+            clinicId: req.clinicId ?? null,
+            scheduleId: resolvedScheduleId,
             recurrenceGroupId,
             recurrenceIndex: sessionCount,
           }).returning();

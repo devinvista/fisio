@@ -1523,11 +1523,11 @@ function CreateAppointmentForm({
       data.filter((item: PlanProcedureForAgenda) => item.procedureId != null),
   });
 
-  const { data: lastAppointments } = useQuery<{ appointment: { procedureId: number | null } }[]>({
+  const { data: lastAppointments } = useQuery<{ procedureId: number | null }[]>({
     queryKey: ["last-appointments", formData.patientId],
     queryFn: async () => {
       const res = await fetch(
-        `/api/appointments?patientId=${formData.patientId}&limit=5`,
+        `/api/appointments?patientId=${formData.patientId}`,
         { credentials: "include" }
       );
       return res.json();
@@ -1539,7 +1539,7 @@ function CreateAppointmentForm({
   const lastProcedureId = useMemo(() => {
     if (!lastAppointments || !Array.isArray(lastAppointments)) return null;
     const first = lastAppointments[0];
-    return first?.appointment?.procedureId ?? null;
+    return first?.procedureId ?? null;
   }, [lastAppointments]);
 
   const selectedProcedure = useMemo(
@@ -1571,6 +1571,7 @@ function CreateAppointmentForm({
   });
 
   const availableSlots = (slotsData?.slots ?? []) as { time: string; available: boolean; spotsLeft: number }[];
+  const isNotWorkingDay = !!(slotsData as any)?.notWorkingDay;
 
   // Ensure the pre-selected time (from clicking the agenda) is always shown as an option,
   // even if the slots API doesn't include it yet or excludes it
@@ -1623,6 +1624,7 @@ function CreateAppointmentForm({
             startTime: formData.startTime,
             notes: formData.notes || undefined,
             recurrence: { daysOfWeek: recurDays, totalSessions: recurSessions },
+            ...(scheduleId ? { scheduleId } : {}),
           }),
         });
         const data = await res.json();
@@ -1839,6 +1841,11 @@ function CreateAppointmentForm({
                         <span className="text-xs text-slate-500">{formData.startTime}</span>
                       )}
                     </div>
+                  ) : isNotWorkingDay ? (
+                    <div className="h-11 rounded-xl border border-amber-200 bg-amber-50 flex items-center justify-center gap-2 px-3">
+                      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span className="text-xs text-amber-700 font-medium">Dia fora do horário desta agenda</span>
+                    </div>
                   ) : (
                     <Select value={formData.startTime} onValueChange={(v) => setFormData({ ...formData, startTime: v })}>
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
@@ -1861,7 +1868,7 @@ function CreateAppointmentForm({
                       </SelectContent>
                     </Select>
                   )}
-                  {formData.startTime && computedEndTime && (
+                  {formData.startTime && computedEndTime && !isNotWorkingDay && (
                     <p className="text-xs text-slate-500 mt-1 pl-1 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Término: {computedEndTime}
                     </p>
