@@ -29,13 +29,16 @@ function minutesToTime(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-async function getWithDetails(id: number) {
+async function getWithDetails(id: number, clinicId?: number | null) {
+  const conditions: any[] = [eq(appointmentsTable.id, id)];
+  if (clinicId) conditions.push(eq(appointmentsTable.clinicId, clinicId));
+
   const result = await db
     .select({ appointment: appointmentsTable, patient: patientsTable, procedure: proceduresTable })
     .from(appointmentsTable)
     .leftJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
     .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
-    .where(eq(appointmentsTable.id, id))
+    .where(and(...conditions))
     .limit(1);
 
   if (!result[0]) return null;
@@ -505,7 +508,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const details = await getWithDetails(id);
+    const details = await getWithDetails(id, (req as AuthRequest).clinicId);
     if (!details) {
       res.status(404).json({ error: "Not Found" });
       return;
@@ -689,8 +692,9 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
 router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const clinicId = (req as AuthRequest).clinicId;
 
-    const details = await getWithDetails(id);
+    const details = await getWithDetails(id, clinicId);
     if (!details) {
       res.status(404).json({ error: "Not Found" });
       return;
@@ -706,7 +710,7 @@ router.post("/:id/complete", requirePermission("appointments.update"), async (re
 
     await applyBillingRules(id, "concluido", oldStatus);
 
-    const updatedDetails = await getWithDetails(appointment.id);
+    const updatedDetails = await getWithDetails(appointment.id, clinicId);
     res.json(updatedDetails);
   } catch (err) {
     console.error(err);

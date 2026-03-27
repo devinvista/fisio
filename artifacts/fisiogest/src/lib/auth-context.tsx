@@ -101,9 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const switchClinic = async (newClinicId: number) => {
     try {
-      const BASE = import.meta.env.BASE_URL ?? "/";
-      const apiBase = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
-      const res = await fetch(`${apiBase}/api/auth/switch-clinic`, {
+      const res = await fetch(`/api/auth/switch-clinic`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clinicId: newClinicId === 0 ? null : newClinicId }),

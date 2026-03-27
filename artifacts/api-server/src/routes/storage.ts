@@ -51,6 +51,13 @@ router.get("/public-objects/*filePath", async (req: Request, res: Response) => {
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    // Guard against path traversal attacks
+    if (!filePath || filePath.includes("..") || filePath.startsWith("/")) {
+      res.status(400).json({ error: "Caminho de arquivo inválido" });
+      return;
+    }
+
     const file = await objectStorageService.searchPublicObject(filePath);
     if (!file) {
       res.status(404).json({ error: "Arquivo não encontrado" });

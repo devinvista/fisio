@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useEffect } from "react";
 import type { Permission } from "@/lib/permissions";
 
@@ -153,16 +154,20 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <AuthProvider>
-          <TooltipProvider>
-            <Router />
-            <Toaster />
-          </TooltipProvider>
-        </AuthProvider>
-      </WouterRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <AuthProvider>
+            <TooltipProvider>
+              <ErrorBoundary>
+                <Router />
+              </ErrorBoundary>
+              <Toaster />
+            </TooltipProvider>
+          </AuthProvider>
+        </WouterRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

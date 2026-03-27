@@ -113,7 +113,6 @@ export default function Financial() {
     try {
       const res = await fetch(`/api/financial/records/${deleteTarget.id}`, {
         method: "DELETE",
-        credentials: "include",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -137,7 +136,6 @@ export default function Financial() {
     try {
       const res = await fetch("/api/subscriptions/run-billing", {
         method: "POST",
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
