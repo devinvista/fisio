@@ -738,7 +738,7 @@ export default function Agenda() {
 
       {/* ── Modals ────────────────────────────────────────────────────────── */}
       <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-        <DialogContent className="sm:max-w-[500px] border-none shadow-2xl rounded-3xl">
+        <DialogContent className="sm:max-w-[520px] border-none shadow-2xl rounded-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">
               {selectedSlot?.procedureId ? "Adicionar Paciente à Sessão" : "Agendar Consulta"}
@@ -750,6 +750,8 @@ export default function Agenda() {
             initialProcedureId={selectedSlot?.procedureId}
             lockProcedure={!!selectedSlot?.procedureId}
             scheduleId={selectedScheduleId ?? undefined}
+            clinicStart={String(activeHourStart).padStart(2, "0") + ":00"}
+            clinicEnd={String(activeHourEnd).padStart(2, "0") + ":00"}
             onSuccess={() => { setIsNewModalOpen(false); refetch(); }}
           />
         </DialogContent>
@@ -1428,12 +1430,22 @@ interface TreatmentPlan {
   status: string;
 }
 
+interface PlanProcedureForAgenda {
+  id: number;
+  procedureId: number | null;
+  procedureName: string | null;
+  packageId: number | null;
+  packageName: string | null;
+}
+
 function CreateAppointmentForm({
   initialDate,
   initialTime,
   initialProcedureId,
   lockProcedure = false,
   scheduleId,
+  clinicStart,
+  clinicEnd,
   onSuccess,
 }: {
   initialDate?: string;
@@ -1441,6 +1453,8 @@ function CreateAppointmentForm({
   initialProcedureId?: number;
   lockProcedure?: boolean;
   scheduleId?: number;
+  clinicStart?: string;
+  clinicEnd?: string;
   onSuccess: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
@@ -1499,6 +1513,16 @@ function CreateAppointmentForm({
     staleTime: 60_000,
   });
 
+  const { data: planProcedures = [] } = useQuery<PlanProcedureForAgenda[]>({
+    queryKey: ["treatment-plan-procedures-agenda", treatmentPlan?.id],
+    queryFn: () =>
+      fetch(`/api/treatment-plans/${treatmentPlan!.id}/procedures`, { credentials: "include" }).then((r) => r.json()),
+    enabled: !!treatmentPlan?.id && treatmentPlan.status === "ativo",
+    staleTime: 60_000,
+    select: (data) =>
+      data.filter((item: PlanProcedureForAgenda) => item.procedureId != null),
+  });
+
   const { data: lastAppointments } = useQuery<{ appointment: { procedureId: number | null } }[]>({
     queryKey: ["last-appointments", formData.patientId],
     queryFn: async () => {
@@ -1534,8 +1558,8 @@ function CreateAppointmentForm({
       if (scheduleId) {
         params.set("scheduleId", String(scheduleId));
       } else {
-        params.set("clinicStart", "07:00");
-        params.set("clinicEnd", "19:00");
+        params.set("clinicStart", clinicStart || "07:00");
+        params.set("clinicEnd", clinicEnd || "20:00");
       }
       const res = await fetch(`/api/appointments/available-slots?${params}`, {
         credentials: "include",
@@ -1547,6 +1571,15 @@ function CreateAppointmentForm({
   });
 
   const availableSlots = (slotsData?.slots ?? []) as { time: string; available: boolean; spotsLeft: number }[];
+
+  // Ensure the pre-selected time (from clicking the agenda) is always shown as an option,
+  // even if the slots API doesn't include it yet or excludes it
+  const slotsWithCurrentTime = useMemo(() => {
+    if (!formData.startTime || availableSlots.some((s) => s.time === formData.startTime)) {
+      return availableSlots;
+    }
+    return [{ time: formData.startTime, available: true, spotsLeft: 99 }, ...availableSlots];
+  }, [availableSlots, formData.startTime]);
 
   const computedEndTime = useMemo(() => {
     if (!formData.startTime || !selectedProcedure) return null;
@@ -1780,82 +1813,7 @@ function CreateAppointmentForm({
             </button>
           </div>
 
-          {/* Procedimento */}
-          {lockProcedure && selectedProcedure ? (
-            <div className="flex items-center gap-3 px-3 py-3 rounded-xl border border-violet-200 bg-violet-50">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 text-violet-600">
-                <Users className="w-4 h-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-800">{selectedProcedure.name}</p>
-                <p className="text-xs text-violet-600">
-                  {selectedProcedure.durationMinutes} min
-                  {(selectedProcedure as any).maxCapacity > 1 ? ` · até ${(selectedProcedure as any).maxCapacity} simultâneos` : ""}
-                </p>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-200 text-violet-700 shrink-0">Sessão em grupo</span>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label>Procedimento *</Label>
-              <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-0.5">
-                {procedures?.map((p) => {
-                  const isSelected = formData.procedureId === p.id.toString();
-                  const isLast = lastProcedureId === p.id;
-                  const isGroup = (p as any).maxCapacity > 1;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, procedureId: p.id.toString() })}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
-                        isSelected
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                      )}
-                    >
-                      <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                        isSelected ? "bg-primary text-white" : isGroup ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"
-                      )}>
-                        {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-semibold text-slate-800">{p.name}</span>
-                          {isLast && (
-                            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                              <History className="w-2.5 h-2.5" /> Última sessão
-                            </span>
-                          )}
-                          {hasActivePlan && isLast && (
-                            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
-                              <Sparkles className="w-2.5 h-2.5" /> Recomendado
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-400">
-                          {p.durationMinutes} min
-                          {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
-                        </p>
-                      </div>
-                      {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-              {selectedProcedure && (
-                <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
-                  <Clock className="w-3 h-3" />
-                  {selectedProcedure.durationMinutes} min
-                  {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Data + Horário */}
+          {/* ── Data + Horário (always shown first) ── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Data *</Label>
@@ -1875,46 +1833,180 @@ function CreateAppointmentForm({
               {canFetchSlots ? (
                 <div>
                   {slotsFetching ? (
-                    <div className="h-11 rounded-xl border border-slate-200 flex items-center justify-center">
+                    <div className="h-11 rounded-xl border border-slate-200 flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                      {formData.startTime && (
+                        <span className="text-xs text-slate-500">{formData.startTime}</span>
+                      )}
                     </div>
                   ) : (
                     <Select value={formData.startTime} onValueChange={(v) => setFormData({ ...formData, startTime: v })}>
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
-                    {availableSlots.filter(s => s.available).map((s) => (
-                      <SelectItem key={s.time} value={s.time}>
-                        {s.time}{s.spotsLeft < 99 ? ` · ${s.spotsLeft} vaga(s)` : ""}
-                      </SelectItem>
-                    ))}
-                    {availableSlots.filter(s => !s.available).length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-[10px] text-slate-400 font-medium uppercase tracking-wider border-t border-slate-100 mt-1">Indisponíveis</div>
-                        {availableSlots.filter(s => !s.available).map((s) => (
-                          <SelectItem key={s.time} value={s.time} disabled>
-                            {s.time} · Lotado
+                        {slotsWithCurrentTime.filter(s => s.available).map((s) => (
+                          <SelectItem key={s.time} value={s.time}>
+                            {s.time}{s.spotsLeft < 99 ? ` · ${s.spotsLeft} vaga(s)` : ""}
                           </SelectItem>
                         ))}
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
+                        {slotsWithCurrentTime.filter(s => !s.available).length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-[10px] text-slate-400 font-medium uppercase tracking-wider border-t border-slate-100 mt-1">Indisponíveis</div>
+                            {slotsWithCurrentTime.filter(s => !s.available).map((s) => (
+                              <SelectItem key={s.time} value={s.time} disabled>
+                                {s.time} · Lotado
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {formData.startTime && computedEndTime && (
+                    <p className="text-xs text-slate-500 mt-1 pl-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Término: {computedEndTime}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <TimeInputPTBR
+                  value={formData.startTime}
+                  onChange={(v) => setFormData({ ...formData, startTime: v })}
+                  className="h-11 rounded-xl"
+                />
               )}
-              {formData.startTime && computedEndTime && (
-                <p className="text-xs text-slate-500 mt-1 pl-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Término: {computedEndTime}
+            </div>
+          </div>
+
+          {/* ── Procedimento ── */}
+          {lockProcedure && selectedProcedure ? (
+            <div className="flex items-center gap-3 px-3 py-3 rounded-xl border border-violet-200 bg-violet-50">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 text-violet-600">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800">{selectedProcedure.name}</p>
+                <p className="text-xs text-violet-600">
+                  {selectedProcedure.durationMinutes} min
+                  {(selectedProcedure as any).maxCapacity > 1 ? ` · até ${(selectedProcedure as any).maxCapacity} simultâneos` : ""}
+                </p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-200 text-violet-700 shrink-0">Sessão em grupo</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Procedimento *</Label>
+              <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-0.5">
+
+                {/* Plan procedures shown first */}
+                {planProcedures.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-1.5 px-1 pt-0.5">
+                      <ClipboardList className="w-3 h-3 text-teal-600" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600">Do plano de tratamento</span>
+                    </div>
+                    {planProcedures.map((item) => {
+                      const proc = procedures?.find((p) => p.id === item.procedureId);
+                      if (!proc) return null;
+                      const isSelected = formData.procedureId === proc.id.toString();
+                      const isGroup = (proc as any).maxCapacity > 1;
+                      return (
+                        <button
+                          key={`plan-${item.id}`}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, procedureId: proc.id.toString() })}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
+                            isSelected
+                              ? "border-teal-500 bg-teal-50 shadow-sm"
+                              : "border-teal-200 bg-teal-50/50 hover:border-teal-400 hover:bg-teal-50"
+                          )}
+                        >
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                            isSelected ? "bg-teal-500 text-white" : "bg-teal-100 text-teal-600"
+                          )}>
+                            {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-slate-800">{proc.name}</span>
+                              <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                                <Sparkles className="w-2.5 h-2.5" /> Plano
+                              </span>
+                              {lastProcedureId === proc.id && (
+                                <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                  <History className="w-2.5 h-2.5" /> Última sessão
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-400">
+                              {proc.durationMinutes} min
+                              {isGroup ? ` · até ${(proc as any).maxCapacity} simultâneos` : ""}
+                            </p>
+                          </div>
+                          {isSelected && <CheckCircle className="w-4 h-4 text-teal-500 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                    <div className="flex items-center gap-1.5 px-1 pt-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Outros procedimentos</span>
+                    </div>
+                  </>
+                )}
+
+                {/* All other procedures */}
+                {procedures
+                  ?.filter((p) => !planProcedures.some((pp) => pp.procedureId === p.id))
+                  .map((p) => {
+                    const isSelected = formData.procedureId === p.id.toString();
+                    const isLast = lastProcedureId === p.id;
+                    const isGroup = (p as any).maxCapacity > 1;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, procedureId: p.id.toString() })}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all",
+                          isSelected
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                          isSelected ? "bg-primary text-white" : isGroup ? "bg-violet-100 text-violet-600" : "bg-slate-100 text-slate-500"
+                        )}>
+                          {isGroup ? <Users className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                            {isLast && (
+                              <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                <History className="w-2.5 h-2.5" /> Última sessão
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            {p.durationMinutes} min
+                            {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
+                          </p>
+                        </div>
+                        {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
+                      </button>
+                    );
+                  })}
+              </div>
+              {selectedProcedure && (
+                <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
+                  <Clock className="w-3 h-3" />
+                  {selectedProcedure.durationMinutes} min
+                  {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
                 </p>
               )}
             </div>
-          ) : (
-            <TimeInputPTBR
-              value={formData.startTime}
-              onChange={(v) => setFormData({ ...formData, startTime: v })}
-              className="h-11 rounded-xl"
-            />
           )}
-        </div>
-      </div>
 
       {/* Observações */}
       <div className="space-y-1.5">
