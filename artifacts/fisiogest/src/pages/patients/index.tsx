@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Search,
   Plus,
@@ -92,7 +93,7 @@ export default function PatientsList() {
                   Novo Paciente
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px] border-none shadow-2xl rounded-2xl">
+              <DialogContent className="sm:max-w-[600px] border-none shadow-2xl rounded-2xl max-h-[90vh] overflow-y-auto">
                 <CreatePatientForm onSuccess={() => { setIsDialogOpen(false); refetch(); }} />
               </DialogContent>
             </Dialog>
@@ -387,6 +388,8 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
     birthDate: "",
     profession: "",
     address: "",
+    emergencyContact: "",
+    notes: "",
   });
   const mutation = useCreatePatient();
   const { toast } = useToast();
@@ -482,6 +485,24 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
               className="h-11"
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Contato de Emergência</Label>
+          <Input
+            value={formData.emergencyContact}
+            onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+            placeholder="Nome e telefone do contato de emergência"
+            className="h-11"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Observações</Label>
+          <Textarea
+            value={formData.notes}
+            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            placeholder="Anotações gerais sobre o paciente, histórico, alergias..."
+            className="resize-none min-h-[80px]"
+          />
         </div>
         <div className="pt-4 flex justify-end gap-3">
           <Button type="submit" className="h-11 px-8 rounded-xl" disabled={mutation.isPending}>
