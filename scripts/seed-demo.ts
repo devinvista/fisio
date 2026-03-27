@@ -6,6 +6,7 @@ import {
   appointmentsTable,
   financialRecordsTable,
   userRolesTable,
+  clinicsTable,
   anamnesisTable,
   evaluationsTable,
   treatmentPlansTable,
@@ -115,27 +116,33 @@ const SLOTS = ["08:00","08:30","09:00","09:30","10:00","10:30","11:00","13:00","
 async function seed() {
   console.log("🌱 Iniciando seed completo jan–mar 2026...\n");
 
+  // ── Clínica ───────────────────────────────────────────────────────────────
+  console.log("🏢 Criando clínica...");
+  const [clinic] = await db.insert(clinicsTable).values({ name: "FisioGest Demo" }).returning();
+  const clinicId = clinic.id;
+  console.log(`  ✅ Clínica "${clinic.name}" (id=${clinicId})`);
+
   // ── Usuários ─────────────────────────────────────────────────────────────
-  console.log("👥 Criando usuários...");
+  console.log("\n👥 Criando usuários...");
   const userMap: Record<string, number> = {};
   for (const u of USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
-    const [user] = await db.insert(usersTable).values({ name: u.name, cpf: u.cpf, email: u.email, passwordHash }).returning();
+    const [user] = await db.insert(usersTable).values({ name: u.name, cpf: u.cpf, email: u.email, passwordHash, clinicId }).returning();
     userMap[u.email] = user.id;
-    await db.insert(userRolesTable).values(u.roles.map((role) => ({ userId: user.id, role })));
+    await db.insert(userRolesTable).values(u.roles.map((role) => ({ userId: user.id, clinicId, role })));
     console.log(`  ✅ ${u.name} [${u.roles.join(", ")}]`);
   }
   const profIds = [userMap["fisio@fisiogest.com.br"], userMap["rodrigo@fisiogest.com.br"], userMap["marta@fisiogest.com.br"]];
 
   // ── Procedimentos ─────────────────────────────────────────────────────────
   console.log("\n🏥 Criando procedimentos...");
-  const insertedProcs = await db.insert(proceduresTable).values(PROCS).returning();
+  const insertedProcs = await db.insert(proceduresTable).values(PROCS.map((p) => ({ ...p, clinicId }))).returning();
   const procIds = insertedProcs.map((p) => p.id);
   console.log(`  ✅ ${procIds.length} procedimentos`);
 
   // ── Pacientes ─────────────────────────────────────────────────────────────
   console.log("\n🧑‍⚕️ Criando pacientes...");
-  const insertedPats = await db.insert(patientsTable).values(PATIENTS).returning();
+  const insertedPats = await db.insert(patientsTable).values(PATIENTS.map((p) => ({ ...p, clinicId }))).returning();
   const patIds = insertedPats.map((p) => p.id);
   console.log(`  ✅ ${patIds.length} pacientes`);
 
@@ -198,7 +205,7 @@ async function seed() {
       const dur   = PROCS[prIdx].durationMinutes;
       const r     = Math.random();
       const status = r < 0.78 ? "concluido" : r < 0.90 ? "faltou" : "cancelado";
-      apptValues.push({ patientId: patIds[pIdx], procedureId: procIds[prIdx], professionalId: pick(profIds), date: dayStr, startTime: slot, endTime: addMinutes(slot, dur), status });
+      apptValues.push({ patientId: patIds[pIdx], procedureId: procIds[prIdx], professionalId: pick(profIds), date: dayStr, startTime: slot, endTime: addMinutes(slot, dur), status, clinicId });
       apptMeta.push({ patIdx: pIdx, procIdx: prIdx, date: dayStr, status });
     }
   }
@@ -214,7 +221,7 @@ async function seed() {
       const prIdx = rnd(0, procIds.length - 1);
       const dur   = PROCS[prIdx].durationMinutes;
       const status = Math.random() < 0.7 ? "agendado" : "confirmado";
-      apptValues.push({ patientId: patIds[pIdx], procedureId: procIds[prIdx], professionalId: pick(profIds), date: dayStr, startTime: slot, endTime: addMinutes(slot, dur), status });
+      apptValues.push({ patientId: patIds[pIdx], procedureId: procIds[prIdx], professionalId: pick(profIds), date: dayStr, startTime: slot, endTime: addMinutes(slot, dur), status, clinicId });
       apptMeta.push({ patIdx: pIdx, procIdx: prIdx, date: dayStr, status });
     }
   }
@@ -260,6 +267,7 @@ async function seed() {
       procedureId: a.procedureId,
       paymentDate: a.date,
       paymentMethod: pick(PAYMENT_METHODS),
+      clinicId,
     };
   });
   for (let i = 0; i < recValues.length; i += 200) {
@@ -283,7 +291,7 @@ async function seed() {
   ];
   const months = [{ label: "Janeiro/2026", day: "2026-01-05" }, { label: "Fevereiro/2026", day: "2026-02-03" }, { label: "Março/2026", day: "2026-03-03" }];
   const expValues = months.flatMap((month) =>
-    EXPENSES.map((e) => ({ type: "despesa" as const, amount: e.amount, description: `${e.desc} – ${month.label}`, category: e.cat, paymentDate: month.day, paymentMethod: e.method }))
+    EXPENSES.map((e) => ({ type: "despesa" as const, amount: e.amount, description: `${e.desc} – ${month.label}`, category: e.cat, paymentDate: month.day, paymentMethod: e.method, clinicId }))
   );
   await db.insert(financialRecordsTable).values(expValues);
   console.log(`  ✅ ${expValues.length} despesas`);
