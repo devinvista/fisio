@@ -10,7 +10,7 @@ router.use(authMiddleware);
 
 router.get("/patients/:patientId", requireSuperAdmin(), async (req, res) => {
   try {
-    const patientId = parseInt(req.params.patientId);
+    const patientId = parseInt(req.params.patientId as string);
     const logs = await db
       .select()
       .from(auditLogTable)

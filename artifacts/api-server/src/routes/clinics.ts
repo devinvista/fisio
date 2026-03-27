@@ -97,7 +97,7 @@ router.put("/current", requirePermission("settings.manage"), async (req: AuthReq
 
 router.get("/:id", requireSuperAdmin(), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [clinic] = await db
       .select()
       .from(clinicsTable)
@@ -116,7 +116,7 @@ router.get("/:id", requireSuperAdmin(), async (req, res) => {
 
 router.put("/:id", requireSuperAdmin(), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, cnpj, phone, email, address, isActive } = req.body;
     const [clinic] = await db
       .update(clinicsTable)

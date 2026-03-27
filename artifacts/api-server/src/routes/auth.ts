@@ -177,7 +177,7 @@ router.post("/login", async (req, res) => {
     if (user.isSuperAdmin) {
       const token = generateToken(user.id, [], null, true);
       const clinics = await getUserClinics(user.id);
-      return res.json({
+      res.json({
         token,
         user: {
           id: user.id,
@@ -190,15 +190,17 @@ router.post("/login", async (req, res) => {
         },
         clinics,
       });
+      return;
     }
 
     const clinics = await getUserClinics(user.id);
 
     if (clinics.length === 0) {
-      return res.status(403).json({
+      res.status(403).json({
         error: "Forbidden",
         message: "Usuário sem acesso a nenhuma clínica",
       });
+      return;
     }
 
     let activeClinic = clinics[0];
@@ -208,7 +210,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(user.id, activeClinic.roles, activeClinic.id, false);
-    return res.json({
+    res.json({
       token,
       user: {
         id: user.id,
@@ -234,7 +236,8 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
 
     if (req.isSuperAdmin && (clinicId === null || clinicId === 0)) {
       const token = generateToken(req.userId!, [], null, true);
-      return res.json({ token, clinicId: null });
+      res.json({ token, clinicId: null });
+      return;
     }
 
     if (!clinicId) {
@@ -253,7 +256,8 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
         return;
       }
       const token = generateToken(req.userId!, ["admin"], Number(clinicId), true);
-      return res.json({ token, clinicId: Number(clinicId), clinicName: clinic.name });
+      res.json({ token, clinicId: Number(clinicId), clinicName: clinic.name });
+      return;
     }
 
     const roles = await getUserRolesForClinic(req.userId!, Number(clinicId));
@@ -263,7 +267,7 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
     }
 
     const token = generateToken(req.userId!, roles, Number(clinicId), false);
-    return res.json({ token, clinicId: Number(clinicId), roles });
+    res.json({ token, clinicId: Number(clinicId), roles });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

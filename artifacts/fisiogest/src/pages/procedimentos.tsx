@@ -136,6 +136,8 @@ export default function Procedimentos() {
     description: "",
     maxCapacity: 1,
     onlineBookingEnabled: false,
+    monthlyPrice: "" as string | undefined,
+    billingDay: "" as string | undefined,
   });
 
   const baseUrl = isAdmin

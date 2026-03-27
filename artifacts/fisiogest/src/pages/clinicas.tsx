@@ -343,13 +343,13 @@ export default function Clinicas() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
+    createMutation.mutate(formData as unknown as Record<string, string>);
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingClinic) return;
-    updateMutation.mutate({ id: editingClinic.id, data: formData });
+    updateMutation.mutate({ id: editingClinic.id, data: formData as unknown as Record<string, unknown> });
   };
 
   const openEdit = (clinic: Clinic) => {
