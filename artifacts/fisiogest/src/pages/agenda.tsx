@@ -135,6 +135,7 @@ export default function Agenda() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+  const [editingBlock, setEditingBlock] = useState<BlockedSlot | null>(null);
 
   const { data: schedules = [] } = useQuery<ScheduleOption[]>({
     queryKey: ["schedules"],
@@ -584,15 +585,22 @@ export default function Agenda() {
                         return (
                           <div
                             key={block.id}
-                            className="absolute left-0 right-0 z-[5] bg-slate-200/80 border border-slate-300 border-dashed rounded overflow-hidden pointer-events-none"
+                            className="absolute left-0 right-0 z-[5] bg-slate-200/80 border border-slate-300 border-dashed rounded overflow-hidden cursor-pointer hover:bg-slate-300/80 group transition-colors"
                             style={{ top: top + 1, height: height - 2 }}
+                            onClick={(e) => { e.stopPropagation(); setEditingBlock(block); }}
+                            title="Clique para editar o bloqueio"
                           >
-                            <div className="flex items-center gap-1 px-1.5 py-0.5">
-                              <Ban className="w-3 h-3 text-slate-500 shrink-0" />
+                            <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 h-full">
+                              <div className="flex items-center gap-1 min-w-0">
+                                <Ban className="w-3 h-3 text-slate-500 shrink-0" />
+                                {!short && (
+                                  <span className="text-[9px] font-semibold text-slate-500 truncate">
+                                    {block.reason || "Bloqueado"} · {block.startTime}–{block.endTime}
+                                  </span>
+                                )}
+                              </div>
                               {!short && (
-                                <span className="text-[9px] font-semibold text-slate-500 truncate">
-                                  {block.reason || "Bloqueado"} · {block.startTime}–{block.endTime}
-                                </span>
+                                <Pencil className="w-2.5 h-2.5 text-slate-400 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
                               )}
                             </div>
                           </div>
@@ -783,6 +791,14 @@ export default function Agenda() {
         activeSchedules={activeSchedules}
         defaultScheduleId={selectedScheduleId ?? undefined}
       />
+
+      {editingBlock && (
+        <BlockEditDialog
+          block={editingBlock}
+          onClose={() => setEditingBlock(null)}
+          onSuccess={() => { setEditingBlock(null); refetchBlocked(); }}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -2284,6 +2300,169 @@ function MonthGrid({
   );
 }
 
+// ─── Block Edit Dialog ────────────────────────────────────────────────────────
+
+function BlockEditDialog({
+  block,
+  onClose,
+  onSuccess,
+}: {
+  block: BlockedSlot;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    date: block.date,
+    startTime: block.startTime,
+    endTime: block.endTime,
+    reason: block.reason ?? "",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [showGroupChoice, setShowGroupChoice] = useState(false);
+
+  const isRecurring = !!block.recurrenceGroupId;
+  const dateChanged = form.date !== block.date;
+
+  const doSave = async (updateGroup: boolean) => {
+    if (form.startTime >= form.endTime) {
+      toast({ variant: "destructive", title: "Horário inválido", description: "O início deve ser anterior ao término." });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/blocked-slots/${block.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          date: form.date,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          reason: form.reason || null,
+          updateGroup,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Erro ao salvar", description: data.message ?? "Tente novamente." });
+      } else {
+        toast({ title: updateGroup ? "Série inteira atualizada." : "Bloqueio atualizado com sucesso." });
+        onSuccess();
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao atualizar bloqueio." });
+    } finally {
+      setIsSaving(false);
+      setShowGroupChoice(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (isRecurring && !dateChanged) {
+      setShowGroupChoice(true);
+    } else {
+      doSave(false);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-3xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-slate-100">
+                <Pencil className="w-4 h-4 text-slate-600" />
+              </div>
+              <div>
+                <DialogTitle className="font-display text-xl">Editar Bloqueio</DialogTitle>
+                {isRecurring && (
+                  <p className="text-xs text-violet-600 font-medium mt-0.5 flex items-center gap-1">
+                    <Repeat className="w-3 h-3" /> Bloqueio recorrente
+                  </p>
+                )}
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Data</Label>
+              <DatePickerPTBR
+                value={form.date}
+                onChange={(v) => setForm({ ...form, date: v })}
+                className="h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Início</Label>
+                <TimeInputPTBR
+                  value={form.startTime}
+                  onChange={(v) => setForm({ ...form, startTime: v })}
+                  className="h-10 rounded-xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Término</Label>
+                <TimeInputPTBR
+                  value={form.endTime}
+                  onChange={(v) => setForm({ ...form, endTime: v })}
+                  className="h-10 rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Motivo</Label>
+              <Input
+                placeholder="Ex: Almoço, Reunião, Curso..."
+                value={form.reason}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                className="h-10 rounded-xl"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-xl flex-1" onClick={onClose} disabled={isSaving}>
+              Cancelar
+            </Button>
+            <Button className="rounded-xl flex-1" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Pencil className="w-4 h-4 mr-1.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Choice dialog for recurring blocks */}
+      {showGroupChoice && (
+        <Dialog open onOpenChange={() => setShowGroupChoice(false)}>
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Editar bloqueio recorrente</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">Este bloqueio faz parte de uma série recorrente. O que deseja atualizar?</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Button variant="outline" className="rounded-xl" onClick={() => doSave(false)} disabled={isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                Apenas este bloqueio
+              </Button>
+              <Button className="rounded-xl" onClick={() => doSave(true)} disabled={isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                Toda a série recorrente
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
 // ─── Blocked Slot Modal ───────────────────────────────────────────────────────
 
 const WEEK_DAYS = [
@@ -2322,8 +2501,9 @@ function BlockedSlotModal({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [deleteGroupId, setDeleteGroupId] = useState<{ id: number; groupId: string | null } | null>(null);
-  const [editSlot, setEditSlot] = useState<{ id: number; startTime: string; endTime: string; reason: string } | null>(null);
+  const [editSlot, setEditSlot] = useState<{ id: number; date: string; originalDate: string; startTime: string; endTime: string; reason: string; recurrenceGroupId: string | null } | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editShowGroupChoice, setEditShowGroupChoice] = useState(false);
 
   // On open, auto-set scheduleId based on context
   useEffect(() => {
@@ -2442,7 +2622,7 @@ function BlockedSlotModal({
     }
   };
 
-  const handleSaveEdit = async () => {
+  const doSaveEdit = async (updateGroup: boolean) => {
     if (!editSlot) return;
     if (editSlot.startTime >= editSlot.endTime) {
       toast({ variant: "destructive", title: "Horário inválido", description: "O horário de início deve ser anterior ao término." });
@@ -2454,14 +2634,21 @@ function BlockedSlotModal({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ startTime: editSlot.startTime, endTime: editSlot.endTime, reason: editSlot.reason }),
+        body: JSON.stringify({
+          date: editSlot.date,
+          startTime: editSlot.startTime,
+          endTime: editSlot.endTime,
+          reason: editSlot.reason || null,
+          updateGroup,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast({ variant: "destructive", title: "Erro ao salvar", description: data.message ?? "Tente novamente." });
       } else {
-        toast({ title: "Bloqueio atualizado com sucesso." });
+        toast({ title: updateGroup ? "Série inteira atualizada." : "Bloqueio atualizado com sucesso." });
         setEditSlot(null);
+        setEditShowGroupChoice(false);
         refetchList();
         onSuccess();
       }
@@ -2469,6 +2656,16 @@ function BlockedSlotModal({
       toast({ variant: "destructive", title: "Erro ao atualizar bloqueio." });
     } finally {
       setIsSavingEdit(false);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (!editSlot) return;
+    const dateChanged = editSlot.date !== editSlot.originalDate;
+    if (editSlot.recurrenceGroupId && !dateChanged) {
+      setEditShowGroupChoice(true);
+    } else {
+      doSaveEdit(false);
     }
   };
 
@@ -2651,15 +2848,17 @@ function BlockedSlotModal({
                     </div>
                     <div className="flex items-center gap-1 ml-2 shrink-0">
                       <button
+                        type="button"
                         className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors"
-                        onClick={() => setEditSlot({ id: b.id, startTime: b.startTime, endTime: b.endTime, reason: (b as any).reason ?? "" })}
+                        onClick={() => setEditSlot({ id: b.id, date: b.date, originalDate: b.date, startTime: b.startTime, endTime: b.endTime, reason: b.reason ?? "", recurrenceGroupId: b.recurrenceGroupId ?? null })}
                         title="Editar bloqueio"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
+                        type="button"
                         className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
-                        onClick={() => handleDelete(b.id, (b as any).recurrenceGroupId || null)}
+                        onClick={() => handleDelete(b.id, b.recurrenceGroupId || null)}
                         title="Remover bloqueio"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -2697,16 +2896,31 @@ function BlockedSlotModal({
       {/* Edit blocked slot dialog */}
       {editSlot && (
         <Dialog open onOpenChange={() => setEditSlot(null)}>
-          <DialogContent className="sm:max-w-[360px] border-none shadow-2xl rounded-2xl">
+          <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-2xl">
             <DialogHeader>
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-slate-100">
                   <Pencil className="w-4 h-4 text-slate-600" />
                 </div>
-                <DialogTitle className="font-display text-lg">Editar Bloqueio</DialogTitle>
+                <div>
+                  <DialogTitle className="font-display text-lg">Editar Bloqueio</DialogTitle>
+                  {editSlot.recurrenceGroupId && (
+                    <p className="text-xs text-violet-600 font-medium mt-0.5 flex items-center gap-1">
+                      <Repeat className="w-3 h-3" /> Bloqueio recorrente
+                    </p>
+                  )}
+                </div>
               </div>
             </DialogHeader>
             <div className="space-y-3 pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Data</Label>
+                <DatePickerPTBR
+                  value={editSlot.date}
+                  onChange={(v) => setEditSlot({ ...editSlot, date: v })}
+                  className="h-10 rounded-xl"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Início</Label>
@@ -2744,6 +2958,28 @@ function BlockedSlotModal({
                 Salvar
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Recurring series update choice dialog */}
+      {editShowGroupChoice && editSlot && (
+        <Dialog open onOpenChange={() => setEditShowGroupChoice(false)}>
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Editar bloqueio recorrente</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">Este bloqueio faz parte de uma série recorrente. O que deseja atualizar?</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Button variant="outline" className="rounded-xl" onClick={() => doSaveEdit(false)} disabled={isSavingEdit}>
+                {isSavingEdit ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                Apenas este bloqueio
+              </Button>
+              <Button className="rounded-xl" onClick={() => doSaveEdit(true)} disabled={isSavingEdit}>
+                {isSavingEdit ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                Toda a série recorrente
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

@@ -154,7 +154,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 router.put("/:id", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { startTime, endTime, reason } = req.body;
+    const { date, startTime, endTime, reason, updateGroup } = req.body;
 
     if (!startTime || !endTime) {
       res.status(400).json({ error: "Bad Request", message: "startTime e endTime são obrigatórios" });
@@ -176,9 +176,23 @@ router.put("/:id", requirePermission("appointments.create"), async (req: AuthReq
       return;
     }
 
+    // Update entire recurrence group (time/reason only, not date)
+    if (updateGroup && existing.recurrenceGroupId) {
+      await db
+        .update(blockedSlotsTable)
+        .set({ startTime, endTime, reason: reason ?? null })
+        .where(eq(blockedSlotsTable.recurrenceGroupId, existing.recurrenceGroupId));
+      const [refreshed] = await db.select().from(blockedSlotsTable).where(eq(blockedSlotsTable.id, id));
+      res.json(refreshed);
+      return;
+    }
+
+    const updateFields: Record<string, unknown> = { startTime, endTime, reason: reason ?? null };
+    if (date) updateFields.date = date;
+
     const [updated] = await db
       .update(blockedSlotsTable)
-      .set({ startTime, endTime, reason: reason ?? null })
+      .set(updateFields)
       .where(eq(blockedSlotsTable.id, id))
       .returning();
 
