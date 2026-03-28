@@ -554,6 +554,7 @@ router.get("/clinic-info", async (_req, res) => {
       .select({
         name: clinicsTable.name,
         type: clinicsTable.type,
+        responsibleTechnical: clinicsTable.responsibleTechnical,
         phone: clinicsTable.phone,
         email: clinicsTable.email,
         address: clinicsTable.address,

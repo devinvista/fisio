@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -124,16 +124,40 @@ export default function Procedimentos() {
     tagline: "Cuidando de você com excelência",
     showPrices: true,
     selectedCategories: ["Fisioterapia", "Estética", "Pilates"] as string[],
+    clinicType: "clinica" as string,
+    introText: "",
   });
+
+  const buildIntroText = useCallback((type: string, name: string, responsible?: string | null): string => {
+    const isAutonomo = type === "autonomo" || type === "profissional";
+    if (isAutonomo) {
+      const prof = responsible || name;
+      return `Conheça os serviços e tratamentos especializados de ${prof}. Com técnicas modernas e abordagem personalizada, ofereço atendimento de excelência focado na sua recuperação e bem-estar.`;
+    }
+    return `Conheça os serviços e tratamentos especializados de ${name}. Nossa equipe está pronta para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.`;
+  }, []);
 
   useEffect(() => {
     fetch("/api/public/clinic-info")
       .then((r) => r.json())
-      .then((data: { name?: string }) => {
-        if (data?.name) setCatalogOptions((o) => ({ ...o, clinicName: data.name! }));
+      .then((data: { name?: string; type?: string; responsibleTechnical?: string | null }) => {
+        const name = data?.name || "FisioGest Pro";
+        const type = data?.type || "clinica";
+        const responsible = data?.responsibleTechnical;
+        setCatalogOptions((o) => ({
+          ...o,
+          clinicName: name,
+          clinicType: type,
+          introText: buildIntroText(type, name, responsible),
+        }));
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        setCatalogOptions((o) => ({
+          ...o,
+          introText: buildIntroText("clinica", o.clinicName, null),
+        }));
+      });
+  }, [buildIntroText]);
 
   const [form, setForm] = useState({
     name: "",
@@ -280,7 +304,7 @@ export default function Procedimentos() {
   const avgMargin = allProcedures.length ? allProcedures.reduce((s, p) => s + getMargin(p.price, p.cost ?? 0), 0) / allProcedures.length : 0;
 
   function generateCatalog() {
-    const { clinicName, tagline, showPrices, selectedCategories } = catalogOptions;
+    const { clinicName, tagline, showPrices, selectedCategories, introText } = catalogOptions;
 
     const categoryOrder = ["Fisioterapia", "Estética", "Pilates"];
     const catColors: Record<string, string> = { "Fisioterapia": "#2563eb", "Estética": "#db2777", "Pilates": "#7c3aed" };
@@ -567,7 +591,7 @@ export default function Procedimentos() {
 
     <div class="content">
       <div class="intro">
-        Conheça nossos serviços e tratamentos especializados. Nossa equipe está pronta para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.
+        ${introText}
       </div>
 
       ${!showPrices ? `<div class="no-price-note">* Entre em contato para informações sobre valores e pacotes personalizados.</div>` : ""}
@@ -879,7 +903,7 @@ export default function Procedimentos() {
 
       {/* ── Catalog Options Modal ───────────────────────────────────────── */}
       <Dialog open={isCatalogModalOpen} onOpenChange={setIsCatalogModalOpen}>
-        <DialogContent className="max-w-sm rounded-3xl border-none shadow-2xl">
+        <DialogContent className="max-w-md rounded-3xl border-none shadow-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-primary" /> Gerar Catálogo
@@ -905,6 +929,30 @@ export default function Procedimentos() {
                 className="rounded-xl"
                 placeholder="Ex: Cuidando de você com excelência"
               />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label>Texto de apresentação</Label>
+                <span className={cn(
+                  "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                  (catalogOptions.clinicType === "autonomo" || catalogOptions.clinicType === "profissional")
+                    ? "bg-purple-50 text-purple-600"
+                    : "bg-blue-50 text-blue-600"
+                )}>
+                  {(catalogOptions.clinicType === "autonomo" || catalogOptions.clinicType === "profissional")
+                    ? "Profissional autônomo"
+                    : "Clínica / Empresa"}
+                </span>
+              </div>
+              <Textarea
+                value={catalogOptions.introText}
+                onChange={e => setCatalogOptions(o => ({ ...o, introText: e.target.value }))}
+                rows={4}
+                className="rounded-xl resize-none text-sm"
+                placeholder="Texto de apresentação da clínica no catálogo..."
+              />
+              <p className="text-[10px] text-slate-400">Texto ajustado automaticamente com base no tipo de cadastro. Você pode personalizar.</p>
             </div>
 
             <div className="space-y-2">
