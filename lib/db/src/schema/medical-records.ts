@@ -85,6 +85,7 @@ export const evolutionsTable = pgTable("evolutions", {
   patientResponse: text("patient_response"),
   clinicalNotes: text("clinical_notes"),
   complications: text("complications"),
+  painScale: integer("pain_scale"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

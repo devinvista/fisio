@@ -208,6 +208,20 @@ function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appoin
         <span class="evo-date" style="margin-left:auto">${dateStr}</span>
       </div>
       ${apptInfo ? `<div style="font-size:9pt;color:#1d4ed8;margin-bottom:6px">${apptInfo}</div>` : ""}
+      ${ev.painScale !== null && ev.painScale !== undefined ? (() => {
+        const painColor = ev.painScale >= 7 ? "#dc2626" : ev.painScale >= 4 ? "#f97316" : "#16a34a";
+        const painLabel = ev.painScale === 0 ? "Sem dor" : ev.painScale <= 3 ? "Dor leve" : ev.painScale <= 6 ? "Dor moderada" : ev.painScale <= 9 ? "Dor intensa" : "Dor insuportável";
+        return `<div class="evo-field" style="margin-bottom:8px">
+          <div class="fl">Escala de Dor (EVA)</div>
+          <div class="fv" style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;background:#e5e7eb;height:8px;border-radius:4px">
+              <div style="width:${(ev.painScale / 10) * 100}%;background:${painColor};height:8px;border-radius:4px"></div>
+            </div>
+            <span style="font-weight:bold;color:${painColor};font-size:13pt">${ev.painScale}/10</span>
+            <span style="color:${painColor};font-size:9pt">(${painLabel})</span>
+          </div>
+        </div>`;
+      })() : ""}
       ${ev.description ? `<div class="evo-field"><div class="fl">Descrição da Sessão</div><div class="fv">${ev.description}</div></div>` : ""}
       ${ev.patientResponse ? `<div class="evo-field"><div class="fl">Resposta do Paciente</div><div class="fv">${ev.patientResponse}</div></div>` : ""}
       ${ev.clinicalNotes ? `<div class="evo-field"><div class="fl">Notas Clínicas</div><div class="fv">${ev.clinicalNotes}</div></div>` : ""}
@@ -2486,7 +2500,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
 
 // ─── Evolutions Tab ─────────────────────────────────────────────────────────────
 
-const emptyEvoForm = { appointmentId: "" as string | number, description: "", patientResponse: "", clinicalNotes: "", complications: "" };
+const emptyEvoForm = { appointmentId: "" as string | number, description: "", patientResponse: "", clinicalNotes: "", complications: "", painScale: null as number | null };
 type EvoFormState = typeof emptyEvoForm;
 
 interface EvoFormProps {
@@ -2551,6 +2565,64 @@ function EvoForm({ onSave, onCancel, saving, title, form, setForm, appointments 
             value={form.complications} onChange={e => setForm({ ...form, complications: e.target.value })}
             placeholder="Alguma intercorrência ou evento adverso..." />
         </div>
+
+        {/* EVA Pain Scale */}
+        <div className="space-y-3 bg-slate-50 rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA)</Label>
+              <p className="text-xs text-slate-400 mt-0.5">Escala Visual Analógica — 0 (sem dor) a 10 (dor máxima)</p>
+            </div>
+            {form.painScale !== null ? (
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl text-white shadow-md ${
+                form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
+              }`}>
+                {form.painScale}
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400 italic">não avaliada</span>
+            )}
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            {[null, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => (
+              <button
+                key={v === null ? "none" : v}
+                type="button"
+                onClick={() => setForm({ ...form, painScale: v })}
+                className={`w-9 h-9 rounded-lg text-sm font-semibold border-2 transition-all ${
+                  form.painScale === v
+                    ? v === null
+                      ? "bg-slate-200 border-slate-400 text-slate-700"
+                      : v >= 7
+                        ? "bg-red-500 border-red-600 text-white"
+                        : v >= 4
+                          ? "bg-orange-400 border-orange-500 text-white"
+                          : "bg-green-500 border-green-600 text-white"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+                }`}
+              >
+                {v === null ? "—" : v}
+              </button>
+            ))}
+          </div>
+
+          {form.painScale !== null && (
+            <p className="text-xs font-medium mt-1 flex items-center gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full ${
+                form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
+              }`} />
+              <span className={form.painScale >= 7 ? "text-red-600" : form.painScale >= 4 ? "text-orange-600" : "text-green-600"}>
+                {form.painScale === 0 ? "Sem dor"
+                  : form.painScale <= 3 ? "Dor leve"
+                  : form.painScale <= 6 ? "Dor moderada"
+                  : form.painScale <= 9 ? "Dor intensa"
+                  : "Dor insuportável"}
+              </span>
+            </p>
+          )}
+        </div>
+
         <div className="flex gap-3 justify-end pt-2">
           <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
           <Button onClick={onSave} className="rounded-xl" disabled={saving}>
@@ -2644,6 +2716,7 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
       patientResponse: ev.patientResponse || "",
       clinicalNotes: ev.clinicalNotes || "",
       complications: ev.complications || "",
+      painScale: ev.painScale ?? null,
     });
   };
 
@@ -2736,6 +2809,27 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
                             </Button>
                           </div>
                         </div>
+                        {ev.painScale !== null && ev.painScale !== undefined && (
+                          <div className="flex items-center gap-3 mb-3 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">EVA</span>
+                            <div className="flex-1 flex items-center gap-2">
+                              <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${ev.painScale >= 7 ? "bg-red-500" : ev.painScale >= 4 ? "bg-orange-400" : "bg-green-500"}`}
+                                  style={{ width: `${(ev.painScale / 10) * 100}%` }}
+                                />
+                              </div>
+                              <div className={`flex items-center justify-center w-9 h-9 rounded-full font-bold text-base text-white shrink-0 ${
+                                ev.painScale >= 7 ? "bg-red-500" : ev.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
+                              }`}>
+                                {ev.painScale}
+                              </div>
+                            </div>
+                            <span className={`text-xs font-medium ${ev.painScale >= 7 ? "text-red-600" : ev.painScale >= 4 ? "text-orange-500" : "text-green-600"}`}>
+                              {ev.painScale === 0 ? "Sem dor" : ev.painScale <= 3 ? "Leve" : ev.painScale <= 6 ? "Moderada" : ev.painScale <= 9 ? "Intensa" : "Insuportável"}
+                            </span>
+                          </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {ev.description && <InfoBlock label="Sessão" value={ev.description} className="md:col-span-2" />}
                           {ev.patientResponse && <InfoBlock label="Resposta do Paciente" value={ev.patientResponse} />}
