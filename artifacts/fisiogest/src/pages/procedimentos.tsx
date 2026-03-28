@@ -131,8 +131,7 @@ export default function Procedimentos() {
   const buildIntroText = useCallback((type: string, name: string, responsible?: string | null): string => {
     const isAutonomo = type === "autonomo" || type === "profissional";
     if (isAutonomo) {
-      const prof = responsible || name;
-      return `Conheça os serviços e tratamentos especializados de ${prof}. Estou pronto para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.`;
+      return `Conheça nossos serviços e tratamentos especializados. Com dedicação e técnicas modernas, ofereço atendimento personalizado para cada paciente.`;
     }
     return `Conheça nossos serviços e tratamentos especializados. Nossa equipe está pronta para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.`;
   }, []);
