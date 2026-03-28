@@ -147,7 +147,7 @@ function printDocument(html: string, title: string) {
     .sig-label{font-size:9.5pt;color:#444}
     .footer{margin-top:28px;border-top:1px solid #ccc;padding-top:8px;font-size:8pt;color:#888;text-align:center}
     p{margin-bottom:6px;line-height:1.5}
-    @media print{@page{margin:1.5cm}body{padding:0}}
+    @media print{@page{size:A4;margin:1.5cm}body{padding:0}}
   </style></head>
   <body>${html}<script>window.onload=function(){setTimeout(function(){window.print();},400);}</script></body></html>`);
   w.document.close();
@@ -766,7 +766,7 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
     .psig-name{font-size:11pt;font-weight:700;color:#1e293b}
     .psig-label{font-size:9pt;color:#64748b}
     .pfooter{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:8pt;color:#94a3b8;text-align:center}
-    @media print{@page{margin:1.5cm 2cm}body{padding:0}.psection{page-break-inside:avoid}}
+    @media print{@page{size:A4;margin:1.5cm 2cm}body{padding:0}.psection{page-break-inside:avoid}}
   `;
 
   return { html: `${headerHtml}${tocHtml}${anamnesisHtml}${evaluationsHtml}${planHtml}${evolutionsHtml}${dischargeHtml}${signatureHtml}`, css };
@@ -4077,7 +4077,7 @@ function printAtestado(at: AtestadoRecord, clinic?: ClinicInfo | null) {
     : "";
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Atestado</title><style>
-@page{margin:2.5cm}*{margin:0;padding:0;box-sizing:border-box}
+@page{size:A4;margin:2.5cm}*{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;line-height:1.5}
 .header{border-bottom:2px solid #1d4ed8;padding-bottom:14px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start}
 .clinic-info{display:flex;align-items:center;gap:12px}

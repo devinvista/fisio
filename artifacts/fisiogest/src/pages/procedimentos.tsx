@@ -291,7 +291,7 @@ export default function Procedimentos() {
         cat,
         label: cat,
         color: catColors[cat] ?? "#334155",
-        items: allProcedures.filter(p => p.category === cat),
+        items: allProcedures.filter(p => p.category === cat && p.isActive),
       }))
       .filter(g => g.items.length > 0);
 
@@ -543,11 +543,13 @@ export default function Procedimentos() {
     .print-btn:hover { background: #1e293b; }
 
     @media print {
+      @page { size: A4; margin: 1.5cm; }
       body { background: #fff; }
       .print-btn { display: none !important; }
-      .page { box-shadow: none; }
+      .page { box-shadow: none; max-width: none; margin: 0; }
       .proc-card { break-inside: avoid; }
       .category-section { break-inside: avoid; }
+      .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
@@ -559,7 +561,7 @@ export default function Procedimentos() {
       <div class="hero-tagline">${tagline}</div>
       <div class="hero-badge">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
-        ${allProcedures.length} serviços disponíveis
+        ${allProcedures.filter(p => p.isActive).length} serviços disponíveis
       </div>
     </div>
 
