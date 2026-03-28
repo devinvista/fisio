@@ -132,7 +132,7 @@ export default function Procedimentos() {
     const isAutonomo = type === "autonomo" || type === "profissional";
     if (isAutonomo) {
       const prof = responsible || name;
-      return `Conheça os serviços e tratamentos especializados de ${prof}. Com técnicas modernas e abordagem personalizada, ofereço atendimento de excelência focado na sua recuperação e bem-estar.`;
+      return `Conheça os serviços e tratamentos especializados de ${prof}. Estou pronto para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.`;
     }
     return `Conheça nossos serviços e tratamentos especializados. Nossa equipe está pronta para oferecer o melhor cuidado, com técnicas modernas e atendimento personalizado para cada paciente.`;
   }, []);
