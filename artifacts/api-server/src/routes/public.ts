@@ -6,6 +6,7 @@ import {
   proceduresTable,
   blockedSlotsTable,
   treatmentPlansTable,
+  clinicsTable,
 } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -539,6 +540,32 @@ router.delete("/booking/:token", async (req, res) => {
       .where(eq(appointmentsTable.id, appointment.id));
 
     res.json({ success: true, message: "Agendamento cancelado com sucesso" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ── GET /api/public/clinic-info ───────────────────────────────────────────────
+// Retorna informações básicas da clínica (sem dados sensíveis) — sem autenticação
+router.get("/clinic-info", async (_req, res) => {
+  try {
+    const [clinic] = await db
+      .select({
+        name: clinicsTable.name,
+        type: clinicsTable.type,
+        phone: clinicsTable.phone,
+        email: clinicsTable.email,
+        address: clinicsTable.address,
+        website: clinicsTable.website,
+        logoUrl: clinicsTable.logoUrl,
+      })
+      .from(clinicsTable)
+      .where(eq(clinicsTable.isActive, true))
+      .limit(1);
+
+    if (!clinic) return res.json({ name: "FisioGest Pro", type: "clinica", phone: null, email: null, address: null, website: null, logoUrl: null });
+    res.json(clinic);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

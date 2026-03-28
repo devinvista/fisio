@@ -685,7 +685,7 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
       <div class="psig-label">Profissional Responsável pelo Prontuário</div>
     </div>
     <div class="pfooter">
-      Prontuário gerado em ${today} &bull; FisioGest Pro &bull; Documento de uso clínico — COFFITO
+      Prontuário gerado em ${today} &bull; ${escapeHtml(d.clinic?.name || "FisioGest Pro")} &bull; Documento de uso clínico — COFFITO
     </div>`;
 
   const css = `

@@ -1050,6 +1050,17 @@ export default function Agendar() {
   const [matchToken, paramsToken] = useRoute("/agendar/:token");
   const token = matchToken ? (paramsToken as any).token : null;
 
+  const [clinicInfo, setClinicInfo] = useState<{ name: string; logoUrl?: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/public/clinic-info`)
+      .then((r) => r.json())
+      .then((data) => setClinicInfo(data))
+      .catch(() => {});
+  }, []);
+
+  const clinicName = clinicInfo?.name || "FisioGest Pro";
+
   // Wizard state — 3 steps: Seus Dados → Procedimento → Data e Hora → Confirmação
   const [step, setStep] = useState(1);
   const [patientFormData, setPatientFormData] = useState<PatientFormData | null>(null);
@@ -1126,11 +1137,13 @@ export default function Agendar() {
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9">
-              <LogoMark />
-            </div>
+            {clinicInfo?.logoUrl ? (
+              <img src={clinicInfo.logoUrl} alt={clinicName} className="h-9 w-auto max-w-[120px] object-contain" />
+            ) : (
+              <div className="w-9 h-9"><LogoMark /></div>
+            )}
             <div>
-              <p className="font-bold text-slate-800 text-sm leading-tight">FisioGest Pro</p>
+              <p className="font-bold text-slate-800 text-sm leading-tight">{clinicName}</p>
               <p className="text-[10px] text-slate-400 leading-tight">Agendamento Online</p>
             </div>
           </div>
@@ -1210,7 +1223,7 @@ export default function Agendar() {
 
       {/* Footer */}
       <footer className="text-center py-8 text-xs text-slate-400">
-        <p>© {new Date().getFullYear()} FisioGest Pro — Gestão Clínica</p>
+        <p>© {new Date().getFullYear()} {clinicName} — Gestão Clínica</p>
       </footer>
     </div>
   );

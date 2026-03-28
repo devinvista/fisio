@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -125,6 +125,15 @@ export default function Procedimentos() {
     showPrices: true,
     selectedCategories: ["Fisioterapia", "Estética", "Pilates"] as string[],
   });
+
+  useEffect(() => {
+    fetch("/api/public/clinic-info")
+      .then((r) => r.json())
+      .then((data: { name?: string }) => {
+        if (data?.name) setCatalogOptions((o) => ({ ...o, clinicName: data.name! }));
+      })
+      .catch(() => {});
+  }, []);
 
   const [form, setForm] = useState({
     name: "",
