@@ -72,6 +72,12 @@ import {
   PowerOff,
   Settings2,
   ChevronRight,
+  Globe,
+  Upload,
+  ImageIcon,
+  Award,
+  UserCheck,
+  X,
 } from "lucide-react";
 import { ROLES, ROLE_LABELS } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
@@ -92,10 +98,16 @@ function getHashSection(): Section {
 interface Clinic {
   id: number;
   name: string;
+  type?: string | null;
   cnpj?: string | null;
+  cpf?: string | null;
+  crefito?: string | null;
+  responsibleTechnical?: string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  website?: string | null;
+  logoUrl?: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -245,11 +257,18 @@ function ClinicaSection() {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
+    type: "clinica",
     cnpj: "",
+    cpf: "",
+    crefito: "",
+    responsibleTechnical: "",
     phone: "",
     email: "",
     address: "",
+    website: "",
+    logoUrl: "",
   });
+  const [logoPreview, setLogoPreview] = useState<string>("");
 
   const { data: clinic, isLoading } = useQuery<Clinic>({
     queryKey: ["clinic-current"],
@@ -258,13 +277,21 @@ function ClinicaSection() {
 
   useEffect(() => {
     if (clinic) {
+      const isAutonomo = clinic.type === "autonomo";
       setFormData({
         name: clinic.name ?? "",
-        cnpj: clinic.cnpj ?? "",
+        type: clinic.type ?? "clinica",
+        cnpj: clinic.cnpj ? maskCnpj(clinic.cnpj) : "",
+        cpf: clinic.cpf ? maskCpf(clinic.cpf) : "",
+        crefito: clinic.crefito ?? "",
+        responsibleTechnical: clinic.responsibleTechnical ?? "",
         phone: clinic.phone ?? "",
         email: clinic.email ?? "",
         address: clinic.address ?? "",
+        website: clinic.website ?? "",
+        logoUrl: clinic.logoUrl ?? "",
       });
+      setLogoPreview(clinic.logoUrl ?? "");
     }
   }, [clinic]);
 
@@ -280,10 +307,28 @@ function ClinicaSection() {
     },
   });
 
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "Logo muito grande", description: "Selecione uma imagem de até 2 MB." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setLogoPreview(dataUrl);
+      setFormData((p) => ({ ...p, logoUrl: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateMutation.mutate(formData);
   };
+
+  const isAutonomo = formData.type === "autonomo";
 
   if (isLoading) {
     return (
@@ -295,43 +340,204 @@ function ClinicaSection() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
+
+      {/* ── Tipo de Estabelecimento ── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Building2 className="h-4 w-4" />
-            Informações Gerais
+            Tipo de Estabelecimento
           </CardTitle>
-          <CardDescription>Dados principais da clínica para identificação.</CardDescription>
+          <CardDescription>Define o modelo jurídico e os campos de identificação exibidos nos documentos.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="clinic-name">Nome da Clínica *</Label>
-            <Input
-              id="clinic-name"
-              value={formData.name}
-              onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-              placeholder="Ex: Clínica FisioGest"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="clinic-cnpj" className="flex items-center gap-1.5">
-              <Hash className="h-3.5 w-3.5" /> CNPJ
-            </Label>
-            <Input
-              id="clinic-cnpj"
-              value={formData.cnpj}
-              onChange={(e) => setFormData((p) => ({ ...p, cnpj: maskCnpj(e.target.value) }))}
-              placeholder="00.000.000/0001-00"
-            />
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setFormData((p) => ({ ...p, type: "autonomo" }))}
+              className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all cursor-pointer ${
+                isAutonomo
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-slate-200 hover:border-slate-300 text-slate-600"
+              }`}
+            >
+              <User2 className="h-6 w-6" />
+              <div className="text-center">
+                <p className="text-sm font-semibold">Profissional Autônomo</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">CPF · CREFITO / CREF individual</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData((p) => ({ ...p, type: "clinica" }))}
+              className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all cursor-pointer ${
+                !isAutonomo
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-slate-200 hover:border-slate-300 text-slate-600"
+              }`}
+            >
+              <Building2 className="h-6 w-6" />
+              <div className="text-center">
+                <p className="text-sm font-semibold">Clínica / Empresa</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">CNPJ · Responsável Técnico (RT)</p>
+              </div>
+            </button>
           </div>
         </CardContent>
       </Card>
 
+      {/* ── Identidade & Logotipo ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Contato</CardTitle>
-          <CardDescription>Informações de contato da clínica.</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ImageIcon className="h-4 w-4" />
+            Identidade Visual
+          </CardTitle>
+          <CardDescription>Nome e logotipo aparecem no cabeçalho de todos os documentos gerados.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="clinic-name">
+              {isAutonomo ? "Nome do Profissional / Consultório *" : "Nome da Clínica *"}
+            </Label>
+            <Input
+              id="clinic-name"
+              value={formData.name}
+              onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+              placeholder={isAutonomo ? "Ex: Dr. João Silva — Fisioterapia" : "Ex: Clínica FisioGest"}
+              required
+            />
+          </div>
+
+          {/* Logo upload */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Upload className="h-3.5 w-3.5" /> Logotipo
+            </Label>
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-20 h-20 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden bg-slate-50">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <ImageIcon className="h-7 w-7 text-slate-300" />
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer w-fit">
+                  <div className="inline-flex items-center gap-1.5 text-sm font-medium border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors">
+                    <Upload className="h-3.5 w-3.5" />
+                    Escolher imagem
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoChange}
+                  />
+                </label>
+                {logoPreview && (
+                  <button
+                    type="button"
+                    onClick={() => { setLogoPreview(""); setFormData((p) => ({ ...p, logoUrl: "" })); }}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                  >
+                    <X className="h-3 w-3" /> Remover logo
+                  </button>
+                )}
+                <p className="text-[11px] text-muted-foreground">PNG, JPG ou SVG · máx. 2 MB · recomendado 300×100 px</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Identificação Legal ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Hash className="h-4 w-4" />
+            {isAutonomo ? "Identificação do Profissional" : "Identificação da Empresa"}
+          </CardTitle>
+          <CardDescription>
+            {isAutonomo
+              ? "CPF e registro profissional usados nos documentos clínicos."
+              : "CNPJ e dados do Responsável Técnico (RT) para emissão de documentos."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAutonomo ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="clinic-cpf" className="flex items-center gap-1.5">
+                  <Hash className="h-3.5 w-3.5" /> CPF do Profissional
+                </Label>
+                <Input
+                  id="clinic-cpf"
+                  value={formData.cpf}
+                  onChange={(e) => setFormData((p) => ({ ...p, cpf: maskCpf(e.target.value) }))}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clinic-crefito" className="flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5" /> CREFITO / CREF
+                </Label>
+                <Input
+                  id="clinic-crefito"
+                  value={formData.crefito}
+                  onChange={(e) => setFormData((p) => ({ ...p, crefito: e.target.value }))}
+                  placeholder="Ex: CREFITO-3/12345-F"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="clinic-cnpj" className="flex items-center gap-1.5">
+                  <Hash className="h-3.5 w-3.5" /> CNPJ
+                </Label>
+                <Input
+                  id="clinic-cnpj"
+                  value={formData.cnpj}
+                  onChange={(e) => setFormData((p) => ({ ...p, cnpj: maskCnpj(e.target.value) }))}
+                  placeholder="00.000.000/0001-00"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="clinic-rt" className="flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5" /> Responsável Técnico (RT)
+                  </Label>
+                  <Input
+                    id="clinic-rt"
+                    value={formData.responsibleTechnical}
+                    onChange={(e) => setFormData((p) => ({ ...p, responsibleTechnical: e.target.value }))}
+                    placeholder="Nome completo do RT"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="clinic-crefito" className="flex items-center gap-1.5">
+                    <Award className="h-3.5 w-3.5" /> CREFITO / CREF do RT
+                  </Label>
+                  <Input
+                    id="clinic-crefito"
+                    value={formData.crefito}
+                    onChange={(e) => setFormData((p) => ({ ...p, crefito: e.target.value }))}
+                    placeholder="Ex: CREFITO-3/12345-F"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Contato ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contato e Endereço</CardTitle>
+          <CardDescription>Aparecem no rodapé e cabeçalho dos documentos emitidos.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -361,13 +567,24 @@ function ClinicaSection() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="clinic-address" className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" /> Endereço
+              <MapPin className="h-3.5 w-3.5" /> Endereço Completo
             </Label>
             <Input
               id="clinic-address"
               value={formData.address}
               onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
-              placeholder="Rua, número, bairro, cidade - Estado"
+              placeholder="Rua, número, bairro, cidade - Estado, CEP"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="clinic-website" className="flex items-center gap-1.5">
+              <Globe className="h-3.5 w-3.5" /> Site / Redes Sociais
+            </Label>
+            <Input
+              id="clinic-website"
+              value={formData.website}
+              onChange={(e) => setFormData((p) => ({ ...p, website: e.target.value }))}
+              placeholder="www.clinica.com.br"
             />
           </div>
         </CardContent>

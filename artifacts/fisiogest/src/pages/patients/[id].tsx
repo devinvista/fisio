@@ -54,6 +54,63 @@ import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 
 type PatientBasic = { name: string; cpf?: string | null; birthDate?: string | null; phone?: string | null };
 
+/* ─── Clinic Info ─────────────────────────────────────────────────────────── */
+interface ClinicInfo {
+  name: string;
+  type?: string | null;
+  cnpj?: string | null;
+  cpf?: string | null;
+  crefito?: string | null;
+  responsibleTechnical?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  website?: string | null;
+  logoUrl?: string | null;
+}
+
+async function fetchClinicForPrint(): Promise<ClinicInfo | null> {
+  try {
+    const r = await fetch("/api/clinics/current", { credentials: "include" });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+function buildClinicHeaderHTML(clinic?: ClinicInfo | null): string {
+  if (!clinic) {
+    return `<div class="header"><h1 style="display:none"></h1></div>`;
+  }
+  const isAutonomo = clinic.type === "autonomo";
+  const docId = isAutonomo
+    ? clinic.cpf
+      ? `CPF: ${clinic.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}`
+      : ""
+    : clinic.cnpj
+      ? `CNPJ: ${clinic.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")}`
+      : "";
+  const council = clinic.crefito ? clinic.crefito : "";
+  const rt = !isAutonomo && clinic.responsibleTechnical ? `RT: ${clinic.responsibleTechnical}${council ? ` · ${council}` : ""}` : "";
+  const contactParts = [clinic.phone, clinic.email, clinic.address, clinic.website].filter(Boolean);
+  const contactLine = contactParts.join(" · ");
+  const logoHtml = clinic.logoUrl
+    ? `<img src="${clinic.logoUrl}" alt="Logo" style="max-height:56px;max-width:180px;object-fit:contain;" />`
+    : "";
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1d4ed8;padding-bottom:12px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:14px">
+        ${logoHtml}
+        <div>
+          <div style="font-size:15pt;font-weight:bold;color:#1e293b;letter-spacing:0.5px">${clinic.name}</div>
+          <div style="font-size:8.5pt;color:#64748b;margin-top:2px">${[docId, isAutonomo && council ? council : "", rt].filter(Boolean).join(" · ")}</div>
+          ${contactLine ? `<div style="font-size:8pt;color:#94a3b8;margin-top:1px">${contactLine}</div>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
 function printDocument(html: string, title: string) {
   const w = window.open("", "_blank", "width=900,height=700");
   if (!w) { alert("Permita pop-ups para gerar o documento."); return; }
@@ -96,7 +153,7 @@ function printDocument(html: string, title: string) {
   w.document.close();
 }
 
-function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, string>, professional?: { name?: string; council?: string }) {
+function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, string>, professional?: { name?: string; council?: string }, clinic?: ClinicInfo | null) {
   const age = patient.birthDate ? differenceInYears(new Date(), parseISO(patient.birthDate)) : null;
   const ageStr = age ? `, ${age} anos` : "";
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
@@ -104,8 +161,12 @@ function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, 
   const dischargeDate = discharge.dischargeDate
     ? format(parseISO(discharge.dischargeDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
     : today;
+  const profCouncil = professional?.council || clinic?.crefito || "";
+  const profName = professional?.name || clinic?.responsibleTechnical || "Fisioterapeuta Responsável";
+  const clinicName = clinic?.name || "FisioGest Pro";
   return `
-    <div class="header"><h1>ALTA FISIOTERAPÊUTICA</h1><div class="subtitle">Documento Clínico — Requisito COFFITO</div></div>
+    ${buildClinicHeaderHTML(clinic)}
+    <div class="header" style="margin-bottom:12px"><h1>ALTA FISIOTERAPÊUTICA</h1><div class="subtitle">Documento Clínico — Requisito COFFITO</div></div>
     <div class="patient-box">
       <div class="row">
         <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}${ageStr}</strong></div></div>
@@ -120,16 +181,17 @@ function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, 
     ${discharge.recommendations ? `<div class="section"><div class="section-title">Recomendações ao Paciente</div><div class="content-box">${discharge.recommendations}</div></div>` : ""}
     <div class="signature">
       <div><div class="sig-line"></div></div>
-      <div class="sig-label">${professional?.name || "Fisioterapeuta Responsável"}</div>
-      ${professional?.council ? `<div class="sig-label">CREFITO: ${professional.council}</div>` : ""}
+      <div class="sig-label">${profName}</div>
+      ${profCouncil ? `<div class="sig-label">${profCouncil}</div>` : ""}
     </div>
-    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+    <div class="footer">Documento emitido em ${today} &bull; ${clinicName}</div>
   `;
 }
 
-function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appointments: any[]) {
+function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appointments: any[], clinic?: ClinicInfo | null) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
+  const clinicName = clinic?.name || "FisioGest Pro";
   const sortedAppts = [...appointments].sort((a, b) =>
     new Date(a.date + "T" + (a.startTime || "00:00")).getTime() - new Date(b.date + "T" + (b.startTime || "00:00")).getTime()
   );
@@ -153,7 +215,8 @@ function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appoin
     </div>`;
   }).join("");
   return `
-    <div class="header"><h1>EVOLUÇÕES FISIOTERAPÊUTICAS</h1><div class="subtitle">Prontuário de Evoluções de Sessão</div></div>
+    ${buildClinicHeaderHTML(clinic)}
+    <div class="header" style="margin-bottom:12px"><h1>EVOLUÇÕES FISIOTERAPÊUTICAS</h1><div class="subtitle">Prontuário de Evoluções de Sessão</div></div>
     <div class="patient-box">
       <div class="row">
         <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}</strong></div></div>
@@ -162,7 +225,7 @@ function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appoin
       </div>
     </div>
     ${cards}
-    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+    <div class="footer">Documento emitido em ${today} &bull; ${clinicName}</div>
   `;
 }
 
@@ -170,9 +233,11 @@ function generatePlanHTML(
   patient: PatientBasic,
   plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string; startDate?: string; responsibleProfessional?: string },
   appointments: any[],
-  planItems: PlanProcedureItem[] = []
+  planItems: PlanProcedureItem[] = [],
+  clinic?: ClinicInfo | null
 ) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const clinicName = clinic?.name || "FisioGest Pro";
   const completedAppts = [...appointments].filter((a) => a.status === "concluido" || a.status === "presenca")
     .sort((a, b) => new Date(b.date + "T" + (b.startTime || "00:00")).getTime() - new Date(a.date + "T" + (a.startTime || "00:00")).getTime());
   const totalCompleted = completedAppts.length;
@@ -215,7 +280,8 @@ function generatePlanHTML(
   </tr>`).join("");
 
   return `
-    <div class="header"><h1>PLANO DE TRATAMENTO FISIOTERAPÊUTICO</h1><div class="subtitle">Documento Clínico — FisioGest Pro</div></div>
+    ${buildClinicHeaderHTML(clinic)}
+    <div class="header" style="margin-bottom:12px"><h1>PLANO DE TRATAMENTO FISIOTERAPÊUTICO</h1><div class="subtitle">Documento Clínico</div></div>
     <div class="patient-box">
       <div class="row">
         <div class="field"><div class="label">Paciente</div><div class="value"><strong>${patient.name}</strong></div></div>
@@ -238,7 +304,7 @@ function generatePlanHTML(
     ${rows ? `<div class="section"><div class="section-title">Histórico de Sessões</div>
       <table class="sessions-table"><thead><tr><th>#</th><th>Data</th><th>Horário</th><th>Procedimento</th></tr></thead>
       <tbody>${rows}</tbody></table></div>` : ""}
-    <div class="footer">Documento emitido em ${today} &bull; FisioGest Pro</div>
+    <div class="footer">Documento emitido em ${today} &bull; ${clinicName}</div>
   `;
 }
 
@@ -246,9 +312,13 @@ function generateContractHTML(
   patient: PatientBasic,
   plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string; startDate?: string; responsibleProfessional?: string },
   planItems: PlanProcedureItem[],
+  clinic?: ClinicInfo | null
 ) {
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
+  const clinicName = clinic?.name || "FisioGest Pro";
+  const clinicCrefito = clinic?.crefito || "";
+  const clinicRT = clinic?.responsibleTechnical || "";
 
   function fmtC(v: any) {
     if (v === null || v === undefined) return "—";
@@ -307,10 +377,14 @@ function generateContractHTML(
 
   const grandTotal = totalSessoesVal + totalMensalVal;
 
+  const contratada = plan.responsibleProfessional || clinicRT || clinicName;
+  const contratadaCouncil = clinicCrefito;
+
   return `
-    <div class="header">
+    ${buildClinicHeaderHTML(clinic)}
+    <div class="header" style="margin-bottom:12px">
       <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-      <div class="subtitle">Serviços de Fisioterapia e Saúde — FisioGest Pro</div>
+      <div class="subtitle">Serviços de Fisioterapia e Saúde</div>
     </div>
 
     <div class="section">
@@ -324,7 +398,7 @@ function generateContractHTML(
         </div>
         ${patient.birthDate ? `<div class="row"><div class="field"><div class="label">Data de Nascimento</div><div class="value">${format(parseISO(patient.birthDate), "dd/MM/yyyy")}</div></div></div>` : ""}
       </div>
-      ${plan.responsibleProfessional ? `<div class="patient-box" style="margin-top:8px"><p style="font-size:9pt;font-weight:bold;margin-bottom:4px">CONTRATADA (Prestadora):</p><div class="row"><div class="field"><div class="label">Profissional / CREFITO</div><div class="value"><strong>${plan.responsibleProfessional}</strong></div></div></div></div>` : ""}
+      <div class="patient-box" style="margin-top:8px"><p style="font-size:9pt;font-weight:bold;margin-bottom:4px">CONTRATADA (Prestadora):</p><div class="row"><div class="field"><div class="label">Nome / Razão Social</div><div class="value"><strong>${clinicName}</strong></div></div>${contratadaCouncil ? `<div class="field"><div class="label">CREFITO / CREF</div><div class="value">${contratadaCouncil}</div></div>` : ""}${clinicRT && plan.responsibleProfessional !== clinicRT ? `<div class="field"><div class="label">Responsável Técnico</div><div class="value">${clinicRT}</div></div>` : ""}</div></div>
     </div>
 
     <div class="section">

@@ -26,14 +26,26 @@ router.get("/", requireSuperAdmin(), async (_req, res) => {
 
 router.post("/", requireSuperAdmin(), async (req: AuthRequest, res) => {
   try {
-    const { name, cnpj, phone, email, address } = req.body;
+    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl } = req.body;
     if (!name) {
       res.status(400).json({ error: "Bad Request", message: "Nome é obrigatório" });
       return;
     }
     const [clinic] = await db
       .insert(clinicsTable)
-      .values({ name, cnpj, phone, email, address })
+      .values({
+        name,
+        type: type || "clinica",
+        cnpj: cnpj?.replace(/\D/g, "") || null,
+        cpf: cpf?.replace(/\D/g, "") || null,
+        crefito: crefito || null,
+        responsibleTechnical: responsibleTechnical || null,
+        phone,
+        email,
+        address,
+        website: website || null,
+        logoUrl: logoUrl || null,
+      })
       .returning();
     res.status(201).json(clinic);
   } catch (err) {
@@ -72,15 +84,21 @@ router.put("/current", requirePermission("settings.manage"), async (req: AuthReq
       res.status(400).json({ error: "Bad Request", message: "Nenhuma clínica ativa no contexto" });
       return;
     }
-    const { name, cnpj, phone, email, address } = req.body;
+    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl } = req.body;
     const [clinic] = await db
       .update(clinicsTable)
       .set({
         ...(name !== undefined && { name }),
-        ...(cnpj !== undefined && { cnpj }),
+        ...(type !== undefined && { type }),
+        ...(cnpj !== undefined && { cnpj: cnpj ? cnpj.replace(/\D/g, "") : null }),
+        ...(cpf !== undefined && { cpf: cpf ? cpf.replace(/\D/g, "") : null }),
+        ...(crefito !== undefined && { crefito }),
+        ...(responsibleTechnical !== undefined && { responsibleTechnical }),
         ...(phone !== undefined && { phone }),
         ...(email !== undefined && { email }),
         ...(address !== undefined && { address }),
+        ...(website !== undefined && { website }),
+        ...(logoUrl !== undefined && { logoUrl }),
       })
       .where(eq(clinicsTable.id, clinicId))
       .returning();
@@ -117,15 +135,21 @@ router.get("/:id", requireSuperAdmin(), async (req, res) => {
 router.put("/:id", requireSuperAdmin(), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, cnpj, phone, email, address, isActive } = req.body;
+    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl, isActive } = req.body;
     const [clinic] = await db
       .update(clinicsTable)
       .set({
         ...(name !== undefined && { name }),
-        ...(cnpj !== undefined && { cnpj }),
+        ...(type !== undefined && { type }),
+        ...(cnpj !== undefined && { cnpj: cnpj ? cnpj.replace(/\D/g, "") : null }),
+        ...(cpf !== undefined && { cpf: cpf ? cpf.replace(/\D/g, "") : null }),
+        ...(crefito !== undefined && { crefito }),
+        ...(responsibleTechnical !== undefined && { responsibleTechnical }),
         ...(phone !== undefined && { phone }),
         ...(email !== undefined && { email }),
         ...(address !== undefined && { address }),
+        ...(website !== undefined && { website }),
+        ...(logoUrl !== undefined && { logoUrl }),
         ...(isActive !== undefined && { isActive }),
       })
       .where(eq(clinicsTable.id, id))
