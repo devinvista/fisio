@@ -513,7 +513,7 @@ interface ProntuarioData {
   } | null;
   evolutions?: Array<{
     description?: string; patientResponse?: string; clinicalNotes?: string;
-    complications?: string; appointmentId?: number | null; createdAt?: string;
+    complications?: string; painScale?: number | null; appointmentId?: number | null; createdAt?: string;
   }>;
   appointments?: Array<{
     id: number; date: string; startTime?: string; status?: string;
@@ -670,11 +670,20 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
       }
       const dateStr = ev.createdAt ? formatDateTime(ev.createdAt) : "";
       const apptInfo = linkedAppt ? `📅 Consulta vinculada: ${format(parseISO(linkedAppt.date), "dd/MM/yyyy")} — ${linkedAppt.startTime || ""}` : "";
+      const evaPainColor = (ev.painScale ?? 0) >= 7 ? "#dc2626" : (ev.painScale ?? 0) >= 4 ? "#f97316" : "#16a34a";
+      const evaHtml = ev.painScale != null ? `<div class="ppain-row">
+        <div class="plabel">Escala de Dor (EVA)</div>
+        <div class="ppain-bar-wrap">
+          <div class="ppain-bar"><div class="ppain-fill" style="width:${(ev.painScale / 10) * 100}%;background:${evaPainColor}"></div></div>
+          <span class="ppain-val" style="color:${evaPainColor}">${ev.painScale}/10</span>
+        </div>
+      </div>` : "";
       return `<div class="pevo-card">
         <div class="pevo-head"><span class="pevo-num">${sessionNum}</span><strong>Sessão ${sessionNum}</strong><span class="pevo-date">${dateStr}</span></div>
         ${apptInfo ? `<div class="pevo-appt">${apptInfo}</div>` : ""}
         ${textBlock("Descrição da Sessão", ev.description)}
         ${textBlock("Resposta do Paciente", ev.patientResponse)}
+        ${evaHtml}
         ${textBlock("Notas Clínicas", ev.clinicalNotes)}
         ${ev.complications ? `<div class="ptextblock pcomplication">${textBlock("⚠️ Intercorrências", ev.complications)}</div>` : ""}
       </div>`;
