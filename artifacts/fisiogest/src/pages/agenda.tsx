@@ -1501,11 +1501,12 @@ function CreateAppointmentForm({
     if (!patients?.data) return [];
     if (!patientSearch.trim()) return patients.data;
     const q = patientSearch.toLowerCase();
+    const qDigits = q.replace(/\D/g, "");
     return patients.data.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        (p.phone && p.phone.includes(q)) ||
-        (p.cpf && p.cpf.includes(q))
+        (p.phone && p.phone.replace(/\D/g, "").includes(qDigits || q)) ||
+        (p.cpf && qDigits && p.cpf.replace(/\D/g, "").includes(qDigits))
     );
   }, [patients, patientSearch]);
 

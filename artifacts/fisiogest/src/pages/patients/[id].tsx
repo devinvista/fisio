@@ -48,7 +48,7 @@ import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/auth-context";
-import { maskCpf, maskPhone } from "@/lib/masks";
+import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 
 // ─── Print utilities ─────────────────────────────────────────────────────────
 
@@ -4583,7 +4583,7 @@ export default function PatientDetail() {
               {patient.cpf && (
                 <div className="mt-3 p-3 bg-slate-50 rounded-xl">
                   <p className="text-[10px] text-slate-500 font-semibold uppercase mb-0.5">CPF</p>
-                  <p className="text-sm font-medium text-slate-700">{patient.cpf}</p>
+                  <p className="text-sm font-medium text-slate-700">{displayCpf(patient.cpf)}</p>
                 </div>
               )}
               {patient.notes && (

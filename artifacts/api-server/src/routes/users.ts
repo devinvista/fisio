@@ -31,6 +31,7 @@ async function getUserWithRolesForClinic(userId: number, clinicId: number | null
   return {
     id: user.id,
     name: user.name,
+    cpf: user.cpf,
     email: user.email,
     roles: roleRows.map((r) => r.role as Role),
     clinicId: user.clinicId,
@@ -80,6 +81,7 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
           return {
             id: u.id,
             name: u.name,
+            cpf: u.cpf,
             email: u.email,
             roles: roleRows.map((r) => r.role as Role),
             clinicId: u.clinicId,
@@ -97,6 +99,7 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
         userId: userRolesTable.userId,
         role: userRolesTable.role,
         name: usersTable.name,
+        cpf: usersTable.cpf,
         email: usersTable.email,
         createdAt: usersTable.createdAt,
       })
@@ -104,10 +107,10 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
       .innerJoin(usersTable, eq(userRolesTable.userId, usersTable.id))
       .where(eq(userRolesTable.clinicId, clinicId));
 
-    const userMap = new Map<number, { id: number; name: string; email: string | null; roles: Role[]; clinicId: number; createdAt: Date }>();
+    const userMap = new Map<number, { id: number; name: string; cpf: string; email: string | null; roles: Role[]; clinicId: number; createdAt: Date }>();
     for (const row of rows) {
       if (!userMap.has(row.userId)) {
-        userMap.set(row.userId, { id: row.userId, name: row.name, email: row.email, roles: [], clinicId, createdAt: row.createdAt });
+        userMap.set(row.userId, { id: row.userId, name: row.name, cpf: row.cpf, email: row.email, roles: [], clinicId, createdAt: row.createdAt });
       }
       userMap.get(row.userId)!.roles.push(row.role as Role);
     }
