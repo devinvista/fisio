@@ -239,10 +239,10 @@ router.get("/evolutions", requirePermission("medical.read"), async (req: Request
 router.post("/evolutions", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = req.body;
     const [evolution] = await db
       .insert(evolutionsTable)
-      .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications })
+      .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
       .returning();
     logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evolution", entityId: evolution?.id, summary: "Evolução de sessão criada" });
     res.status(201).json(evolution);
@@ -256,7 +256,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
-    const { appointmentId, description, patientResponse, clinicalNotes, complications } = req.body;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = req.body;
 
     const [existing] = await db
       .select()
@@ -269,7 +269,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
 
     const [updated] = await db
       .update(evolutionsTable)
-      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications })
+      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
       .where(eq(evolutionsTable.id, evolutionId))
       .returning();
     logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão editada" });
