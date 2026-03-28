@@ -6,6 +6,10 @@ import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
 
+function normalizeCpf(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -22,10 +26,14 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
     const offset = (page - 1) * limit;
 
     const clinicCondition = clinicFilter(req);
+    const normalizedSearch = search ? normalizeCpf(search) : null;
     const searchCondition = search
       ? or(
           ilike(patientsTable.name, `%${search}%`),
           ilike(patientsTable.cpf, `%${search}%`),
+          normalizedSearch && normalizedSearch.length >= 3
+            ? ilike(patientsTable.cpf, `%${normalizedSearch}%`)
+            : undefined,
           ilike(patientsTable.phone, `%${search}%`)
         )
       : null;
@@ -69,11 +77,17 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       return;
     }
 
+    const normalizedCpf = normalizeCpf(cpf);
+    if (normalizedCpf.length !== 11) {
+      res.status(400).json({ error: "Bad Request", message: "CPF inválido. Informe os 11 dígitos." });
+      return;
+    }
+
     const [patient] = await db
       .insert(patientsTable)
       .values({
         name,
-        cpf,
+        cpf: normalizedCpf,
         birthDate,
         phone,
         email,
@@ -157,7 +171,17 @@ router.get("/:id", requirePermission("patients.read"), async (req: AuthRequest, 
 router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
+    const { name, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
+    let { cpf } = req.body;
+
+    if (cpf !== undefined) {
+      const normalizedCpf = normalizeCpf(cpf);
+      if (normalizedCpf.length !== 11) {
+        res.status(400).json({ error: "Bad Request", message: "CPF inválido. Informe os 11 dígitos." });
+        return;
+      }
+      cpf = normalizedCpf;
+    }
 
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(patientsTable.id, id)

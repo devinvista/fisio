@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useListPatients, useCreatePatient } from "@workspace/api-client-react";
@@ -24,7 +24,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { maskCpf, maskPhone } from "@/lib/masks";
+import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { cn } from "@/lib/utils";
 
@@ -59,10 +59,17 @@ function formatDate(date?: string | null): string | null {
 
 export default function PatientsList() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     return (localStorage.getItem("patients_view_mode") as ViewMode) ?? "cards";
   });
-  const { data, isLoading, refetch } = useListPatients({ search, limit: 50 });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const { data, isLoading, refetch } = useListPatients({ search: debouncedSearch, limit: 50 });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { hasPermission } = useAuth();
   const canCreate = hasPermission("patients.create");
@@ -228,7 +235,7 @@ function CardView({ patients }: { patients: Patient[] }) {
                       <h3 className="font-bold text-base text-slate-800 leading-tight truncate">
                         {patient.name}
                       </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">CPF: {patient.cpf}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">CPF: {displayCpf(patient.cpf)}</p>
                     </div>
                   </div>
                   {age && (
@@ -322,7 +329,7 @@ function ListView({ patients }: { patients: Patient[] }) {
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-slate-800 truncate">{patient.name}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">CPF: {patient.cpf}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">CPF: {displayCpf(patient.cpf)}</p>
                 </div>
               </div>
 

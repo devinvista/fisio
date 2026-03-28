@@ -54,10 +54,18 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
           : and(gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
       );
 
+    // Revenue: use paymentDate when available for paid records; fall back to createdAt for others
     const monthlyRevenue = records
-      .filter((r) => r.type === "receita" && r.transactionType === "pagamento" && r.status === "pago")
+      .filter((r) => {
+        if (r.type !== "receita" || r.transactionType !== "pagamento" || r.status !== "pago") return false;
+        if (r.paymentDate) {
+          return r.paymentDate >= startDate && r.paymentDate <= endDate;
+        }
+        return r.createdAt >= start && r.createdAt < end;
+      })
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
+    // Expenses: use createdAt (no paymentDate concept for expenses)
     const monthlyExpenses = records
       .filter((r) => r.type === "despesa")
       .reduce((sum, r) => sum + Number(r.amount), 0);

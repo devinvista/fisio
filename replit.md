@@ -457,6 +457,29 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 
 ---
 
+## Correções e Melhorias (2026-03-28 — Análise Completa de Rotas)
+
+### Backend
+
+| # | Arquivo | Bug corrigido |
+|---|---|---|
+| 1 | `routes/patients.ts` | CPF não era normalizado (strip de pontos/traços) antes de salvar no banco — permitia duplicatas com formatos diferentes. Agora normalizado em POST e PUT. |
+| 2 | `routes/patients.ts` | Validação de CPF adicionada (deve ter exatamente 11 dígitos após normalização) retornando 400 com mensagem descritiva. |
+| 3 | `routes/patients.ts` | Busca por CPF agora também pesquisa o valor normalizado (sem máscara), permitindo buscar `123.456.789-01` ou `12345678901` com o mesmo resultado. |
+| 4 | `routes/financial.ts` | Dashboard usava `createdAt` para filtrar receitas — data de criação do registro, não de pagamento. Agora usa `paymentDate` (quando disponível) para cálculo correto de receitas mensais. |
+| 5 | `routes/auth.ts` | Registro de usuário+clínica não era atômico — se o insert de `userRolesTable` falhasse, usuário e clínica ficavam órfãos no banco. Agora envolvido em transação Drizzle. |
+| 6 | `routes/auth.ts` | Validação de CPF adicionada no registro (11 dígitos), evitando cadastros com CPF malformado. |
+
+### Frontend
+
+| # | Arquivo | Bug corrigido |
+|---|---|---|
+| 7 | `App.tsx` | Interceptor `window.fetch` não tratava respostas 401 — token expirado deixava o app em estado quebrado. Agora detecta 401 em qualquer rota não-auth, limpa localStorage e redireciona para `/login`. |
+| 8 | `pages/patients/index.tsx` | Busca disparava request a cada tecla digitada sem debounce. Adicionado debounce de 300 ms com `useEffect` + `clearTimeout`. |
+| 9 | `pages/patients/index.tsx` | CPF exibido nos cards e lista sem formatação (dígitos crus). Agora usa `displayCpf()` de `lib/masks.ts` para exibir sempre no formato `000.000.000-00`. |
+
+---
+
 ## Correções de TypeScript (2026-03-28)
 
 Corrigidos os seguintes erros ao migrar para o ambiente Replit:

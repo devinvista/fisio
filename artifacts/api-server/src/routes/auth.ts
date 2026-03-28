@@ -71,6 +71,11 @@ router.post("/register", async (req, res) => {
     }
 
     const normalizedCpf = normalizeCpf(cpf);
+    if (normalizedCpf.length !== 11) {
+      res.status(400).json({ error: "Bad Request", message: "CPF inválido. Informe os 11 dígitos." });
+      return;
+    }
+
     const existingCpf = await db
       .select()
       .from(usersTable)
@@ -93,24 +98,29 @@ router.post("/register", async (req, res) => {
       }
     }
 
-    const [clinic] = await db
-      .insert(clinicsTable)
-      .values({ name: clinicName.trim() })
-      .returning();
-
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db
-      .insert(usersTable)
-      .values({
-        name,
-        cpf: normalizedCpf,
-        email: email ? email.toLowerCase().trim() : null,
-        passwordHash,
-        clinicId: clinic.id,
-      })
-      .returning();
 
-    await db.insert(userRolesTable).values({ userId: user.id, clinicId: clinic.id, role: "admin" });
+    const { clinic, user } = await db.transaction(async (tx) => {
+      const [clinic] = await tx
+        .insert(clinicsTable)
+        .values({ name: clinicName.trim() })
+        .returning();
+
+      const [user] = await tx
+        .insert(usersTable)
+        .values({
+          name,
+          cpf: normalizedCpf,
+          email: email ? email.toLowerCase().trim() : null,
+          passwordHash,
+          clinicId: clinic.id,
+        })
+        .returning();
+
+      await tx.insert(userRolesTable).values({ userId: user.id, clinicId: clinic.id, role: "admin" });
+
+      return { clinic, user };
+    });
 
     const token = generateToken(user.id, ["admin"], clinic.id, false);
     res.status(201).json({

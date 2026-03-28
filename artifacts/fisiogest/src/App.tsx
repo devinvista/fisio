@@ -35,7 +35,18 @@ window.fetch = async (input, init) => {
       init.headers = { Authorization: `Bearer ${token}`, ...init.headers };
     }
   }
-  return originalFetch(input, init);
+  const response = await originalFetch(input, init);
+  if (response.status === 401) {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    const isAuthRoute = url.includes("/api/auth/login") || url.includes("/api/auth/register");
+    if (!isAuthRoute && localStorage.getItem("fisiogest_token")) {
+      localStorage.removeItem("fisiogest_token");
+      localStorage.removeItem("fisiogest_clinic_id");
+      localStorage.removeItem("fisiogest_clinics");
+      window.location.href = "/login";
+    }
+  }
+  return response;
 };
 
 const queryClient = new QueryClient({
