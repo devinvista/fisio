@@ -352,15 +352,30 @@ pnpm install
 # Iniciar os dois serviços
 pnpm dev
 
+# Compilar declarações TypeScript das libs compartilhadas (necessário antes do typecheck)
+pnpm run build:libs
+
+# Verificar tipos TypeScript (compila libs + verifica frontend + api-server)
+pnpm run typecheck
+
 # Sincronizar schema via lib/db
 pnpm --filter @workspace/db exec drizzle-kit push --config drizzle.config.ts
-
-# Verificar tipos TypeScript
-pnpm run typecheck
 
 # Seed de demonstração
 pnpm run db:seed
 ```
+
+### Notas sobre TypeScript
+
+As libs compartilhadas (`lib/db`, `lib/api-zod`, `lib/api-client-react`) usam **TypeScript project references** (`composite: true`). Elas precisam ser compiladas antes de qualquer verificação de tipos:
+
+```bash
+pnpm run build:libs
+# equivalente a:
+tsc --build lib/db/tsconfig.json lib/api-zod/tsconfig.json lib/api-client-react/tsconfig.json
+```
+
+Os outputs ficam em `lib/*/dist/` (apenas `.d.ts`, via `emitDeclarationOnly`). Em desenvolvimento, o Vite e o `tsx` resolvem os imports diretamente das fontes `.ts` — o `build:libs` é necessário apenas para o `tsc --noEmit`.
 
 ---
 
@@ -412,21 +427,44 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Cadastro e busca de pacientes | ✅ Completo |
 | Prontuário — Anamnese | ✅ Completo |
 | Prontuário — Avaliações físicas (CRUD) | ✅ Completo |
-| Prontuário — Plano de Tratamento | ✅ Completo (bug loop infinito corrigido, desconto R$/%,  preço negociado, consumo por item) |
+| Prontuário — Plano de Tratamento | ✅ Completo |
 | Prontuário — Evoluções de sessão (CRUD) | ✅ Completo |
 | Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
-| Agenda semanal + criação por clique | ✅ Completo |
+| Agenda semanal/diária/mensal + criação por clique | ✅ Completo |
 | Agenda — detalhe, edição, cancelamento | ✅ Completo |
 | Agendas independentes por clínica (geral e por profissional) | ✅ Completo |
+| Slots bloqueados na agenda | ✅ Completo |
+| Agendamento recorrente | ✅ Completo |
 | Governança de horários (endTime calculado, conflitos) | ✅ Completo |
 | Procedimentos com vagas múltiplas (maxCapacity) | ✅ Completo |
 | Endpoint de vagas disponíveis | ✅ Completo |
-| Procedimentos (CRUD + maxCapacity) | ✅ Completo |
+| Procedimentos (CRUD + maxCapacity + gerador de catálogo PDF) | ✅ Completo |
+| Pacotes de sessões (patient-packages) | ✅ Completo |
+| Gestão de clínicas (multi-tenant) | ✅ Completo |
+| Gestão de usuários e roles (RBAC) | ✅ Completo |
+| Configurações da clínica | ✅ Completo |
 | Financeiro global (receitas, despesas, dashboard) | ✅ Completo |
 | Relatórios (mensal, por procedimento, ocupação) | ✅ Completo |
 | Dashboard com KPIs | ✅ Completo |
 | Autenticação JWT | ✅ Completo |
+| RBAC (admin, profissional, secretaria) | ✅ Completo |
+| Multi-tenant por clínica | ✅ Completo |
 | Padronização pt-BR (datas, moeda, idioma HTML) | ✅ Completo |
 | Identidade visual fisioterapêutica | ✅ Completo |
+| Audit log de ações | ✅ Completo |
 | Notificações (WhatsApp/e-mail) | 🔲 Pendente |
 | Agendamento self-service pelo paciente | 🔲 Pendente |
+
+---
+
+## Correções de TypeScript (2026-03-28)
+
+Corrigidos os seguintes erros ao migrar para o ambiente Replit:
+
+1. **TS6305** — Declarações `.d.ts` das libs compartilhadas ausentes: resolvido compilando as libs com `pnpm run build:libs`. Scripts `"build"` adicionados a `lib/db`, `lib/api-zod` e `lib/api-client-react`.
+2. **TS2345 em `procedimentos.tsx`** — `resetForm()` e `openEdit()` não passavam `monthlyPrice` e `billingDay` no `setForm()`.
+3. **TS2345 em `clinics.ts`** — `req.params.id` sem cast `as string` para `parseInt()` (tipagem Express 5).
+4. **TS2345 em `schedules.ts`** — mesmo problema de `req.params.id as string`.
+5. **TS2345 em `patient-packages.ts`** — permissions inválidas (`"patients.write"`, `"appointments.write"`) substituídas pelas corretas (`"patients.create"`, `"patients.update"`, `"patients.delete"`, `"appointments.update"`).
+6. **TS7030 em `users.ts`** — nem todos os caminhos de código retornavam valor nos handlers; removidos `return` antes de `res.json()` para tornar os handlers consistentemente `void`.
+7. **`scripts/post-merge.sh`** — adicionado `pnpm run build:libs` após o `pnpm install` para garantir que as declarações TypeScript estejam disponíveis após merges.

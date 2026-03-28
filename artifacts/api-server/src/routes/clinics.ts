@@ -143,7 +143,7 @@ router.put("/:id", requireSuperAdmin(), async (req, res) => {
 
 router.delete("/:id", requireSuperAdmin(), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(clinicsTable).where(eq(clinicsTable.id, id));
     res.status(204).send();
   } catch (err) {
@@ -154,7 +154,7 @@ router.delete("/:id", requireSuperAdmin(), async (req, res) => {
 
 router.get("/:id/users", requireSuperAdmin(), async (req, res) => {
   try {
-    const clinicId = parseInt(req.params.id);
+    const clinicId = parseInt(req.params.id as string);
     const rows = await db
       .select({
         userId: usersTable.id,
@@ -192,7 +192,7 @@ router.get("/:id/users", requireSuperAdmin(), async (req, res) => {
 
 router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
   try {
-    const clinicId = parseInt(req.params.id);
+    const clinicId = parseInt(req.params.id as string);
     const { name, cpf, email, password, roles } = req.body;
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles : ["profissional"];
 
@@ -245,8 +245,8 @@ router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
 
 router.put("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
   try {
-    const clinicId = parseInt(req.params.id);
-    const userId = parseInt(req.params.userId);
+    const clinicId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.userId as string);
     const { name, email, password, roles } = req.body;
 
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles : ["profissional"];
@@ -280,8 +280,8 @@ router.put("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
 
 router.delete("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
   try {
-    const clinicId = parseInt(req.params.id);
-    const userId = parseInt(req.params.userId);
+    const clinicId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.userId as string);
     await db.delete(userRolesTable).where(
       and(eq(userRolesTable.userId, userId), eq(userRolesTable.clinicId, clinicId))
     );
@@ -294,7 +294,7 @@ router.delete("/:id/users/:userId", requireSuperAdmin(), async (req, res) => {
 
 router.post("/:id/impersonate", requireSuperAdmin(), async (req: AuthRequest, res) => {
   try {
-    const clinicId = parseInt(req.params.id);
+    const clinicId = parseInt(req.params.id as string);
     const [clinic] = await db
       .select()
       .from(clinicsTable)

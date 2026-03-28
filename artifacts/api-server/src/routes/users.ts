@@ -41,7 +41,7 @@ async function getUserWithRolesForClinic(userId: number, clinicId: number | null
 router.get("/professionals", async (req: AuthRequest, res) => {
   try {
     const clinicId = req.clinicId;
-    if (!clinicId) return res.json([]);
+    if (!clinicId) { res.json([]); return; }
 
     const rows = await db
       .select({
@@ -60,7 +60,7 @@ router.get("/professionals", async (req: AuthRequest, res) => {
       }
       userMap.get(row.userId)!.roles.push(row.role);
     }
-    return res.json(Array.from(userMap.values()));
+    res.json(Array.from(userMap.values()));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -87,7 +87,8 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
           };
         })
       );
-      return res.json(result);
+      res.json(result);
+      return;
     }
 
     const clinicId = req.clinicId;
@@ -111,7 +112,7 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
       userMap.get(row.userId)!.roles.push(row.role as Role);
     }
 
-    return res.json(Array.from(userMap.values()));
+    res.json(Array.from(userMap.values()));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

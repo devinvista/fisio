@@ -56,7 +56,7 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
   }
 });
 
-router.post("/", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.post("/", requirePermission("patients.create"), async (req: AuthRequest, res) => {
   try {
     const patientId = req.params.patientId
       ? parseInt(req.params.patientId as string)
@@ -105,7 +105,7 @@ router.post("/", requirePermission("patients.write"), async (req: AuthRequest, r
   }
 });
 
-router.patch("/:id/consume-session", requirePermission("appointments.write"), async (req: AuthRequest, res) => {
+router.patch("/:id/consume-session", requirePermission("appointments.update"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
 
@@ -145,7 +145,7 @@ router.patch("/:id/consume-session", requirePermission("appointments.write"), as
   }
 });
 
-router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
 
@@ -179,7 +179,7 @@ router.put("/:id", requirePermission("patients.write"), async (req: AuthRequest,
   }
 });
 
-router.delete("/:id", requirePermission("patients.write"), async (req: AuthRequest, res) => {
+router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
 

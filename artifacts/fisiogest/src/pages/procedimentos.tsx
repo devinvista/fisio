@@ -237,7 +237,7 @@ export default function Procedimentos() {
   });
 
   function resetForm() {
-    setForm({ name: "", category: "Fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false });
+    setForm({ name: "", category: "Fisioterapia", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, monthlyPrice: undefined, billingDay: undefined });
   }
 
   function openEdit(proc: Procedure) {
@@ -252,6 +252,8 @@ export default function Procedimentos() {
       description: proc.description ?? "",
       maxCapacity: proc.maxCapacity ?? 1,
       onlineBookingEnabled: proc.onlineBookingEnabled ?? false,
+      monthlyPrice: undefined,
+      billingDay: undefined,
     });
     setIsModalOpen(true);
   }

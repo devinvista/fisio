@@ -55,7 +55,7 @@ router.get("/", requirePermission("appointments.read"), async (req: AuthRequest,
 
 router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const schedule = await getScheduleWithProfessional(id);
     if (!schedule) {
       res.status(404).json({ error: "Not Found" });
@@ -119,7 +119,7 @@ router.post("/", requirePermission("settings.manage"), async (req: AuthRequest, 
 
 router.put("/:id", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const {
       name,
       description,
@@ -166,7 +166,7 @@ router.put("/:id", requirePermission("settings.manage"), async (req: AuthRequest
 
 router.delete("/:id", requirePermission("settings.manage"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(schedulesTable).where(eq(schedulesTable.id, id));
     res.status(204).send();
   } catch (err) {

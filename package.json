@@ -17,7 +17,7 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "pnpm run build:libs && tsc --noEmit -p artifacts/fisiogest/tsconfig.json && tsc --noEmit -p artifacts/api-server/tsconfig.json"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
