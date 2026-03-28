@@ -4,6 +4,13 @@
 
 FisioGest Pro é uma plataforma SaaS de gestão clínica completa para fisioterapeutas, estetas e instrutores de pilates. Abrange prontuário eletrônico, agenda, financeiro, relatórios e conformidade com normas do COFFITO.
 
+### Landing Page & Rotas Públicas
+- `/` → Landing page pública (`artifacts/fisiogest/src/pages/landing.tsx`) — hero dark, features, pricing, testimonials, CTA
+- `/login` → Login
+- `/register` → Cadastro
+- `/dashboard` → Dashboard protegido (rota principal pós-login, movida de `/`)
+- Após login bem-sucedido: redireciona para `/dashboard` (atualizado em `auth-context.tsx`)
+
 O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefatos (frontend + API) servidos pelo proxy reverso compartilhado do Replit na porta 80.
 
 **Idioma padrão**: Português do Brasil (pt-BR)

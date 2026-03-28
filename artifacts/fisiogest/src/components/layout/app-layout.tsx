@@ -36,7 +36,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: null },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: null },
   { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
   { href: "/pacientes", label: "Pacientes", icon: Users, permission: "patients.read" },
   { href: "/procedimentos", label: "Procedimentos", icon: Activity, permission: "procedures.manage" },

@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useEffect } from "react";
 import type { Permission } from "@/lib/permissions";
 
+import LandingPage from "./pages/landing";
 import Login from "./pages/login";
 import Register from "./pages/register";
 import Dashboard from "./pages/dashboard";
@@ -118,9 +119,10 @@ function PermissionRoute({
 function Router() {
   return (
     <Switch>
+      <Route path="/" component={LandingPage} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route path="/">
+      <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
       <Route path="/agenda">
