@@ -465,7 +465,7 @@ function generateContractHTML(
       </div>
     </div>
 
-    <div class="footer">Contrato gerado em ${today} &bull; FisioGest Pro &bull; Valores acordados na contratação do plano</div>
+    <div class="footer">Contrato gerado em ${today} &bull; ${clinicName} &bull; Valores acordados na contratação do plano</div>
   `;
 }
 
@@ -504,6 +504,7 @@ interface ProntuarioData {
     achievedResults?: string; recommendations?: string;
   } | null;
   professional?: { name?: string };
+  clinic?: ClinicInfo | null;
 }
 
 function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: string } {
@@ -530,10 +531,13 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
     value ? `<div class="ptextblock"><div class="ptlabel">${label}</div><div class="ptcontent">${value}</div></div>` : "";
 
   // ── Patient header ─────────────────────────────────────────────────────────
+  const clinicHeaderHtml = d.clinic ? buildClinicHeaderHTML(d.clinic) : "";
+  const clinicNameFull = d.clinic?.name || "FisioGest Pro";
   const headerHtml = `
+    ${clinicHeaderHtml}
     <div class="pdoc-header">
       <div class="pdoc-title">PRONTUÁRIO ELETRÔNICO DO PACIENTE</div>
-      <div class="pdoc-subtitle">Documento Clínico Completo — FisioGest Pro</div>
+      <div class="pdoc-subtitle">Documento Clínico Completo — ${clinicNameFull}</div>
       <div class="pdoc-subtitle">Emitido em ${today}${d.professional?.name ? " por " + d.professional.name : ""}</div>
     </div>
     <div class="ppatient-box">
@@ -751,13 +755,14 @@ function ExportProntuarioButton({ patientId, patient }: { patientId: number; pat
     setLoading(true);
     try {
       const headers = { Authorization: `Bearer ${token()}` };
-      const [anamnesisRes, evaluationsRes, planRes, evolutionsRes, appointmentsRes, dischargeRes] = await Promise.all([
+      const [anamnesisRes, evaluationsRes, planRes, evolutionsRes, appointmentsRes, dischargeRes, clinicRes] = await Promise.all([
         fetch(`/api/patients/${patientId}/anamnesis`, { headers }).then(r => r.ok ? r.json() : null),
         fetch(`/api/patients/${patientId}/evaluations`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`/api/patients/${patientId}/treatment-plan`, { headers }).then(r => r.ok ? r.json() : null),
         fetch(`/api/patients/${patientId}/evolutions`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`/api/patients/${patientId}/appointments`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`/api/patients/${patientId}/discharge`, { headers }).then(r => r.ok ? r.json() : null),
+        fetchClinicForPrint(),
       ]);
 
       const { html, css } = generateFullProntuarioHTML({
@@ -769,6 +774,7 @@ function ExportProntuarioButton({ patientId, patient }: { patientId: number; pat
         appointments: appointmentsRes,
         discharge: dischargeRes,
         professional: { name: (user as any)?.name },
+        clinic: clinicRes,
       });
 
       const w = window.open("", "_blank", "width=960,height=800");
@@ -2211,6 +2217,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isNewPlan = !isLoading && (!data || isError);
+  const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
 
   // Plan items query hoisted here to avoid the callback/infinite-loop pattern
   const planItemsKey = data?.id ? [`/api/treatment-plans/${data.id}/procedures`] : null;
@@ -2330,11 +2337,11 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
             {patient && (
               <>
                 <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
-                  onClick={() => printDocument(generatePlanHTML(patient, form, appointments, planItems), `Plano de Tratamento — ${patient.name}`)}>
+                  onClick={() => printDocument(generatePlanHTML(patient, form, appointments, planItems, clinic), `Plano de Tratamento — ${patient.name}`)}>
                   <Printer className="w-3.5 h-3.5" /> Imprimir Plano
                 </Button>
                 <Button size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => printDocument(generateContractHTML(patient, form, planItems), `Contrato — ${patient.name}`)}>
+                  onClick={() => printDocument(generateContractHTML(patient, form, planItems, clinic), `Contrato — ${patient.name}`)}>
                   <ScrollText className="w-3.5 h-3.5" /> Gerar Contrato
                 </Button>
               </>
@@ -2563,6 +2570,7 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
   const deleteMutation = useDeleteEvolution();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyEvoForm);
@@ -2651,7 +2659,7 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
         <div className="flex items-center gap-2">
           {patient && evolutions.length > 0 && (
             <Button variant="outline" size="sm" className="h-9 px-3 rounded-xl text-xs gap-1.5"
-              onClick={() => printDocument(generateEvolutionsHTML(patient, evolutions, appointments), `Evoluções — ${patient.name}`)}>
+              onClick={() => printDocument(generateEvolutionsHTML(patient, evolutions, appointments, clinic), `Evoluções — ${patient.name}`)}>
               <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
             </Button>
           )}
@@ -3714,6 +3722,7 @@ function DischargeTab({ patientId, patient }: { patientId: number; patient?: Pat
   const mutation = useSaveDischarge();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
 
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({ dischargeDate: today, dischargeReason: "", achievedResults: "", recommendations: "" });
@@ -3758,7 +3767,7 @@ function DischargeTab({ patientId, patient }: { patientId: number; patient?: Pat
             {patient && (
               <Button variant="outline" size="sm" className="h-9 px-3 rounded-xl text-xs gap-1.5"
                 onClick={() => printDocument(
-                  generateDischargeHTML(patient, data as unknown as Record<string, string>, { name: (user as any)?.name }),
+                  generateDischargeHTML(patient, data as unknown as Record<string, string>, { name: (user as any)?.name }, clinic),
                   `Alta Fisioterapêutica — ${patient.name}`
                 )}>
                 <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
@@ -3945,14 +3954,27 @@ function escapeHtml(s: string) {
   return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
-function printAtestado(at: AtestadoRecord) {
+function printAtestado(at: AtestadoRecord, clinic?: ClinicInfo | null) {
   const dateStr = format(new Date(at.issuedAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const clinicName = clinic?.name || "FisioGest Pro";
+  const isAutonomo = clinic?.type === "autonomo";
+  const docId = isAutonomo
+    ? (clinic?.cpf ? `CPF: ${clinic.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}` : "")
+    : (clinic?.cnpj ? `CNPJ: ${clinic.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")}` : "");
+  const council = clinic?.crefito || "";
+  const contactParts = [clinic?.phone, clinic?.email, clinic?.address].filter(Boolean).join(" · ");
+  const logoHtml = clinic?.logoUrl
+    ? `<img src="${clinic.logoUrl}" alt="Logo" style="max-height:50px;max-width:160px;object-fit:contain;" />`
+    : "";
+
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Atestado</title><style>
 @page{margin:2.5cm}*{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;line-height:1.5}
-.header{border-bottom:2px solid #222;padding-bottom:14px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start}
-.clinic-name{font-size:15pt;font-weight:bold;text-transform:uppercase;letter-spacing:1px}
-.clinic-sub{font-size:9pt;color:#555;margin-top:3px}
+.header{border-bottom:2px solid #1d4ed8;padding-bottom:14px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start}
+.clinic-info{display:flex;align-items:center;gap:12px}
+.clinic-name{font-size:15pt;font-weight:bold;letter-spacing:0.5px;color:#1e293b}
+.clinic-sub{font-size:8.5pt;color:#64748b;margin-top:2px}
+.clinic-contact{font-size:8pt;color:#94a3b8;margin-top:1px}
 .doc-info{text-align:right;font-size:9pt;color:#555}
 .doc-num{font-size:8pt;color:#999}
 .doc-title{text-align:center;margin:36px 0 28px}
@@ -3967,7 +3989,14 @@ body{font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;line-he
 .footer{margin-top:48px;padding-top:10px;border-top:1px solid #ccc;font-size:7.5pt;color:#888;text-align:center}
 </style></head><body>
 <div class="header">
-  <div><div class="clinic-name">FisioGest Pro</div><div class="clinic-sub">Clínica de Fisioterapia &amp; Saúde</div></div>
+  <div class="clinic-info">
+    ${logoHtml}
+    <div>
+      <div class="clinic-name">${escapeHtml(clinicName)}</div>
+      <div class="clinic-sub">${[docId, council].filter(Boolean).join(" · ")}</div>
+      ${contactParts ? `<div class="clinic-contact">${escapeHtml(contactParts)}</div>` : ""}
+    </div>
+  </div>
   <div class="doc-info"><div><strong>Emitido em:</strong> ${dateStr}</div><div class="doc-num">Nº ${String(at.id).padStart(5,"0")}</div></div>
 </div>
 <div class="doc-title"><h1>Atestado</h1></div>
@@ -3980,7 +4009,7 @@ ${at.cid ? `<div class="cid"><strong>CID-10:</strong> ${escapeHtml(at.cid)}</div
   ${at.professionalSpecialty ? `<div class="sig-detail">${escapeHtml(at.professionalSpecialty)}</div>` : ""}
   ${at.professionalCouncil ? `<div class="sig-detail">${escapeHtml(at.professionalCouncil)}</div>` : ""}
 </div>
-<div class="footer">Documento emitido via FisioGest Pro em ${dateStr} — Atestado nº ${String(at.id).padStart(5,"0")}</div>
+<div class="footer">Documento emitido via ${escapeHtml(clinicName)} em ${dateStr} — Atestado nº ${String(at.id).padStart(5,"0")}</div>
 </body></html>`;
   const w = window.open("","_blank");
   if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
@@ -4000,6 +4029,7 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
 
   const [type, setType] = useState<AtestadoType>(defaultType ?? "comparecimento");
   const [profSpecialty, setProfSpecialty] = useState(() => localStorage.getItem("fisiogest_prof_specialty") ?? "");
@@ -4050,7 +4080,7 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
       const saved: AtestadoRecord = await res.json();
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/atestados`] });
       toast({ title: "Atestado emitido com sucesso!" });
-      printAtestado(saved);
+      printAtestado(saved, clinic);
       onCreated?.();
       onClose();
     } catch {
@@ -4173,6 +4203,7 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
 function AtestadosTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
   const [showDialog, setShowDialog] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -4250,7 +4281,7 @@ function AtestadosTab({ patientId, patient }: { patientId: number; patient: Pati
                   </p>
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => printAtestado(at)}>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => printAtestado(at, clinic)}>
                     <Printer className="w-3.5 h-3.5" /> Imprimir
                   </Button>
                   <Button variant="ghost" size="sm"
