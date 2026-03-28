@@ -83,9 +83,13 @@ interface PackageItem {
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  fisioterapia: { label: "Fisioterapia", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
-  estetica:     { label: "Estética",     bg: "bg-pink-50",   text: "text-pink-700",  dot: "bg-pink-400" },
-  pilates:      { label: "Pilates",      bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-400" },
+  "Reabilitação": { label: "Reabilitação", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
+  "Fisioterapia": { label: "Reabilitação", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
+  "fisioterapia": { label: "Reabilitação", bg: "bg-blue-50",   text: "text-blue-700",  dot: "bg-blue-400" },
+  "Estética":     { label: "Estética",     bg: "bg-pink-50",   text: "text-pink-700",  dot: "bg-pink-400" },
+  "estetica":     { label: "Estética",     bg: "bg-pink-50",   text: "text-pink-700",  dot: "bg-pink-400" },
+  "Pilates":      { label: "Pilates",      bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-400" },
+  "pilates":      { label: "Pilates",      bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-400" },
 };
 
 const MODALIDADE_CONFIG: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {

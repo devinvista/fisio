@@ -404,7 +404,7 @@ function generateContractHTML(
     ${buildClinicHeaderHTML(clinic)}
     <div class="header" style="margin-bottom:12px">
       <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-      <div class="subtitle">Serviços de Fisioterapia e Saúde</div>
+      <div class="subtitle">Serviços de Reabilitação e Saúde</div>
     </div>
 
     <div class="section">

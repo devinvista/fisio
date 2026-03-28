@@ -121,6 +121,7 @@ async function lookupPatient(q: string): Promise<PatientLookupResult> {
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
+  "Reabilitação": "🦴",
   "Fisioterapia": "🦴",
   "Pilates": "🤸",
   "Estética": "✨",
