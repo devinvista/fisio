@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TrendingUp, TrendingDown, DollarSign, Plus, Loader2,
   Ticket, Stethoscope, CalendarDays, Link2, Trash2,
-  RefreshCw, CalendarCheck2, AlertTriangle,
+  RefreshCw, CalendarCheck2, AlertTriangle, Repeat, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
@@ -221,7 +221,7 @@ export default function Financial() {
       </div>{/* end top action bar */}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
         <KpiCard
           label="Receitas"
           value={formatCurrency(dashboard?.monthlyRevenue ?? 0)}
@@ -264,6 +264,57 @@ export default function Financial() {
           loading={dashLoading}
           sub={dashboard?.topProcedure ? `Top: ${dashboard.topProcedure}` : undefined}
         />
+      </div>
+
+      {/* Subscription Metrics Row */}
+      <div className="mb-8">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Repeat className="w-3.5 h-3.5" /> Receita Recorrente (Assinaturas)
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KpiCard
+            label="MRR — Receita Mensal Recorrente"
+            value={formatCurrency((dashboard as any)?.mrr ?? 0)}
+            icon={<Repeat className="w-6 h-6" />}
+            iconBg="bg-indigo-100 text-indigo-600"
+            accent="bg-indigo-50"
+            loading={dashLoading}
+            sub={`${(dashboard as any)?.activeSubscriptions ?? 0} assinatura(s) ativa(s)`}
+          />
+          <KpiCard
+            label="A Receber — Cobranças Pendentes"
+            value={formatCurrency((dashboard as any)?.pendingSubscriptionCharges?.total ?? 0)}
+            icon={<Clock className="w-6 h-6" />}
+            iconBg="bg-amber-100 text-amber-600"
+            accent="bg-amber-50"
+            loading={dashLoading}
+            sub={`${(dashboard as any)?.pendingSubscriptionCharges?.count ?? 0} lançamento(s) aguardando pagamento`}
+          />
+          <Card className="border-none shadow-md bg-white col-span-1">
+            <CardContent className="p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Cobertura do MRR</p>
+              {dashLoading ? (
+                <div className="h-7 w-24 bg-slate-200 animate-pulse rounded" />
+              ) : (() => {
+                const mrr = (dashboard as any)?.mrr ?? 0;
+                const revenue = dashboard?.monthlyRevenue ?? 0;
+                const pct = revenue > 0 ? Math.round((mrr / (revenue + mrr)) * 100) : (mrr > 0 ? 100 : 0);
+                return (
+                  <>
+                    <p className="text-xl font-bold text-slate-800">{pct}%</p>
+                    <p className="text-[10px] text-slate-400 mt-1">do total de receitas previsto é recorrente</p>
+                    <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-indigo-400 transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Charts + Table */}

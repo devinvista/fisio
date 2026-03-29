@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt, gt, inArray } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -123,6 +123,36 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
       .limit(1);
 
+    // MRR — soma das mensalidades de assinaturas ativas para esta clínica
+    const subClinicCond = req.isSuperAdmin || !req.clinicId
+      ? eq(patientSubscriptionsTable.status, "ativa")
+      : and(eq(patientSubscriptionsTable.status, "ativa"), eq(patientSubscriptionsTable.clinicId, req.clinicId!));
+
+    const mrrResult = await db
+      .select({ mrr: sql<number>`COALESCE(SUM(${patientSubscriptionsTable.monthlyAmount}::numeric), 0)` })
+      .from(patientSubscriptionsTable)
+      .where(subClinicCond);
+
+    const mrr = Number(mrrResult[0]?.mrr ?? 0);
+
+    const activeSubsCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(patientSubscriptionsTable)
+      .where(subClinicCond);
+
+    // Cobranças de assinaturas pendentes (geradas pelo billing, ainda não pagas)
+    const pendingSubsWhere = cc
+      ? and(cc, eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId))
+      : and(eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId));
+
+    const pendingSubRecords = await db
+      .select({
+        count: sql<number>`count(*)`,
+        total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
+      })
+      .from(financialRecordsTable)
+      .where(pendingSubsWhere);
+
     res.json({
       monthlyRevenue,
       monthlyExpenses,
@@ -135,6 +165,12 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
         category: c.category ?? "outros",
         revenue: Number(c.revenue),
       })),
+      mrr,
+      activeSubscriptions: Number(activeSubsCount[0]?.count ?? 0),
+      pendingSubscriptionCharges: {
+        count: Number(pendingSubRecords[0]?.count ?? 0),
+        total: Number(pendingSubRecords[0]?.total ?? 0),
+      },
     });
   } catch (err) {
     console.error(err);

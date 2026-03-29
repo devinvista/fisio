@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { patientPackagesTable, packagesTable, proceduresTable, patientsTable } from "@workspace/db";
+import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -69,7 +69,11 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       return;
     }
 
-    const { packageId, procedureId, name, totalSessions, sessionsPerWeek, startDate, expiryDate, price, paymentStatus, notes } = req.body;
+    const {
+      packageId, procedureId, name, totalSessions, sessionsPerWeek,
+      startDate, expiryDate, price, paymentStatus, notes,
+      unitMonthlyPrice, billingDay,
+    } = req.body;
 
     if (!procedureId || !name || !totalSessions || !startDate || !price) {
       res.status(400).json({
@@ -98,7 +102,41 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       })
       .returning();
 
-    res.status(201).json(pp);
+    // Auto-create subscription for mensal packages
+    let subscription: typeof patientSubscriptionsTable.$inferSelect | null = null;
+
+    if (packageId) {
+      const [pkg] = await db
+        .select()
+        .from(packagesTable)
+        .where(eq(packagesTable.id, parseInt(packageId)))
+        .limit(1);
+
+      if (pkg?.packageType === "mensal") {
+        const monthlyAmount = unitMonthlyPrice ?? pkg.monthlyPrice ?? price;
+        const rawDay = billingDay ?? pkg.billingDay ?? new Date(startDate + "T12:00:00Z").getUTCDate();
+        const day = Math.max(1, Math.min(31, parseInt(String(rawDay))));
+
+        const [sub] = await db
+          .insert(patientSubscriptionsTable)
+          .values({
+            patientId,
+            procedureId: parseInt(procedureId),
+            startDate,
+            billingDay: day,
+            monthlyAmount: String(monthlyAmount),
+            status: "ativa",
+            clinicId: req.clinicId ?? null,
+            notes: `Gerada automaticamente a partir do pacote: ${name}`,
+          })
+          .returning();
+
+        subscription = sub;
+        console.log(`[patient-packages] Assinatura #${sub.id} criada automaticamente para pacote mensal "${name}" (paciente ${patientId})`);
+      }
+    }
+
+    res.status(201).json({ ...pp, subscription, subscriptionCreated: !!subscription });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
