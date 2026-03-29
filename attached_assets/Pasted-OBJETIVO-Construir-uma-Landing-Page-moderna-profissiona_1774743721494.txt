@@ -1,0 +1,324 @@
+OBJETIVO
+
+Construir uma Landing Page moderna, profissional e responsiva, que será a página inicial do sistema, seguindo padrões de:
+
+SaaS moderno
+UX/UI profissional
+Alta conversão
+Performance
+SEO
+Escalabilidade
+TAREFA PRINCIPAL
+
+Criar uma nova página:
+
+src/pages/landing.tsx
+
+Criar componentes reutilizáveis:
+
+src/components/landing/
+
+REGRAS DE NAVEGAÇÃO
+
+Implementar:
+
+Se usuário estiver logado:
+
+Redirecionar automaticamente para:
+
+/dashboard
+
+Se usuário NÃO estiver logado:
+
+Mostrar:
+
+Landing Page
+
+SEÇÕES OBRIGATÓRIAS DA LANDING PAGE
+
+Implementar as seguintes seções:
+
+Header
+
+Conteúdo:
+
+Logo FisioGest Pro
+Menu:
+
+Recursos
+Benefícios
+Planos
+Contato
+Entrar
+
+Botão:
+
+Começar agora
+
+Header deve ser:
+
+Fixo no topo
+Responsivo
+Moderno
+Hero Section
+
+Criar:
+
+Título forte:
+
+Sistema completo para gestão de clínicas e profissionais da saúde.
+
+Subtítulo:
+
+Agenda, pacientes, financeiro e relatórios em um único lugar.
+
+Botões:
+
+Testar grátis
+Entrar no sistema
+
+Adicionar:
+
+Ilustração ou mockup do sistema
+
+Seção Problemas
+
+Criar cards com ícones:
+
+Agenda desorganizada
+Perda de pacientes
+Falta de controle financeiro
+Tempo perdido
+Desorganização da clínica
+
+Layout:
+
+Grid responsivo
+
+Seção Solução
+
+Texto explicando:
+
+O FisioGest Pro resolve esses problemas com automação e organização.
+
+Adicionar:
+
+Lista visual com ícones:
+
+Agenda inteligente
+Controle financeiro
+Gestão de pacientes
+Relatórios automáticos
+Prontuário clínico
+
+Seção Funcionalidades
+
+Criar cards:
+
+Agenda
+Pacientes
+Prontuário
+Financeiro
+Relatórios
+Procedimentos
+Multiusuários
+Segurança
+
+Layout:
+
+Grid moderno
+
+Seção Benefícios
+
+Criar lista:
+
+Mais organização
+Mais produtividade
+Mais controle
+Mais lucro
+Mais profissionalismo
+
+Seção Planos
+
+Criar 3 planos:
+
+Starter
+Professional
+Enterprise
+
+Cada plano deve ter:
+
+Nome
+Preço
+Lista de recursos
+Botão:
+
+Assinar
+Começar
+
+Plano Professional deve ser destacado.
+
+Seção Depoimentos
+
+Criar:
+
+3 depoimentos fictícios.
+
+Layout:
+
+Cards
+
+Seção FAQ
+
+Criar perguntas:
+
+O sistema funciona no celular
+Precisa instalar
+Posso cancelar quando quiser
+Meus dados estão seguros
+Tem suporte
+
+Footer
+
+Criar:
+
+Logo
+Links
+Contato
+Redes sociais
+Direitos autorais
+
+REQUISITOS TÉCNICOS
+
+Usar:
+
+React
+TypeScript
+TailwindCSS
+shadcn/ui
+
+Criar:
+
+Componentes reutilizáveis
+
+Exemplo:
+
+Header.tsx
+Hero.tsx
+Features.tsx
+Pricing.tsx
+Testimonials.tsx
+FAQ.tsx
+Footer.tsx
+
+RESPONSIVIDADE
+
+Garantir:
+
+Mobile
+Tablet
+Desktop
+
+Usar:
+
+Grid
+Flexbox
+Breakpoints do Tailwind
+
+DESIGN
+
+Usar:
+
+Design moderno
+Visual SaaS
+Layout limpo
+Espaçamento adequado
+Animações suaves
+
+Cores:
+
+Primary:
+
+Blue
+Green
+
+Background:
+
+White
+Light gray
+
+Estilo:
+
+Tecnologia
+Saúde
+Profissional
+
+SEO
+
+Adicionar:
+
+Meta tags
+Title
+Description
+Open Graph
+
+PERFORMANCE
+
+Aplicar:
+
+Lazy loading
+Código otimizado
+Boas práticas React
+Componentização
+
+ACESSIBILIDADE
+
+Aplicar:
+
+ARIA labels
+Contraste adequado
+Navegação por teclado
+
+EXTRA — IMPLEMENTAR ROTA
+
+Atualizar:
+
+App.tsx
+
+Adicionar:
+
+Route:
+
+/ → Landing Page
+
+Se usuário autenticado:
+
+Redirecionar para:
+
+/dashboard
+
+EXTRA — CRIAR HOOK
+
+Criar:
+
+useAuthRedirect.ts
+
+Função:
+
+Verificar se usuário está logado.
+
+Se estiver:
+
+Redirecionar para dashboard.
+
+RESULTADO ESPERADO
+
+O agente deve entregar:
+
+Landing Page completa
+Código funcional
+Design moderno
+Responsivo
+Integrado ao sistema
+Pronto para produção
+Seguindo padrões SaaS
