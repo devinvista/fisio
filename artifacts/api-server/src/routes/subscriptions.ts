@@ -99,6 +99,9 @@ router.put("/:id", requirePermission("financial.write"), async (req, res) => {
     const id = parseInt(req.params.id as string);
     const { status, billingDay, monthlyAmount, notes } = req.body;
 
+    const isCancelling = status === "cancelada" || status === "inativa";
+    const cancelledAt = isCancelling ? new Date() : undefined;
+
     const [subscription] = await db
       .update(patientSubscriptionsTable)
       .set({
@@ -106,6 +109,7 @@ router.put("/:id", requirePermission("financial.write"), async (req, res) => {
         billingDay: billingDay ? parseInt(billingDay) : undefined,
         monthlyAmount: monthlyAmount ? String(monthlyAmount) : undefined,
         notes: notes !== undefined ? notes : undefined,
+        cancelledAt,
       })
       .where(eq(patientSubscriptionsTable.id, id))
       .returning();
@@ -127,7 +131,7 @@ router.delete("/:id", requirePermission("financial.write"), async (req, res) => 
     const id = parseInt(req.params.id as string);
     await db
       .update(patientSubscriptionsTable)
-      .set({ status: "cancelada" })
+      .set({ status: "cancelada", cancelledAt: new Date() })
       .where(eq(patientSubscriptionsTable.id, id));
     res.status(204).send();
   } catch (err) {

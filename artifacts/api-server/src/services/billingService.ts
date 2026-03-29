@@ -21,6 +21,20 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 
+/**
+ * Calcula a próxima data de cobrança para o mês seguinte ao informado,
+ * respeitando meses curtos (ex.: billingDay 31 em fevereiro → último dia).
+ */
+function calcNextBillingDate(billingDay: number, currentYear: number, currentMonth: number): string {
+  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+  const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+  const lastDayOfNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+  const effectiveDay = Math.min(billingDay, lastDayOfNextMonth);
+  const mm = String(nextMonth).padStart(2, "0");
+  const dd = String(effectiveDay).padStart(2, "0");
+  return `${nextYear}-${mm}-${dd}`;
+}
+
 export interface BillingResult {
   processed: number;
   generated: number;
@@ -199,6 +213,13 @@ export async function runBilling(options: {
         })
         .returning();
 
+      // Atualiza next_billing_date para o próximo mês
+      const nextBillingDate = calcNextBillingDate(sub.billingDay, year, month);
+      await db
+        .update(patientSubscriptionsTable)
+        .set({ nextBillingDate })
+        .where(eq(patientSubscriptionsTable.id, sub.id));
+
       result.generated++;
       result.recordIds.push(record.id);
       result.details.push({
@@ -207,10 +228,10 @@ export async function runBilling(options: {
         procedureName,
         amount: Number(sub.monthlyAmount),
         action: "generated",
-        reason: `Registro #${record.id} criado`,
+        reason: `Registro #${record.id} criado — próxima cobrança: ${nextBillingDate}`,
       });
 
-      console.log(`[billing] Sub #${sub.id} (${patientName}) — cobrança R$ ${Number(sub.monthlyAmount).toFixed(2)} gerada → registro #${record.id}`);
+      console.log(`[billing] Sub #${sub.id} (${patientName}) — cobrança R$ ${Number(sub.monthlyAmount).toFixed(2)} gerada → registro #${record.id} | próxima: ${nextBillingDate}`);
 
     } catch (err) {
       result.errors++;

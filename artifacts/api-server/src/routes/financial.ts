@@ -442,13 +442,24 @@ router.get("/patients/:patientId/subscriptions", requirePermission("financial.re
   }
 });
 
-router.patch("/records/:id/status", requirePermission("financial.write"), async (req, res) => {
+router.patch("/records/:id/status", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const { status, paymentDate, paymentMethod } = req.body;
 
     if (!status) {
       res.status(400).json({ error: "Bad Request", message: "status é obrigatório" });
+      return;
+    }
+
+    // Busca o registro antes de atualizar para checar transição de status
+    const [existing] = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(eq(financialRecordsTable.id, id));
+
+    if (!existing) {
+      res.status(404).json({ error: "Not Found" });
       return;
     }
 
@@ -465,6 +476,36 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
     if (!record) {
       res.status(404).json({ error: "Not Found" });
       return;
+    }
+
+    // Gera session_credit automaticamente quando cobrança de assinatura é paga
+    if (
+      status === "pago" &&
+      existing.status !== "pago" &&
+      existing.subscriptionId != null
+    ) {
+      try {
+        const [sub] = await db
+          .select()
+          .from(patientSubscriptionsTable)
+          .where(eq(patientSubscriptionsTable.id, existing.subscriptionId));
+
+        if (sub) {
+          await db.insert(sessionCreditsTable).values({
+            patientId: sub.patientId,
+            procedureId: sub.procedureId,
+            quantity: 1,
+            usedQuantity: 0,
+            clinicId: sub.clinicId ?? req.clinicId ?? null,
+            notes: `Crédito gerado automaticamente — mensalidade #${record.id} paga`,
+          });
+          console.log(
+            `[session-credit] Crédito gerado para paciente #${sub.patientId} / procedimento #${sub.procedureId} — registro financeiro #${record.id}`
+          );
+        }
+      } catch (creditErr) {
+        console.error("[session-credit] Erro ao gerar crédito de sessão:", creditErr);
+      }
     }
 
     res.json(record);

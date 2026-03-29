@@ -14,6 +14,8 @@ export const patientSubscriptionsTable = pgTable("patient_subscriptions", {
   status: text("status").notNull().default("ativa"),
   clinicId: integer("clinic_id"),
   notes: text("notes"),
+  cancelledAt: timestamp("cancelled_at"),
+  nextBillingDate: date("next_billing_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
