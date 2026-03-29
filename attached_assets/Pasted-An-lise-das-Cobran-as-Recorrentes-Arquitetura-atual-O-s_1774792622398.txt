@@ -1,0 +1,58 @@
+Análise das Cobranças Recorrentes
+Arquitetura atual
+
+O sistema tem dois modelos de cobrança paralelos que não se comunicam:
+Modelo	Tabela	Tipo	Cobrança
+Assinaturas mensais	patient_subscriptions	Valor fixo/mês	Manual via endpoint
+Pacotes	patient_packages	Sessões ou mensal	Pagamento único
+Templates	packages	sessoes ou mensal	Configuração
+Problemas críticos encontrados
+
+1. Sem agendador automático — o maior risco
+O endpoint POST /subscriptions/run-billing precisa ser chamado manualmente todo dia. Não há CRON, scheduler ou trigger embutido. A lógica é:
+
+if (sub.billingDay !== todayDay) → pula
+
+Se ninguém chamar o endpoint exatamente no dia configurado (fim de semana, feriado, falha de servidor), a cobrança daquele mês é perdida para sempre — sem alerta, sem reprocessamento.
+
+2. Idempotência com coluna nullable
+A proteção contra cobrança dupla usa dueDate para verificar se já existe registro no mês:
+
+date_trunc('month', dueDate::date) = date_trunc('month', hoje)
+
+Se dueDate for NULL (campo opcional na tabela), a comparação falha silenciosamente e cobra duas vezes.
+
+3. Sem isolamento por clínica no billing
+O run-billing não filtra por clinic_id — qualquer usuário com financial.write executa cobranças de todas as clínicas de uma vez.
+
+4. Pacotes mensais não geram assinaturas
+Um package do tipo mensal tem billing_day e monthly_price, mas ao vincular ao paciente cria um patient_package (pagamento único), não um patient_subscription (recorrente). Os dois modelos existem mas não se conectam.
+Problemas de média gravidade
+
+5. Dashboard não mostra MRR
+A receita do dashboard só conta status = "pago" e transactionType = "pagamento". As cobranças geradas pelo billing ficam com status = "pendente" e nunca entram no gráfico até serem pagas manualmente — sem nenhuma métrica de "receita recorrente esperada".
+
+6. Sem data de cancelamento / validade futura
+patient_subscriptions só tem status (ativa/cancelada). Não é possível:
+
+    Saber quando uma assinatura foi cancelada
+    Agendar cancelamento para data futura
+    Calcular churn por período
+
+7. session_credits desconectado do ciclo de assinatura
+Quando o billing gera uma cobrança, nenhum crédito de sessão é criado. O paciente com assinatura mensal não tem sessões contabilizadas automaticamente — a conexão tem que ser feita manualmente.
+
+8. Sem controle de inadimplência
+Não existe query ou alerta para assinaturas ativas com cobranças pendentes há mais de X dias. A inadimplência só é visível se alguém procurar paciente por paciente.
+Melhorias sugeridas (por prioridade)
+Prioridade	Melhoria	Impacto
+🔴 Crítico	Implementar scheduler automático (node-cron ou pg_cron) para rodar o billing diariamente às 6h	Elimina perda de mensalidades
+🔴 Crítico	Adicionar janela de tolerância no billing: cobrar se billingDay foi nos últimos 3 dias e não há registro no mês	Resiliência a falhas
+🔴 Crítico	Fixar idempotência: usar created_at em vez de dueDate nullable na verificação	Evita cobrança dupla
+🟠 Alto	Adicionar clinic_id no filtro do run-billing	Isolamento multi-clínica
+🟠 Alto	Ao ativar pacote tipo mensal, criar automaticamente um patient_subscription	Unificação dos modelos
+🟠 Alto	Adicionar card de MRR (Receita Recorrente Mensal) e "pendentes" no dashboard financeiro	Visibilidade da receita
+🟡 Médio	Adicionar colunas cancelled_at e next_billing_date em patient_subscriptions	Histórico e planejamento
+🟡 Médio	Gerar session_credits automaticamente quando cobrança de assinatura for paga	Controle de sessões
+🟡 Médio	Painel de inadimplência: assinaturas ativas com pagamentos atrasados	Controle financeiro
+🟢 Melhoria	Tela dedicada de gestão de assinaturas recorrentes (hoje não existe)	UX
