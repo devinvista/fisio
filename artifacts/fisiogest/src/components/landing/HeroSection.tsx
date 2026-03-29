@@ -26,7 +26,7 @@ function DashboardMockup() {
           <span className="w-3 h-3 rounded-full bg-green-500/80" />
           <div className="ml-4 flex-1 bg-white/5 rounded-md px-3 py-1 text-xs text-white/30 flex items-center gap-2">
             <Shield className="w-3 h-3" />
-            app.fisiogestpro.com.br/dashboard
+            app.fisiogest.com.br/dashboard
           </div>
         </div>
         <div className="flex h-80">
