@@ -12,7 +12,7 @@ const FOOTER_LINKS = {
   Sistema: [
     { label: "Entrar", href: "/login", isRouter: true },
     { label: "Criar conta", href: "/register", isRouter: true },
-    { label: "Agendar demo", href: "mailto:contato@fisiogestpro.com.br" },
+    { label: "Agendar demo", href: "mailto:contato@fisiogest.com.br" },
   ],
   Legal: [
     { label: "Privacidade", href: "#" },
@@ -69,12 +69,12 @@ export function LandingFooter() {
 
             <div className="space-y-2.5">
               <a
-                href="mailto:contato@fisiogestpro.com.br"
+                href="mailto:contato@fisiogest.com.br"
                 className="flex items-center gap-2.5 text-white/30 text-sm hover:text-white/60 transition-colors"
                 aria-label="Enviar e-mail para FisioGest Pro"
               >
                 <Mail className="w-4 h-4 shrink-0" aria-hidden="true" />
-                contato@fisiogestpro.com.br
+                contato@fisiogest.com.br
               </a>
               <div className="flex items-center gap-2.5 text-white/30 text-sm">
                 <MapPin className="w-4 h-4 shrink-0" aria-hidden="true" />
@@ -138,7 +138,7 @@ export function LandingFooter() {
 
         <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-white/20 text-xs text-center md:text-left">
-            © {new Date().getFullYear()} FisioGest Pro. Todos os direitos reservados.
+            © {new Date().getFullYear()} FisioGest. Todos os direitos reservados.
           </p>
           <p className="text-white/15 text-xs">
             Desenvolvido com ♥ para fisioterapeutas brasileiros

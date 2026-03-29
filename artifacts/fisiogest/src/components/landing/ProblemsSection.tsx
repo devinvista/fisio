@@ -13,7 +13,7 @@ const PROBLEMS = [
   {
     icon: CalendarX,
     title: "Agenda desorganizada",
-    description: "Conflitos de horários e double booking prejudicam pacientes e geram retrabalho constante.",
+    description: "Conflitos de horários e over booking prejudicam pacientes e geram retrabalho constante.",
     color: "text-red-500",
     bg: "bg-red-50",
     border: "border-red-100 hover:border-red-200",

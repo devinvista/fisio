@@ -89,7 +89,7 @@ function PricingCard({
 export function PricingSection() {
   const plans: PricingCardProps[] = [
     {
-      plan: "Starter",
+      plan: "Essencial",
       price: "R$ 89",
       description: "Para profissionais autônomos",
       features: [
@@ -104,13 +104,13 @@ export function PricingSection() {
       ctaHref: "/register",
     },
     {
-      plan: "Professional",
+      plan: "Profissional",
       price: "R$ 179",
       description: "Para clínicas em crescimento",
       features: [
         "Até 3 fisioterapeutas",
         "Pacientes ilimitados",
-        "Tudo do plano Starter",
+        "Tudo do plano Essencial",
         "Relatórios avançados",
         "Agendamento online",
         "Suporte prioritário",
@@ -122,7 +122,7 @@ export function PricingSection() {
       badge: "Mais popular",
     },
     {
-      plan: "Enterprise",
+      plan: "Premium",
       price: "R$ 349",
       description: "Para redes e franquias",
       features: [
@@ -135,7 +135,7 @@ export function PricingSection() {
         "Treinamento personalizado",
       ],
       cta: "Falar com vendas",
-      ctaHref: "mailto:contato@fisiogestpro.com.br",
+      ctaHref: "mailto:contato@fisiogest.com.br",
     },
   ];
 
@@ -159,7 +159,7 @@ export function PricingSection() {
             <br className="hidden sm:block" /> no orçamento da sua clínica
           </h2>
           <p className="text-slate-500 text-lg max-w-xl mx-auto">
-            14 dias grátis em qualquer plano. Sem cartão de crédito. Cancele quando quiser.
+            30 dias grátis em qualquer plano. Sem cartão de crédito. Cancele quando quiser.
           </p>
         </FadeIn>
 
@@ -175,7 +175,7 @@ export function PricingSection() {
           <p className="text-slate-400 text-sm">
             Precisa de um plano personalizado?{" "}
             <a
-              href="mailto:contato@fisiogestpro.com.br"
+              href="mailto:contato@fisiogest.com.br"
               className="text-teal-600 font-medium hover:underline"
               aria-label="Entrar em contato para plano personalizado"
             >
