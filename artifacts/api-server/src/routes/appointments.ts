@@ -582,10 +582,14 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     if (status !== undefined) updateFields.status = status;
     if (notes !== undefined) updateFields.notes = notes;
 
+    const authReq = req as AuthRequest;
+    const updateWhere = (!authReq.isSuperAdmin && authReq.clinicId)
+      ? and(eq(appointmentsTable.id, id), eq(appointmentsTable.clinicId, authReq.clinicId))
+      : eq(appointmentsTable.id, id);
     const [appointment] = await db
       .update(appointmentsTable)
       .set(updateFields)
-      .where(eq(appointmentsTable.id, id))
+      .where(updateWhere)
       .returning();
 
     if (!appointment) {
@@ -608,7 +612,15 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    await db.delete(appointmentsTable).where(eq(appointmentsTable.id, id));
+    const authReq = req as AuthRequest;
+    const whereClause = (!authReq.isSuperAdmin && authReq.clinicId)
+      ? and(eq(appointmentsTable.id, id), eq(appointmentsTable.clinicId, authReq.clinicId))
+      : eq(appointmentsTable.id, id);
+    const [deleted] = await db.delete(appointmentsTable).where(whereClause).returning({ id: appointmentsTable.id });
+    if (!deleted) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     console.error(err);

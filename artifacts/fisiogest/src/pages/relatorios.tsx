@@ -62,19 +62,28 @@ export default function Relatorios() {
 
   const { data: monthlyRevenueRaw } = useQuery<MonthlyRevenue[]>({
     queryKey: ["reports-monthly-revenue", selectedYear],
-    queryFn: () => fetch(`/api/reports/monthly-revenue?year=${selectedYear}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/monthly-revenue?year=${selectedYear}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
   });
   const monthlyRevenue: MonthlyRevenue[] = Array.isArray(monthlyRevenueRaw) ? monthlyRevenueRaw : [];
 
   const { data: procedureRevenueRaw } = useQuery<ProcedureRevenue[]>({
     queryKey: ["reports-procedure-revenue", selectedMonth, selectedYear],
-    queryFn: () => fetch(`/api/reports/procedure-revenue?month=${selectedMonth}&year=${selectedYear}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/procedure-revenue?month=${selectedMonth}&year=${selectedYear}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
   });
   const procedureRevenue: ProcedureRevenue[] = Array.isArray(procedureRevenueRaw) ? procedureRevenueRaw : [];
 
   const { data: scheduleOccupation } = useQuery<ScheduleOccupation>({
     queryKey: ["reports-schedule-occupation", selectedMonth, selectedYear],
-    queryFn: () => fetch(`/api/reports/schedule-occupation?month=${selectedMonth}&year=${selectedYear}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/schedule-occupation?month=${selectedMonth}&year=${selectedYear}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
   });
 
   // Group procedure revenue by category

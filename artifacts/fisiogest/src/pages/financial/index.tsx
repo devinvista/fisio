@@ -692,6 +692,12 @@ function CreateRecordForm({ onSuccess }: { onSuccess: () => void }) {
       {
         onSuccess: () => {
           toast({ title: "Lançamento registrado com sucesso." });
+          setType("despesa");
+          setExpenseMode("geral");
+          setAmount("");
+          setDescription("");
+          setCategory(undefined);
+          setProcedureId(undefined);
           onSuccess();
         },
         onError: (err: any) => {

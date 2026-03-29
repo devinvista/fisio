@@ -11,8 +11,9 @@ import {
   proceduresTable,
   examAttachmentsTable,
   atestadosTable,
+  patientsTable,
 } from "@workspace/db";
-import { eq, desc, or } from "drizzle-orm";
+import { eq, desc, or, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -24,6 +25,24 @@ type PEvol = { patientId: string; evolutionId: string };
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
+
+router.use(async (req: AuthRequest, res, next) => {
+  if (req.isSuperAdmin || !req.clinicId) return next();
+  const patientId = parseInt(req.params.patientId as string);
+  if (isNaN(patientId)) {
+    res.status(400).json({ error: "Bad Request", message: "patientId inválido" });
+    return;
+  }
+  const [patient] = await db
+    .select({ id: patientsTable.id })
+    .from(patientsTable)
+    .where(and(eq(patientsTable.id, patientId), eq(patientsTable.clinicId, req.clinicId)));
+  if (!patient) {
+    res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+    return;
+  }
+  next();
+});
 
 router.get("/anamnesis", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {

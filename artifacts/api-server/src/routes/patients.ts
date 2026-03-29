@@ -102,8 +102,8 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
     }
 
     const normalizedCpf = normalizeCpf(cpf);
-    if (normalizedCpf.length !== 11) {
-      res.status(400).json({ error: "Bad Request", message: "CPF inválido. Informe os 11 dígitos." });
+    if (!validateCpf(normalizedCpf)) {
+      res.status(400).json({ error: "Bad Request", message: "CPF inválido. Verifique os dígitos informados." });
       return;
     }
 
@@ -134,7 +134,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
     res.status(201).json(patient);
   } catch (err: any) {
     if (err.code === "23505") {
-      res.status(400).json({ error: "Bad Request", message: "CPF já cadastrado" });
+      res.status(409).json({ error: "Conflict", message: "CPF já cadastrado" });
       return;
     }
     console.error(err);

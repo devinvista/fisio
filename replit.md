@@ -527,3 +527,27 @@ cd artifacts/fisiogest && npx tsc --noEmit
 | 2 | `api-spec/openapi.yaml` | **Spec desatualizada** — `Evolution` e `CreateEvolutionRequest` não incluíam `painScale`, embora o DB schema e o backend já suportassem o campo | Adicionado `painScale: integer (0–10)` em ambos os schemas do OpenAPI |
 | 3 | `lib/api-client-react/src/generated/api.schemas.ts` | **TS2339** — `Property 'painScale' does not exist on type 'Evolution'` em 14 locais de `patients/[id].tsx` | Adicionado `painScale?: number` nas interfaces `Evolution` e `CreateEvolutionRequest` geradas; rebuild do pacote |
 | 4 | `fisiogest/src/pages/patients/[id].tsx:2691` | **TS2322** — `buildPayload()` passava `painScale: number \| null` mas `CreateEvolutionRequest.painScale` é `number \| undefined` | `buildPayload()` agora usa `painScale: form.painScale ?? undefined` para converter `null` em `undefined` |
+
+---
+
+## Correções de Segurança e Bugs (2026-03-29 — 2ª rodada)
+
+Análise completa (backend + frontend) detectou bugs de segurança multi-tenant e problemas de UX. **Zero erros TypeScript** mantidos após todas as correções.
+
+### Backend — Segurança Multi-tenant
+
+| # | Arquivo | Problema | Correção |
+|---|---|---|---|
+| 1 | `routes/patients.ts` | Validação de CPF usava apenas verificação de comprimento (11 dígitos), ignorando o algoritmo de módulo 11 | Agora usa `validateCpf()` completa (sequências repetidas + dois dígitos verificadores) |
+| 2 | `routes/patients.ts` | CPF duplicado retornava HTTP 400 Bad Request | Corrigido para HTTP **409 Conflict** (padrão REST para recurso duplicado) |
+| 3 | `routes/appointments.ts` DELETE /:id | `DELETE` não filtrava por `clinicId` — qualquer admin autenticado podia deletar agendamentos de outra clínica | Adicionado filtro `AND clinicId = req.clinicId` no WHERE; retorna 404 se não encontrado |
+| 4 | `routes/appointments.ts` PUT /:id | `UPDATE` não filtrava por `clinicId` no WHERE — permitia editar agendamentos de outras clínicas | Adicionado `updateWhere` com clinicId isolado |
+| 5 | `routes/medical-records.ts` | Nenhuma rota verificava se o `patientId` da URL pertencia à clínica do usuário logado — prontuário cross-clinic acessível | Adicionado middleware no router que valida posse do paciente via `clinicId` antes de qualquer handler |
+| 6 | `routes/financial.ts` | 5 endpoints de paciente (`/history`, `/summary`, `/payment`, `/credits`, `/subscriptions`) não verificavam se o paciente pertencia à clínica | Adicionado helper `assertPatientInClinic()` chamado no início de cada endpoint; retorna 403 se violado |
+
+### Frontend — Correções de UX
+
+| # | Arquivo | Problema | Correção |
+|---|---|---|---|
+| 7 | `pages/financial/index.tsx` | `CreateRecordForm` não resetava os campos após salvar com sucesso — dados do lançamento anterior persistiam ao reabrir o dialog | Reset completo de todos os campos (`type`, `expenseMode`, `amount`, `description`, `category`, `procedureId`) no `onSuccess` |
+| 8 | `pages/relatorios.tsx` | Três `fetch()` para relatórios chamavam `.json()` sem verificar `r.ok` — erros HTTP silenciosos podiam retornar HTML de erro como dados | Adicionado `if (!r.ok) throw new Error(...)` antes de cada `.json()`, permitindo que TanStack Query trate o estado de erro |

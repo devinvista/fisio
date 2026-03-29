@@ -16,6 +16,15 @@ function apptClinicCond(req: AuthRequest) {
   return eq(appointmentsTable.clinicId, req.clinicId);
 }
 
+async function assertPatientInClinic(patientId: number, req: AuthRequest): Promise<boolean> {
+  if (req.isSuperAdmin || !req.clinicId) return true;
+  const [p] = await db
+    .select({ id: patientsTable.id })
+    .from(patientsTable)
+    .where(and(eq(patientsTable.id, patientId), eq(patientsTable.clinicId, req.clinicId)));
+  return !!p;
+}
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -270,6 +279,10 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
 router.get("/patients/:patientId/history", requirePermission("financial.read"), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
+    if (!await assertPatientInClinic(patientId, req as AuthRequest)) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+      return;
+    }
 
     const records = await db
       .select({
@@ -304,6 +317,10 @@ router.get("/patients/:patientId/history", requirePermission("financial.read"), 
 router.get("/patients/:patientId/summary", requirePermission("financial.read"), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
+    if (!await assertPatientInClinic(patientId, req as AuthRequest)) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+      return;
+    }
 
     const records = await db
       .select()
@@ -344,6 +361,10 @@ router.get("/patients/:patientId/summary", requirePermission("financial.read"), 
 router.post("/patients/:patientId/payment", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
+    if (!await assertPatientInClinic(patientId, req)) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+      return;
+    }
     const { amount, paymentMethod, description, procedureId } = req.body;
 
     if (!amount) {
@@ -397,6 +418,10 @@ router.post("/patients/:patientId/payment", requirePermission("financial.write")
 router.get("/patients/:patientId/credits", requirePermission("financial.read"), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
+    if (!await assertPatientInClinic(patientId, req as AuthRequest)) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+      return;
+    }
 
     const credits = await db
       .select({
@@ -424,6 +449,10 @@ router.get("/patients/:patientId/credits", requirePermission("financial.read"), 
 router.get("/patients/:patientId/subscriptions", requirePermission("financial.read"), async (req, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
+    if (!await assertPatientInClinic(patientId, req as AuthRequest)) {
+      res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
+      return;
+    }
 
     const subs = await db
       .select({
