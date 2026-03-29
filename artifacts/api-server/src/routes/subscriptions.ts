@@ -2,14 +2,14 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   patientSubscriptionsTable,
-  financialRecordsTable,
   patientsTable,
   proceduresTable,
   sessionCreditsTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { eq, and } from "drizzle-orm";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { runBilling } from "../services/billingService.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -167,64 +167,21 @@ router.get("/:id/credits", requirePermission("financial.read"), async (req, res)
   }
 });
 
-router.post("/run-billing", requirePermission("financial.write"), async (req, res) => {
+router.post("/run-billing", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
-    const today = new Date();
-    const todayDay = today.getDate();
-    const todayDate = today.toISOString().slice(0, 10);
+    const dryRun = req.query.dryRun === "true" || req.body?.dryRun === true;
+    const toleranceDays = req.body?.toleranceDays !== undefined
+      ? Math.max(0, Math.min(7, parseInt(req.body.toleranceDays)))
+      : 3;
 
-    const activeSubscriptions = await db
-      .select({
-        subscription: patientSubscriptionsTable,
-        patient: patientsTable,
-        procedure: proceduresTable,
-      })
-      .from(patientSubscriptionsTable)
-      .leftJoin(patientsTable, eq(patientSubscriptionsTable.patientId, patientsTable.id))
-      .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id))
-      .where(eq(patientSubscriptionsTable.status, "ativa"));
+    // Clínicas isoladas: superadmin pode omitir clinicId para rodar em todas
+    const clinicId = req.isSuperAdmin ? (req.body?.clinicId ?? undefined) : (req.clinicId ?? undefined);
 
-    const generated: number[] = [];
+    const result = await runBilling({ clinicId, toleranceDays, dryRun });
 
-    for (const row of activeSubscriptions) {
-      const sub = row.subscription;
-      if (sub.billingDay !== todayDay) continue;
-
-      const existingThisMonth = await db
-        .select()
-        .from(financialRecordsTable)
-        .where(
-          and(
-            eq(financialRecordsTable.subscriptionId, sub.id),
-            sql`date_trunc('month', ${financialRecordsTable.dueDate}::date) = date_trunc('month', ${todayDate}::date)`
-          )
-        )
-        .limit(1);
-
-      if (existingThisMonth.length > 0) continue;
-
-      const [record] = await db
-        .insert(financialRecordsTable)
-        .values({
-          type: "receita",
-          amount: sub.monthlyAmount,
-          description: `Mensalidade ${row.procedure?.name ?? "Procedimento"} — ${row.patient?.name ?? "Paciente"}`,
-          category: row.procedure?.category ?? null,
-          patientId: sub.patientId,
-          procedureId: sub.procedureId,
-          transactionType: "creditoAReceber",
-          status: "pendente",
-          dueDate: todayDate,
-          subscriptionId: sub.id,
-        })
-        .returning();
-
-      generated.push(record.id);
-    }
-
-    res.json({ generated: generated.length, recordIds: generated });
+    res.json(result);
   } catch (err) {
-    console.error(err);
+    console.error("[run-billing]", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });

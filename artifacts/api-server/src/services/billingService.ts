@@ -1,0 +1,234 @@
+/**
+ * billingService — geração automatizada de cobranças mensais
+ *
+ * Regras implementadas:
+ * 1. Janela de tolerância de 3 dias: se o dia de cobrança caiu nos últimos
+ *    3 dias e ainda não foi gerado registro este mês, processa agora.
+ * 2. Meses curtos: billingDay 29/30/31 usa o último dia do mês quando
+ *    o mês não tem esse dia.
+ * 3. Idempotência segura: verifica por (subscription_id + mês/ano de
+ *    created_at), nunca por dueDate (nullable).
+ * 4. Isolamento por clínica: filtra por clinicId quando fornecido.
+ * 5. Logging completo em cada etapa para auditoria.
+ */
+
+import { db } from "@workspace/db";
+import {
+  patientSubscriptionsTable,
+  financialRecordsTable,
+  patientsTable,
+  proceduresTable,
+} from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
+
+export interface BillingResult {
+  processed: number;
+  generated: number;
+  skipped: number;
+  errors: number;
+  recordIds: number[];
+  details: BillingDetail[];
+}
+
+interface BillingDetail {
+  subscriptionId: number;
+  patientName: string;
+  procedureName: string;
+  amount: number;
+  action: "generated" | "skipped_already_billed" | "skipped_wrong_day" | "error";
+  reason?: string;
+}
+
+/**
+ * Retorna o effective billing day para um dado mês/ano.
+ * billingDay 31 em fevereiro → último dia de fevereiro.
+ */
+function effectiveBillingDay(billingDay: number, year: number, month: number): number {
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  return Math.min(billingDay, lastDayOfMonth);
+}
+
+/**
+ * Verifica se hoje está dentro da janela de cobrança (billingDay ± toleranceDays para trás).
+ * Garante que nunca avança para o mês seguinte.
+ */
+function isWithinBillingWindow(
+  billingDay: number,
+  today: Date,
+  toleranceDays: number = 3
+): boolean {
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const todayDay = today.getDate();
+
+  const effective = effectiveBillingDay(billingDay, year, month);
+
+  // Billing day é hoje ou passou nos últimos toleranceDays dias no mesmo mês
+  return todayDay >= effective && todayDay <= effective + toleranceDays;
+}
+
+export async function runBilling(options: {
+  clinicId?: number;
+  toleranceDays?: number;
+  dryRun?: boolean;
+} = {}): Promise<BillingResult> {
+  const { clinicId, toleranceDays = 3, dryRun = false } = options;
+
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const monthStr = String(month).padStart(2, "0");
+  const monthStart = `${year}-${monthStr}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, "0")}`;
+
+  console.log(`[billing] Iniciando ${dryRun ? "(DRY RUN) " : ""}em ${todayStr} — janela: ${toleranceDays} dias${clinicId ? ` — clínica ${clinicId}` : " — todas as clínicas"}`);
+
+  const result: BillingResult = {
+    processed: 0,
+    generated: 0,
+    skipped: 0,
+    errors: 0,
+    recordIds: [],
+    details: [],
+  };
+
+  // Busca assinaturas ativas com join em paciente e procedimento
+  const whereClause = clinicId
+    ? and(
+        eq(patientSubscriptionsTable.status, "ativa"),
+        eq(patientSubscriptionsTable.clinicId, clinicId)
+      )
+    : eq(patientSubscriptionsTable.status, "ativa");
+
+  const activeSubscriptions = await db
+    .select({
+      subscription: patientSubscriptionsTable,
+      patientName: patientsTable.name,
+      procedureName: proceduresTable.name,
+      procedureCategory: proceduresTable.category,
+    })
+    .from(patientSubscriptionsTable)
+    .leftJoin(patientsTable, eq(patientSubscriptionsTable.patientId, patientsTable.id))
+    .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id))
+    .where(whereClause);
+
+  console.log(`[billing] ${activeSubscriptions.length} assinatura(s) ativa(s) encontrada(s)`);
+
+  for (const row of activeSubscriptions) {
+    const sub = row.subscription;
+    result.processed++;
+
+    const patientName = row.patientName ?? `Paciente #${sub.patientId}`;
+    const procedureName = row.procedureName ?? `Procedimento #${sub.procedureId}`;
+
+    try {
+      // Verifica se está dentro da janela de cobrança
+      if (!isWithinBillingWindow(sub.billingDay, today, toleranceDays)) {
+        const effective = effectiveBillingDay(sub.billingDay, year, month);
+        result.skipped++;
+        result.details.push({
+          subscriptionId: sub.id,
+          patientName,
+          procedureName,
+          amount: Number(sub.monthlyAmount),
+          action: "skipped_wrong_day",
+          reason: `Dia efetivo de cobrança: ${effective}, hoje: ${today.getDate()}`,
+        });
+        continue;
+      }
+
+      // Idempotência: verifica se já existe registro para esta assinatura neste mês
+      // Usa created_at (sempre preenchido) em vez de due_date (nullable)
+      const existing = await db
+        .select({ id: financialRecordsTable.id })
+        .from(financialRecordsTable)
+        .where(
+          and(
+            eq(financialRecordsTable.subscriptionId, sub.id),
+            sql`${financialRecordsTable.createdAt} >= ${monthStart}::date`,
+            sql`${financialRecordsTable.createdAt} < (${monthEnd}::date + interval '1 day')`
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        result.skipped++;
+        result.details.push({
+          subscriptionId: sub.id,
+          patientName,
+          procedureName,
+          amount: Number(sub.monthlyAmount),
+          action: "skipped_already_billed",
+          reason: `Já existe registro #${existing[0].id} para ${monthStr}/${year}`,
+        });
+        console.log(`[billing] Sub #${sub.id} (${patientName}) — já cobrada em ${monthStr}/${year}, pulando`);
+        continue;
+      }
+
+      if (dryRun) {
+        result.generated++;
+        result.details.push({
+          subscriptionId: sub.id,
+          patientName,
+          procedureName,
+          amount: Number(sub.monthlyAmount),
+          action: "generated",
+          reason: "dry-run: nenhum registro criado",
+        });
+        console.log(`[billing] [DRY RUN] Sub #${sub.id} (${patientName}) — geraria cobrança de R$ ${Number(sub.monthlyAmount).toFixed(2)}`);
+        continue;
+      }
+
+      // Gera o registro financeiro
+      const [record] = await db
+        .insert(financialRecordsTable)
+        .values({
+          type: "receita",
+          amount: sub.monthlyAmount,
+          description: `Mensalidade ${procedureName} — ${patientName}`,
+          category: row.procedureCategory ?? "Mensalidade",
+          patientId: sub.patientId,
+          procedureId: sub.procedureId,
+          clinicId: sub.clinicId ?? null,
+          transactionType: "creditoAReceber",
+          status: "pendente",
+          dueDate: todayStr,
+          subscriptionId: sub.id,
+        })
+        .returning();
+
+      result.generated++;
+      result.recordIds.push(record.id);
+      result.details.push({
+        subscriptionId: sub.id,
+        patientName,
+        procedureName,
+        amount: Number(sub.monthlyAmount),
+        action: "generated",
+        reason: `Registro #${record.id} criado`,
+      });
+
+      console.log(`[billing] Sub #${sub.id} (${patientName}) — cobrança R$ ${Number(sub.monthlyAmount).toFixed(2)} gerada → registro #${record.id}`);
+
+    } catch (err) {
+      result.errors++;
+      result.details.push({
+        subscriptionId: sub.id,
+        patientName,
+        procedureName,
+        amount: Number(sub.monthlyAmount),
+        action: "error",
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      console.error(`[billing] ERRO na sub #${sub.id} (${patientName}):`, err);
+    }
+  }
+
+  console.log(
+    `[billing] Concluído: ${result.generated} geradas, ${result.skipped} puladas, ${result.errors} erros`
+  );
+
+  return result;
+}
