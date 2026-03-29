@@ -565,7 +565,10 @@ router.get("/clinic-info", async (_req, res) => {
       .where(eq(clinicsTable.isActive, true))
       .limit(1);
 
-    if (!clinic) return res.json({ name: "FisioGest Pro", type: "clinica", phone: null, email: null, address: null, website: null, logoUrl: null });
+    if (!clinic) {
+      res.json({ name: "FisioGest Pro", type: "clinica", phone: null, email: null, address: null, website: null, logoUrl: null });
+      return;
+    }
     res.json(clinic);
   } catch (err) {
     console.error(err);

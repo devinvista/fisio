@@ -220,9 +220,11 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `anamnesis` | id, patientId (único), mainComplaint, diseaseHistory, medications, painScale… |
 | `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis |
 | `treatment_plans` | id, patientId (único), objectives, techniques, frequency, estimatedSessions, status |
-| `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications |
+| `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications, **painScale** (0–10) |
 | `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
-| `financial_records` | id, type (receita/despesa), amount, description, category, appointmentId?, patientId?, procedureId? (FK → procedures) |
+| `patient_subscriptions` | id, patientId, procedureId, startDate, billingDay, monthlyAmount, status, clinicId, **cancelledAt** (timestamp), **nextBillingDate** (date) |
+| `session_credits` | id, patientId, procedureId, quantity, usedQuantity, clinicId, notes |
+| `financial_records` | id, type (receita/despesa), amount, description, category, appointmentId?, patientId?, procedureId? (FK → procedures), subscriptionId? |
 
 ### Comandos de schema
 
@@ -498,3 +500,30 @@ Corrigidos os seguintes erros ao migrar para o ambiente Replit:
 5. **TS2345 em `patient-packages.ts`** — permissions inválidas (`"patients.write"`, `"appointments.write"`) substituídas pelas corretas (`"patients.create"`, `"patients.update"`, `"patients.delete"`, `"appointments.update"`).
 6. **TS7030 em `users.ts`** — nem todos os caminhos de código retornavam valor nos handlers; removidos `return` antes de `res.json()` para tornar os handlers consistentemente `void`.
 7. **`scripts/post-merge.sh`** — adicionado `pnpm run build:libs` após o `pnpm install` para garantir que as declarações TypeScript estejam disponíveis após merges.
+
+---
+
+## Correções de TypeScript e Rotas (2026-03-29)
+
+Análise completa com `tsc --noEmit` após compilar as libs. **Zero erros** em ambos os pacotes após as correções abaixo.
+
+### Processo correto de verificação de tipos
+
+As libs precisam ser compiladas antes de qualquer `tsc --noEmit`:
+```bash
+pnpm --filter @workspace/db build
+pnpm --filter @workspace/api-zod build
+pnpm --filter @workspace/api-client-react build
+# Depois:
+cd artifacts/api-server && npx tsc --noEmit
+cd artifacts/fisiogest && npx tsc --noEmit
+```
+
+### Erros corrigidos
+
+| # | Arquivo | Erro | Correção |
+|---|---|---|---|
+| 1 | `api-server/src/routes/public.ts:551` | **TS7030** — `GET /clinic-info`: nem todos os caminhos retornavam valor (`return res.json(...)` no branch `!clinic` tornava a função inconsistente) | Separado em `res.json(...); return;` para manter o handler como `void` consistente |
+| 2 | `api-spec/openapi.yaml` | **Spec desatualizada** — `Evolution` e `CreateEvolutionRequest` não incluíam `painScale`, embora o DB schema e o backend já suportassem o campo | Adicionado `painScale: integer (0–10)` em ambos os schemas do OpenAPI |
+| 3 | `lib/api-client-react/src/generated/api.schemas.ts` | **TS2339** — `Property 'painScale' does not exist on type 'Evolution'` em 14 locais de `patients/[id].tsx` | Adicionado `painScale?: number` nas interfaces `Evolution` e `CreateEvolutionRequest` geradas; rebuild do pacote |
+| 4 | `fisiogest/src/pages/patients/[id].tsx:2691` | **TS2322** — `buildPayload()` passava `painScale: number \| null` mas `CreateEvolutionRequest.painScale` é `number \| undefined` | `buildPayload()` agora usa `painScale: form.painScale ?? undefined` para converter `null` em `undefined` |

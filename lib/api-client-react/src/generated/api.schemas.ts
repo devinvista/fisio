@@ -297,6 +297,8 @@ export interface Evolution {
   patientResponse?: string;
   clinicalNotes?: string;
   complications?: string;
+  /** @minimum 0 @maximum 10 */
+  painScale?: number;
   createdAt: string;
 }
 
@@ -306,6 +308,8 @@ export interface CreateEvolutionRequest {
   patientResponse?: string;
   clinicalNotes?: string;
   complications?: string;
+  /** @minimum 0 @maximum 10 */
+  painScale?: number;
 }
 
 export interface DischargeSummary {

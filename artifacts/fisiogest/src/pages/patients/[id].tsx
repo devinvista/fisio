@@ -2688,6 +2688,7 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
   const buildPayload = () => ({
     ...form,
     appointmentId: form.appointmentId ? Number(form.appointmentId) : undefined,
+    painScale: form.painScale ?? undefined,
   });
 
   const handleCreate = () => {
