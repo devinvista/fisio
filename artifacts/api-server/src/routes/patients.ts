@@ -123,7 +123,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       })
       .returning();
 
-    logAudit({
+    await logAudit({
       userId: req.userId,
       patientId: patient?.id,
       action: "create",
@@ -133,7 +133,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
     });
     res.status(201).json(patient);
   } catch (err: any) {
-    if (err.code === "23505") {
+    if (isDuplicateKeyError(err)) {
       res.status(409).json({ error: "Conflict", message: "CPF já cadastrado" });
       return;
     }
@@ -221,7 +221,7 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
       res.status(404).json({ error: "Not Found", message: "Paciente não encontrado" });
       return;
     }
-    logAudit({
+    await logAudit({
       userId: req.userId,
       patientId: id,
       action: "update",
@@ -256,7 +256,7 @@ router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequ
 
     await db.delete(patientsTable).where(eq(patientsTable.id, id));
 
-    logAudit({
+    await logAudit({
       userId: req.userId,
       patientId: null,
       action: "delete",

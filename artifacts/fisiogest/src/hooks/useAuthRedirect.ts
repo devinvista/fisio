@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 
 export function useAuthRedirect(redirectTo = "/dashboard") {
   const { token, isLoading } = useAuth();

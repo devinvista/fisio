@@ -9,6 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Users } from "lucide-react";
 
+function authFetch(url: string): Promise<Response> {
+  const token = typeof localStorage !== "undefined" ? localStorage.getItem("fisiogest_token") : null;
+  return fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+}
+
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -62,7 +69,7 @@ export default function Relatorios() {
 
   const { data: monthlyRevenueRaw } = useQuery<MonthlyRevenue[]>({
     queryKey: ["reports-monthly-revenue", selectedYear],
-    queryFn: () => fetch(`/api/reports/monthly-revenue?year=${selectedYear}`).then(r => {
+    queryFn: () => authFetch(`/api/reports/monthly-revenue?year=${selectedYear}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     }),
@@ -71,7 +78,7 @@ export default function Relatorios() {
 
   const { data: procedureRevenueRaw } = useQuery<ProcedureRevenue[]>({
     queryKey: ["reports-procedure-revenue", selectedMonth, selectedYear],
-    queryFn: () => fetch(`/api/reports/procedure-revenue?month=${selectedMonth}&year=${selectedYear}`).then(r => {
+    queryFn: () => authFetch(`/api/reports/procedure-revenue?month=${selectedMonth}&year=${selectedYear}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     }),
@@ -80,7 +87,7 @@ export default function Relatorios() {
 
   const { data: scheduleOccupation } = useQuery<ScheduleOccupation>({
     queryKey: ["reports-schedule-occupation", selectedMonth, selectedYear],
-    queryFn: () => fetch(`/api/reports/schedule-occupation?month=${selectedMonth}&year=${selectedYear}`).then(r => {
+    queryFn: () => authFetch(`/api/reports/schedule-occupation?month=${selectedMonth}&year=${selectedYear}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     }),

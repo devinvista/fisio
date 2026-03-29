@@ -86,7 +86,7 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
         .values({ patientId, mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale })
         .returning();
     }
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: isUpdate ? "update" : "create",
@@ -124,7 +124,7 @@ router.post("/evaluations", requirePermission("medical.write"), async (req: Requ
       .insert(evaluationsTable)
       .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis })
       .returning();
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evaluation", entityId: evaluation?.id, summary: "Avaliação física criada" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evaluation", entityId: evaluation?.id, summary: "Avaliação física criada" });
     res.status(201).json(evaluation);
   } catch (err) {
     console.error(err);
@@ -152,7 +152,7 @@ router.put("/evaluations/:evaluationId", requirePermission("medical.write"), asy
       .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
       .where(eq(evaluationsTable.id, evaluationId))
       .returning();
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física editada" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física editada" });
     res.json(updated);
   } catch (err) {
     console.error(err);
@@ -175,7 +175,7 @@ router.delete("/evaluations/:evaluationId", requirePermission("medical.write"), 
     }
 
     await db.delete(evaluationsTable).where(eq(evaluationsTable.id, evaluationId));
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física excluída" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física excluída" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -225,7 +225,7 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
         .values({ patientId, objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null })
         .returning();
     }
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: isPlanUpdate ? "update" : "create",
@@ -263,7 +263,7 @@ router.post("/evolutions", requirePermission("medical.write"), async (req: Reque
       .insert(evolutionsTable)
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
       .returning();
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evolution", entityId: evolution?.id, summary: "Evolução de sessão criada" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evolution", entityId: evolution?.id, summary: "Evolução de sessão criada" });
     res.status(201).json(evolution);
   } catch (err) {
     console.error(err);
@@ -291,7 +291,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
       .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
       .where(eq(evolutionsTable.id, evolutionId))
       .returning();
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão editada" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão editada" });
     res.json(updated);
   } catch (err) {
     console.error(err);
@@ -314,7 +314,7 @@ router.delete("/evolutions/:evolutionId", requirePermission("medical.write"), as
     }
 
     await db.delete(evolutionsTable).where(eq(evolutionsTable.id, evolutionId));
-    logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão excluída" });
+    await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "delete", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão excluída" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -381,7 +381,7 @@ router.post("/discharge-summary", requirePermission("medical.write"), async (req
         .values({ patientId, dischargeDate, dischargeReason, achievedResults, recommendations })
         .returning();
     }
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: isDischargeUpdate ? "update" : "create",
@@ -438,7 +438,7 @@ router.post("/financial", requirePermission("financial.write"), async (req: Requ
       .values({ type, amount: String(amount), description, category, patientId })
       .returning();
 
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: "create",
@@ -505,7 +505,7 @@ router.post("/attachments", requirePermission("medical.write"), async (req: Requ
       })
       .returning();
 
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: "create",
@@ -545,7 +545,7 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
     }
 
     await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: "delete",
@@ -608,7 +608,7 @@ router.post("/atestados", requirePermission("medical.write"), async (req: Reques
       declaracao: "Declaração de comparecimento",
       encaminhamento: "Encaminhamento",
     };
-    logAudit({
+    await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
       action: "create",

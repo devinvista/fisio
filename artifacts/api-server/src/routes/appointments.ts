@@ -56,7 +56,7 @@ async function applyBillingRules(
   const details = await getWithDetails(appointmentId);
   if (!details || !details.procedure) return;
 
-  const procedure = details.procedure as any;
+  const procedure = details.procedure;
   const billingType: string = procedure.billingType ?? "porSessao";
   const patientId = details.patientId;
   const procedureId = details.procedureId;
@@ -68,92 +68,95 @@ async function applyBillingRules(
 
   if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
     if (billingType === "porSessao") {
-      const availableCredit = await db
-        .select()
-        .from(sessionCreditsTable)
-        .where(
-          and(
-            eq(sessionCreditsTable.patientId, patientId),
-            eq(sessionCreditsTable.procedureId, procedureId),
-            gt(sql`${sessionCreditsTable.quantity} - ${sessionCreditsTable.usedQuantity}`, 0)
-          )
-        )
-        .limit(1);
-
-      if (availableCredit.length > 0) {
-        const credit = availableCredit[0];
-        await db
-          .update(sessionCreditsTable)
-          .set({ usedQuantity: credit.usedQuantity + 1 })
-          .where(eq(sessionCreditsTable.id, credit.id));
-
-        await db.insert(financialRecordsTable).values({
-          type: "receita",
-          amount: "0",
-          description: `Uso de crédito — ${procedure.name} - ${patientName}`,
-          category: procedure.category,
-          appointmentId,
-          patientId,
-          procedureId,
-          transactionType: "usoCredito",
-          status: "pago",
-          dueDate: today,
-        });
-      } else {
-        const existing = await db
+      await db.transaction(async (tx) => {
+        const availableCredit = await tx
           .select()
-          .from(financialRecordsTable)
+          .from(sessionCreditsTable)
           .where(
             and(
-              eq(financialRecordsTable.appointmentId, appointmentId),
-              eq(financialRecordsTable.transactionType, "creditoAReceber")
+              eq(sessionCreditsTable.patientId, patientId),
+              eq(sessionCreditsTable.procedureId, procedureId),
+              gt(sql`${sessionCreditsTable.quantity} - ${sessionCreditsTable.usedQuantity}`, 0)
             )
           )
           .limit(1);
 
-        if (existing.length === 0) {
-          await db.insert(financialRecordsTable).values({
+        if (availableCredit.length > 0) {
+          const credit = availableCredit[0];
+          await tx
+            .update(sessionCreditsTable)
+            .set({ usedQuantity: credit.usedQuantity + 1 })
+            .where(eq(sessionCreditsTable.id, credit.id));
+
+          await tx.insert(financialRecordsTable).values({
             type: "receita",
-            amount: String(procedure.price),
-            description: `${procedure.name} - ${patientName}`,
+            amount: "0",
+            description: `Uso de crédito — ${procedure.name} - ${patientName}`,
             category: procedure.category,
             appointmentId,
             patientId,
             procedureId,
-            transactionType: "creditoAReceber",
-            status: "pendente",
+            transactionType: "usoCredito",
+            status: "pago",
             dueDate: today,
           });
+        } else {
+          const existing = await tx
+            .select()
+            .from(financialRecordsTable)
+            .where(
+              and(
+                eq(financialRecordsTable.appointmentId, appointmentId),
+                eq(financialRecordsTable.transactionType, "creditoAReceber")
+              )
+            )
+            .limit(1);
+
+          if (existing.length === 0) {
+            await tx.insert(financialRecordsTable).values({
+              type: "receita",
+              amount: String(procedure.price),
+              description: `${procedure.name} - ${patientName}`,
+              category: procedure.category,
+              appointmentId,
+              patientId,
+              procedureId,
+              transactionType: "creditoAReceber",
+              status: "pendente",
+              dueDate: today,
+            });
+          }
         }
-      }
+      });
     }
   }
 
   if (canceledStatuses.includes(newStatus) && !canceledStatuses.includes(oldStatus)) {
     if (billingType === "mensal") {
-      const [credit] = await db
-        .insert(sessionCreditsTable)
-        .values({
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(sessionCreditsTable)
+          .values({
+            patientId,
+            procedureId,
+            quantity: 1,
+            usedQuantity: 0,
+            sourceAppointmentId: appointmentId,
+            notes: `Crédito por cancelamento — ${procedure.name}`,
+          });
+
+        await tx.insert(financialRecordsTable).values({
+          type: "receita",
+          amount: "0",
+          description: `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
+          category: procedure.category,
+          appointmentId,
           patientId,
           procedureId,
-          quantity: 1,
-          usedQuantity: 0,
-          sourceAppointmentId: appointmentId,
-          notes: `Crédito por cancelamento — ${procedure.name}`,
-        })
-        .returning();
-
-      await db.insert(financialRecordsTable).values({
-        type: "receita",
-        amount: "0",
-        description: `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
-        category: procedure.category,
-        appointmentId,
-        patientId,
-        procedureId,
-        transactionType: "creditoSessao",
-        status: "pago",
-        dueDate: today,
+          transactionType: "creditoSessao",
+          status: "pago",
+          dueDate: today,
+        });
       });
     }
   }
@@ -544,9 +547,9 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
         const current = await getWithDetails(id);
         if (current?.procedure) {
           endTime = addMinutes(startTime, current.procedure.durationMinutes);
-          maxCapacity = (current.procedure as any).maxCapacity ?? 1;
+          maxCapacity = current.procedure.maxCapacity ?? 1;
           effectiveProcedureId = current.procedureId;
-          effectiveScheduleId = (current as any).scheduleId ?? null;
+          effectiveScheduleId = current.scheduleId ?? null;
         }
       }
 

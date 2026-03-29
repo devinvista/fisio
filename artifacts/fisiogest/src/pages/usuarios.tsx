@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { maskCpf, displayCpf } from "@/lib/masks";
 import { Button } from "@/components/ui/button";

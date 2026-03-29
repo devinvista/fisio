@@ -164,10 +164,24 @@ router.put("/:id", requirePermission("settings.manage"), async (req: AuthRequest
   }
 });
 
-router.delete("/:id", requirePermission("settings.manage"), async (req, res) => {
+router.delete("/:id", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    await db.delete(schedulesTable).where(eq(schedulesTable.id, id));
+
+    const whereClause = (!req.isSuperAdmin && req.clinicId)
+      ? and(eq(schedulesTable.id, id), eq(schedulesTable.clinicId, req.clinicId))
+      : eq(schedulesTable.id, id);
+
+    const [deleted] = await db
+      .delete(schedulesTable)
+      .where(whereClause)
+      .returning({ id: schedulesTable.id });
+
+    if (!deleted) {
+      res.status(404).json({ error: "Not Found", message: "Agenda não encontrada" });
+      return;
+    }
+
     res.status(204).send();
   } catch (err) {
     console.error(err);

@@ -196,7 +196,7 @@ export default function Agenda() {
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
   const filteredAppointments = selectedScheduleId
-    ? appointments.filter((a) => (a as any).scheduleId === selectedScheduleId)
+    ? appointments.filter((a) => a.scheduleId === selectedScheduleId)
     : appointments;
 
   const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
@@ -622,8 +622,8 @@ export default function Agenda() {
                           const spotsLeft = maxCapacity - occupancy;
                           const firstApt = grpApts[0];
 
-                          const grpScheduleColor = !selectedScheduleId && (firstApt as any).scheduleId
-                            ? schedules.find((s) => s.id === (firstApt as any).scheduleId)?.color
+                          const grpScheduleColor = !selectedScheduleId && firstApt.scheduleId
+                            ? schedules.find((s) => s.id === firstApt.scheduleId)?.color
                             : undefined;
 
                           return (
@@ -642,7 +642,7 @@ export default function Agenda() {
                                 <span
                                   className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
                                   style={{ backgroundColor: grpScheduleColor }}
-                                  title={schedules.find((s) => s.id === (firstApt as any).scheduleId)?.name}
+                                  title={schedules.find((s) => s.id === firstApt.scheduleId)?.name}
                                 />
                               )}
                               {short ? (
@@ -691,8 +691,8 @@ export default function Agenda() {
                         const leftPct = col * widthPct;
                         const short = height < 48;
 
-                        const aptScheduleColor = !selectedScheduleId && (apt as any).scheduleId
-                          ? schedules.find((s) => s.id === (apt as any).scheduleId)?.color
+                        const aptScheduleColor = !selectedScheduleId && apt.scheduleId
+                          ? schedules.find((s) => s.id === apt.scheduleId)?.color
                           : undefined;
 
                         return (
@@ -714,12 +714,12 @@ export default function Agenda() {
                               <span
                                 className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
                                 style={{ backgroundColor: aptScheduleColor }}
-                                title={schedules.find((s) => s.id === (apt as any).scheduleId)?.name}
+                                title={schedules.find((s) => s.id === apt.scheduleId)?.name}
                               />
                             )}
                             {short ? (
                               <div className="flex items-center gap-1">
-                                {(apt as any).source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-90" />}
+                                {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-90" />}
                                 <p className="text-[10px] font-semibold truncate leading-tight">
                                   {apt.patient?.name?.split(" ")[0]} · {apt.startTime}
                                 </p>
@@ -728,7 +728,7 @@ export default function Agenda() {
                               <>
                                 <div className="flex items-start justify-between gap-1">
                                   <p className="text-[11px] font-bold truncate leading-tight flex-1">{apt.patient?.name}</p>
-                                  {(apt as any).source === "online" && (
+                                  {apt.source === "online" && (
                                     <Globe className="w-3 h-3 shrink-0 opacity-80 mt-0.5" />
                                   )}
                                 </div>
@@ -1187,7 +1187,7 @@ function AppointmentDetailModal({
                   <p className="text-sm text-slate-700">{appointment.notes}</p>
                 </>
               )}
-              {(appointment as any).source === "online" && (
+              {appointment.source === "online" && (
                 <>
                   <Separator />
                   <div className="flex items-center gap-2">
@@ -1679,7 +1679,7 @@ function CreateAppointmentForm({
           startTime: formData.startTime,
           notes: formData.notes || undefined,
           ...(scheduleId ? { scheduleId } : {}),
-        } as any,
+        },
       },
       {
         onSuccess: () => {
@@ -1918,7 +1918,7 @@ function CreateAppointmentForm({
                 <p className="text-sm font-semibold text-slate-800">{selectedProcedure.name}</p>
                 <p className="text-xs text-violet-600">
                   {selectedProcedure.durationMinutes} min
-                  {(selectedProcedure as any).maxCapacity > 1 ? ` · até ${(selectedProcedure as any).maxCapacity} simultâneos` : ""}
+                  {selectedProcedure.maxCapacity > 1 ? ` · até ${selectedProcedure.maxCapacity} simultâneos` : ""}
                 </p>
               </div>
               <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-200 text-violet-700 shrink-0">Sessão em grupo</span>
@@ -1939,7 +1939,7 @@ function CreateAppointmentForm({
                       const proc = procedures?.find((p) => p.id === item.procedureId);
                       if (!proc) return null;
                       const isSelected = formData.procedureId === proc.id.toString();
-                      const isGroup = (proc as any).maxCapacity > 1;
+                      const isGroup = proc.maxCapacity > 1;
                       return (
                         <button
                           key={`plan-${item.id}`}
@@ -1972,7 +1972,7 @@ function CreateAppointmentForm({
                             </div>
                             <p className="text-xs text-slate-400">
                               {proc.durationMinutes} min
-                              {isGroup ? ` · até ${(proc as any).maxCapacity} simultâneos` : ""}
+                              {isGroup ? ` · até ${proc.maxCapacity} simultâneos` : ""}
                             </p>
                           </div>
                           {isSelected && <CheckCircle className="w-4 h-4 text-teal-500 shrink-0" />}
@@ -1991,7 +1991,7 @@ function CreateAppointmentForm({
                   .map((p) => {
                     const isSelected = formData.procedureId === p.id.toString();
                     const isLast = lastProcedureId === p.id;
-                    const isGroup = (p as any).maxCapacity > 1;
+                    const isGroup = p.maxCapacity > 1;
                     return (
                       <button
                         key={p.id}
@@ -2021,7 +2021,7 @@ function CreateAppointmentForm({
                           </div>
                           <p className="text-xs text-slate-400">
                             {p.durationMinutes} min
-                            {isGroup ? ` · até ${(p as any).maxCapacity} simultâneos` : ""}
+                            {isGroup ? ` · até ${p.maxCapacity} simultâneos` : ""}
                           </p>
                         </div>
                         {isSelected && <CheckCircle className="w-4 h-4 text-primary shrink-0" />}
@@ -2033,7 +2033,7 @@ function CreateAppointmentForm({
                 <p className="text-xs text-slate-500 flex items-center gap-1 pl-1">
                   <Clock className="w-3 h-3" />
                   {selectedProcedure.durationMinutes} min
-                  {(selectedProcedure as any).maxCapacity > 1 && ` · até ${(selectedProcedure as any).maxCapacity} simultâneos`}
+                  {selectedProcedure.maxCapacity > 1 && ` · até ${selectedProcedure.maxCapacity} simultâneos`}
                 </p>
               )}
             </div>
@@ -2265,7 +2265,7 @@ function MonthGrid({
               <div className="space-y-0.5">
                 {visibleAppts.map((apt) => {
                   const color = STATUS_COLORS[apt.status] || "bg-blue-400";
-                  const isOnline = (apt as any).source === "online";
+                  const isOnline = apt.source === "online";
                   return (
                     <div
                       key={apt.id}

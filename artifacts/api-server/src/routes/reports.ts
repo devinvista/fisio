@@ -29,26 +29,63 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
 router.get("/monthly-revenue", requirePermission("reports.read"), async (req, res) => {
   try {
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const yearStartStr = `${year}-01-01`;
+    const yearEndStr = `${year + 1}-01-01`;
     const yearStart = new Date(year, 0, 1);
     const yearEnd = new Date(year + 1, 0, 1);
 
-    const rows = await db
+    // Revenue: use paymentDate for paid records, createdAt otherwise — consistent with financial dashboard
+    const revenueRows = await db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})::int`,
-        type: financialRecordsTable.type,
+        month: sql<number>`
+          EXTRACT(MONTH FROM
+            CASE
+              WHEN ${financialRecordsTable.transactionType} = 'pagamento'
+               AND ${financialRecordsTable.status} = 'pago'
+               AND ${financialRecordsTable.paymentDate} IS NOT NULL
+              THEN TO_DATE(${financialRecordsTable.paymentDate}, 'YYYY-MM-DD')
+              ELSE DATE(${financialRecordsTable.createdAt})
+            END
+          )::int`,
         total: sql<number>`SUM(${financialRecordsTable.amount}::numeric)`,
       })
       .from(financialRecordsTable)
-      .where(and(gte(financialRecordsTable.createdAt, yearStart), lt(financialRecordsTable.createdAt, yearEnd)))
-      .groupBy(
-        sql`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})`,
-        financialRecordsTable.type
-      );
+      .where(
+        and(
+          sql`${financialRecordsTable.type} = 'receita'`,
+          sql`${financialRecordsTable.status} != 'estornado'`,
+          sql`
+            CASE
+              WHEN ${financialRecordsTable.transactionType} = 'pagamento'
+               AND ${financialRecordsTable.status} = 'pago'
+               AND ${financialRecordsTable.paymentDate} IS NOT NULL
+              THEN ${financialRecordsTable.paymentDate} >= ${yearStartStr} AND ${financialRecordsTable.paymentDate} < ${yearEndStr}
+              ELSE ${financialRecordsTable.createdAt} >= ${yearStart} AND ${financialRecordsTable.createdAt} < ${yearEnd}
+            END`
+        )
+      )
+      .groupBy(sql`1`);
+
+    // Expenses: use createdAt
+    const expenseRows = await db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})::int`,
+        total: sql<number>`SUM(${financialRecordsTable.amount}::numeric)`,
+      })
+      .from(financialRecordsTable)
+      .where(
+        and(
+          sql`${financialRecordsTable.type} = 'despesa'`,
+          gte(financialRecordsTable.createdAt, yearStart),
+          lt(financialRecordsTable.createdAt, yearEnd)
+        )
+      )
+      .groupBy(sql`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})`);
 
     const result = [];
     for (let month = 1; month <= 12; month++) {
-      const revenue = Number(rows.find((r) => r.month === month && r.type === "receita")?.total ?? 0);
-      const expenses = Number(rows.find((r) => r.month === month && r.type === "despesa")?.total ?? 0);
+      const revenue = Number(revenueRows.find((r) => r.month === month)?.total ?? 0);
+      const expenses = Number(expenseRows.find((r) => r.month === month)?.total ?? 0);
       result.push({ month, monthName: MONTH_NAMES[month - 1], revenue, expenses, profit: revenue - expenses });
     }
 

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { StatsSection } from "@/components/landing/StatsSection";

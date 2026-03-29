@@ -159,6 +159,10 @@ export interface Appointment {
   endTime: string;
   status: AppointmentStatus;
   notes?: string;
+  professionalId?: number | null;
+  scheduleId?: number | null;
+  recurrenceGroupId?: string | null;
+  source?: string | null;
   createdAt: string;
 }
 
@@ -173,6 +177,10 @@ export interface CreateAppointmentRequest {
   date: string;
   startTime: string;
   notes?: string;
+  scheduleId?: number | null;
+  professionalId?: number | null;
+  recurrenceGroupId?: string | null;
+  source?: string | null;
 }
 
 export type UpdateAppointmentRequestStatus =

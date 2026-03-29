@@ -47,7 +47,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format, differenceInYears, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 
 // ─── Print utilities ─────────────────────────────────────────────────────────
