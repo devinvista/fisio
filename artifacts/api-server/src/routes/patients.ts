@@ -10,6 +10,30 @@ function normalizeCpf(value: string): string {
   return value.replace(/\D/g, "");
 }
 
+function validateCpf(cpf: string): boolean {
+  const d = cpf.replace(/\D/g, "");
+  if (d.length !== 11) return false;
+  // Reject all-same-digit sequences (000...000, 111...111, etc.)
+  if (/^(\d)\1{10}$/.test(d)) return false;
+  // First check digit
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(d[i]) * (10 - i);
+  let rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  if (rem !== parseInt(d[9])) return false;
+  // Second check digit
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(d[i]) * (11 - i);
+  rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  if (rem !== parseInt(d[10])) return false;
+  return true;
+}
+
+function isDuplicateKeyError(err: any): boolean {
+  return err?.code === "23505" || err?.cause?.code === "23505";
+}
+
 const router = Router();
 router.use(authMiddleware);
 
