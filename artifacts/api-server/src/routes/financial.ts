@@ -28,12 +28,6 @@ async function assertPatientInClinic(patientId: number, req: AuthRequest): Promi
 const router = Router();
 router.use(authMiddleware);
 
-function monthRange(year: number, month: number): { start: Date; end: Date } {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 1);
-  return { start, end };
-}
-
 function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
   const lastDay = new Date(year, month, 0).getDate();
   const mm = String(month).padStart(2, "0");
@@ -48,33 +42,25 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
-    const { start, end } = monthRange(year, month);
     const { startDate, endDate } = monthDateRange(year, month);
 
     const cc = clinicCond(req);
     const ac = apptClinicCond(req);
 
+    // Use paymentDate as the primary date filter (covers both revenue and expenses)
     const records = await db
       .select()
       .from(financialRecordsTable)
       .where(
         cc
-          ? and(cc, gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
-          : and(gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          ? and(cc, gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+          : and(gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
       );
 
-    // Revenue: use paymentDate when available for paid records; fall back to createdAt for others
     const monthlyRevenue = records
-      .filter((r) => {
-        if (r.type !== "receita" || r.transactionType !== "pagamento" || r.status !== "pago") return false;
-        if (r.paymentDate) {
-          return r.paymentDate >= startDate && r.paymentDate <= endDate;
-        }
-        return r.createdAt >= start && r.createdAt < end;
-      })
+      .filter((r) => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
-    // Expenses: use createdAt (no paymentDate concept for expenses)
     const monthlyExpenses = records
       .filter((r) => r.type === "despesa")
       .reduce((sum, r) => sum + Number(r.amount), 0);
@@ -110,8 +96,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
-          : and(eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
       )
       .groupBy(proceduresTable.category);
 
@@ -125,8 +111,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
-          : and(eq(financialRecordsTable.type, "receita"), eq(financialRecordsTable.transactionType, "pagamento"), gte(financialRecordsTable.createdAt, start), lt(financialRecordsTable.createdAt, end))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
       )
       .groupBy(proceduresTable.name)
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
@@ -199,9 +185,9 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
     if (cc) conditions.push(cc);
     if (type) conditions.push(eq(financialRecordsTable.type, type));
     if (month && year) {
-      const { start, end } = monthRange(year, month);
-      conditions.push(gte(financialRecordsTable.createdAt, start));
-      conditions.push(lt(financialRecordsTable.createdAt, end));
+      const { startDate, endDate } = monthDateRange(year, month);
+      conditions.push(gte(financialRecordsTable.paymentDate, startDate));
+      conditions.push(lte(financialRecordsTable.paymentDate, endDate));
     }
 
     const records = await db

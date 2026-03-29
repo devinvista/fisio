@@ -199,7 +199,8 @@ Browser → https://<repl>.replit.dev/
 ├── db/                                 # [SOMENTE HOSPEDAGEM EXTERNA]
 ├── scripts/
 │   ├── post-merge.sh
-│   └── seed-demo.ts                    # Seed completo: 5 pacientes, jan–mar 2026
+│   ├── seed-demo.ts                    # Seed completo (novo clinic) — falha se usuários já existem
+│   └── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
 │
 ├── pnpm-workspace.yaml
 └── .replit
@@ -232,9 +233,18 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 # Sincronizar schema (pede confirmação em mudanças destrutivas)
 pnpm --filter @workspace/db exec drizzle-kit push --config drizzle.config.ts
 
-# Seed demo completo (jan–mar 2026)
-pnpm run db:seed
+# Seed financeiro incremental (criar agendamentos + registros financeiros sem duplicar)
+tsx scripts/seed-financial.ts
+
+# Seed completo (somente se a clínica e usuários NÃO existirem — cria novo clinic)
+pnpm run db:seed-demo
 ```
+
+### Estado atual do banco (março/2026)
+
+- Clinic id=3 "Marta Schuch": 34 pacientes, 11 procedimentos globais (clinicId=null), ~600 agendamentos, 232 receitas, 21 despesas (jan–mar 2026)
+- Credenciais: `mwschuch@gmail.com` / `123456` (admin+profissional, clinicId=3)
+- Credenciais: `admin@fisiogest.com.br` / `123456` (super admin, clinicId=null)
 
 ---
 

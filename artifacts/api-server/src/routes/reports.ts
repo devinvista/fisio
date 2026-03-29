@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable } from "@workspace/db";
-import { and, sql, gte, lte, lt } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
+import { and, eq, sql, gte, lte, lt } from "drizzle-orm";
+import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
 const router = Router();
@@ -26,65 +26,50 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
-router.get("/monthly-revenue", requirePermission("reports.read"), async (req, res) => {
+router.get("/monthly-revenue", requirePermission("reports.read"), async (req: AuthRequest, res) => {
   try {
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
     const yearStartStr = `${year}-01-01`;
     const yearEndStr = `${year + 1}-01-01`;
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
 
-    // Revenue: use paymentDate for paid records, createdAt otherwise — consistent with financial dashboard
+    const clinicFilter = req.isSuperAdmin || !req.clinicId ? null : eq(financialRecordsTable.clinicId, req.clinicId);
+
+    // Revenue: group by paymentDate month using SQL
     const revenueRows = await db
       .select({
-        month: sql<number>`
-          EXTRACT(MONTH FROM
-            CASE
-              WHEN ${financialRecordsTable.transactionType} = 'pagamento'
-               AND ${financialRecordsTable.status} = 'pago'
-               AND ${financialRecordsTable.paymentDate} IS NOT NULL
-              THEN TO_DATE(${financialRecordsTable.paymentDate}, 'YYYY-MM-DD')
-              ELSE DATE(${financialRecordsTable.createdAt})
-            END
-          )::int`,
+        month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.paymentDate}::date)::int`,
         total: sql<number>`SUM(${financialRecordsTable.amount}::numeric)`,
       })
       .from(financialRecordsTable)
       .where(
-        and(
-          sql`${financialRecordsTable.type} = 'receita'`,
-          sql`${financialRecordsTable.status} != 'estornado'`,
-          sql`
-            CASE
-              WHEN ${financialRecordsTable.transactionType} = 'pagamento'
-               AND ${financialRecordsTable.status} = 'pago'
-               AND ${financialRecordsTable.paymentDate} IS NOT NULL
-              THEN ${financialRecordsTable.paymentDate} >= ${yearStartStr} AND ${financialRecordsTable.paymentDate} < ${yearEndStr}
-              ELSE ${financialRecordsTable.createdAt} >= ${yearStart} AND ${financialRecordsTable.createdAt} < ${yearEnd}
-            END`
-        )
+        clinicFilter
+          ? and(clinicFilter, sql`${financialRecordsTable.type} = 'receita'`, sql`${financialRecordsTable.status} != 'estornado'`, gte(financialRecordsTable.paymentDate, yearStartStr), lt(financialRecordsTable.paymentDate, yearEndStr))
+          : and(sql`${financialRecordsTable.type} = 'receita'`, sql`${financialRecordsTable.status} != 'estornado'`, gte(financialRecordsTable.paymentDate, yearStartStr), lt(financialRecordsTable.paymentDate, yearEndStr))
       )
-      .groupBy(sql`1`);
+      .groupBy(sql`EXTRACT(MONTH FROM ${financialRecordsTable.paymentDate}::date)`);
 
-    // Expenses: use createdAt
+    const revenueByMonth: number[] = new Array(13).fill(0);
+    for (const r of revenueRows) {
+      if (r.month >= 1 && r.month <= 12) revenueByMonth[r.month] = Number(r.total);
+    }
+
+    // Expenses: use paymentDate (preferred) so historical data groups correctly
     const expenseRows = await db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})::int`,
+        month: sql<number>`EXTRACT(MONTH FROM ${financialRecordsTable.paymentDate}::date)::int`,
         total: sql<number>`SUM(${financialRecordsTable.amount}::numeric)`,
       })
       .from(financialRecordsTable)
       .where(
-        and(
-          sql`${financialRecordsTable.type} = 'despesa'`,
-          gte(financialRecordsTable.createdAt, yearStart),
-          lt(financialRecordsTable.createdAt, yearEnd)
-        )
+        clinicFilter
+          ? and(clinicFilter, sql`${financialRecordsTable.type} = 'despesa'`, gte(financialRecordsTable.paymentDate, yearStartStr), lt(financialRecordsTable.paymentDate, yearEndStr))
+          : and(sql`${financialRecordsTable.type} = 'despesa'`, gte(financialRecordsTable.paymentDate, yearStartStr), lt(financialRecordsTable.paymentDate, yearEndStr))
       )
-      .groupBy(sql`EXTRACT(MONTH FROM ${financialRecordsTable.createdAt})`);
+      .groupBy(sql`EXTRACT(MONTH FROM ${financialRecordsTable.paymentDate}::date)`);
 
     const result = [];
     for (let month = 1; month <= 12; month++) {
-      const revenue = Number(revenueRows.find((r) => r.month === month)?.total ?? 0);
+      const revenue = revenueByMonth[month];
       const expenses = Number(expenseRows.find((r) => r.month === month)?.total ?? 0);
       result.push({ month, monthName: MONTH_NAMES[month - 1], revenue, expenses, profit: revenue - expenses });
     }
@@ -96,11 +81,13 @@ router.get("/monthly-revenue", requirePermission("reports.read"), async (req, re
   }
 });
 
-router.get("/procedure-revenue", requirePermission("reports.read"), async (req, res) => {
+router.get("/procedure-revenue", requirePermission("reports.read"), async (req: AuthRequest, res) => {
   try {
     const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
-    const { start, end } = monthRange(year, month);
+    const { startDate, endDate } = monthDateRange(year, month);
+
+    const clinicFilter = req.isSuperAdmin || !req.clinicId ? null : eq(financialRecordsTable.clinicId, req.clinicId);
 
     const results = await db
       .select({
@@ -117,8 +104,9 @@ router.get("/procedure-revenue", requirePermission("reports.read"), async (req, 
         and(
           sql`${financialRecordsTable.appointmentId} = ${appointmentsTable.id}`,
           sql`${financialRecordsTable.type} = 'receita'`,
-          gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end)
+          gte(financialRecordsTable.paymentDate, startDate),
+          lte(financialRecordsTable.paymentDate, endDate),
+          ...(clinicFilter ? [clinicFilter] : [])
         )
       )
       .groupBy(proceduresTable.id, proceduresTable.name, proceduresTable.category)
