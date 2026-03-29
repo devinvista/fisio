@@ -7,6 +7,7 @@ import {
   Award,
   CheckCircle,
 } from "lucide-react";
+import { Link } from "wouter";
 
 const BENEFITS = [
   {
@@ -76,8 +77,9 @@ export function BenefitsSection() {
           </p>
         </FadeIn>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {BENEFITS.map((b, i) => (
+        {/* Top row — 3 cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+          {BENEFITS.slice(0, 3).map((b, i) => (
             <FadeIn key={i} delay={i * 0.1}>
               <article className="relative h-full p-7 rounded-2xl border border-slate-100 bg-slate-50/50 hover:border-teal-100 hover:shadow-lg hover:shadow-teal-500/5 hover:-translate-y-1 transition-all duration-300 group">
                 <div className="flex items-start gap-4 mb-4">
@@ -100,27 +102,57 @@ export function BenefitsSection() {
               </article>
             </FadeIn>
           ))}
-
-          <FadeIn delay={0.5} className="md:col-span-2 lg:col-span-0">
-            <div className="h-full p-7 rounded-2xl bg-gradient-to-br from-[#060f1e] to-[#0a1628] text-white flex flex-col justify-between">
-              <div>
-                <div className="text-4xl font-display font-bold text-teal-400 mb-2">14 dias</div>
-                <div className="text-white/70 text-sm mb-4">grátis para testar tudo</div>
-                <p className="text-white/50 text-sm leading-relaxed">
-                  Sem cartão de crédito. Sem burocracia. Acesse agora e veja a diferença que um bom sistema faz na sua clínica.
-                </p>
-              </div>
-              <a
-                href="/register"
-                className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-teal-400 hover:text-teal-300 transition-colors"
-                aria-label="Criar conta grátis no FisioGest Pro"
-              >
-                Criar minha conta grátis
-                <CheckCircle className="w-4 h-4" aria-hidden="true" />
-              </a>
-            </div>
-          </FadeIn>
         </div>
+
+        {/* Bottom row — 2 cards centered */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:w-2/3 lg:mx-auto mb-8">
+          {BENEFITS.slice(3).map((b, i) => (
+            <FadeIn key={i + 3} delay={(i + 3) * 0.1}>
+              <article className="relative h-full p-7 rounded-2xl border border-slate-100 bg-slate-50/50 hover:border-teal-100 hover:shadow-lg hover:shadow-teal-500/5 hover:-translate-y-1 transition-all duration-300 group">
+                <div className="flex items-start gap-4 mb-4">
+                  <div
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${b.highlight}`}
+                    aria-hidden="true"
+                  >
+                    <b.icon className="w-5 h-5" />
+                  </div>
+                  <span className="font-display font-bold text-3xl text-slate-100 select-none leading-none mt-1">
+                    {b.number}
+                  </span>
+                </div>
+                <h3 className="font-display font-bold text-slate-900 text-xl mb-3">{b.title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{b.description}</p>
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-500 to-cyan-500 rounded-b-2xl scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
+                  aria-hidden="true"
+                />
+              </article>
+            </FadeIn>
+          ))}
+        </div>
+
+        {/* Full-width trial CTA — outside the grid */}
+        <FadeIn delay={0.55}>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-7 sm:p-8 rounded-2xl bg-gradient-to-br from-[#060f1e] to-[#0a1628]">
+            <div>
+              <div className="text-4xl font-display font-bold text-teal-400 mb-1">
+                14 dias
+              </div>
+              <div className="text-white/70 text-sm mb-3">grátis para testar tudo</div>
+              <p className="text-white/50 text-sm leading-relaxed max-w-lg">
+                Sem cartão de crédito. Sem burocracia. Acesse agora e veja a diferença que um bom sistema faz na sua clínica.
+              </p>
+            </div>
+            <Link
+              href="/register"
+              className="shrink-0 inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-400 text-white font-semibold px-7 py-3.5 rounded-xl text-sm shadow-lg shadow-teal-500/25 hover:-translate-y-0.5 transition-all duration-200"
+              aria-label="Criar conta grátis no FisioGest Pro"
+            >
+              Criar minha conta grátis
+              <CheckCircle className="w-4 h-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </FadeIn>
       </div>
     </section>
   );
