@@ -3176,9 +3176,9 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
               <Card key={appt.id} className="border border-slate-200 shadow-sm">
                 <CardContent className="p-4 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex flex-col items-center justify-center text-primary shrink-0">
-                    <span className="text-lg font-bold leading-none">{new Date(appt.date).getDate()}</span>
+                    <span className="text-lg font-bold leading-none">{format(parseISO(appt.date), "d")}</span>
                     <span className="text-[10px] uppercase font-medium opacity-70">
-                      {format(new Date(appt.date), "MMM", { locale: ptBR })}
+                      {format(parseISO(appt.date), "MMM", { locale: ptBR })}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
