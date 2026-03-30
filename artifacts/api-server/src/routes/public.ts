@@ -8,6 +8,7 @@ import {
   treatmentPlansTable,
   clinicsTable,
 } from "@workspace/db";
+import { todayBRT } from "../lib/dateUtils.js";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -527,8 +528,8 @@ router.delete("/booking/:token", async (req, res) => {
       return;
     }
 
-    // Verificar se a data já passou
-    const today = new Date().toISOString().split("T")[0];
+    // Verificar se a data já passou (usando horário de Brasília)
+    const today = todayBRT();
     if (appointment.date < today) {
       res.status(400).json({ error: "Não é possível cancelar uma consulta passada" });
       return;

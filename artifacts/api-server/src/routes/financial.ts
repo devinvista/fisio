@@ -5,6 +5,7 @@ import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull } from "drizzle-orm"
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
+import { nowBRT, todayBRT } from "../lib/dateUtils.js";
 
 function clinicCond(req: AuthRequest) {
   if (req.isSuperAdmin || !req.clinicId) return null;
@@ -39,8 +40,9 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
 
 router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
-    const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
-    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const brt = nowBRT();
+    const month = parseInt(req.query.month as string) || brt.month;
+    const year = parseInt(req.query.year as string) || brt.year;
 
     const { startDate, endDate } = monthDateRange(year, month);
 
@@ -364,7 +366,7 @@ router.post("/patients/:patientId/payment", requirePermission("financial.write")
       return;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayBRT();
 
     const [patient] = await db.select({ name: patientsTable.name }).from(patientsTable).where(eq(patientsTable.id, patientId));
 

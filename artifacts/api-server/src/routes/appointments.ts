@@ -6,6 +6,7 @@ import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
 import type { Role } from "@workspace/db";
+import { todayBRT } from "../lib/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -61,7 +62,7 @@ async function applyBillingRules(
   const patientId = details.patientId;
   const procedureId = details.procedureId;
   const patientName = details.patient?.name ?? "Paciente";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayBRT();
 
   const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
   const canceledStatuses = ["cancelado"];

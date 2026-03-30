@@ -183,6 +183,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                 weekday: "long",
                 day: "numeric",
                 month: "long",
+                timeZone: "America/Sao_Paulo",
               })}
             </div>
           </div>

@@ -1,28 +1,13 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, treatmentPlansTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt } from "drizzle-orm";
+import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { todayBRT, nowBRT, monthDateRangeBRT } from "../lib/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);
-
-function monthRange(year: number, month: number): { start: Date; end: Date } {
-  return {
-    start: new Date(year, month - 1, 1),
-    end: new Date(year, month, 1),
-  };
-}
-
-function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
-  const lastDay = new Date(year, month, 0).getDate();
-  const mm = String(month).padStart(2, "0");
-  return {
-    startDate: `${year}-${mm}-01`,
-    endDate: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
-  };
-}
 
 function apptClinicFilter(req: AuthRequest) {
   if (req.isSuperAdmin || !req.clinicId) return null;
@@ -42,12 +27,9 @@ function financialClinicFilter(req: AuthRequest) {
 router.get("/", requirePermission("patients.read"), async (req, res) => {
   try {
     const authReq = req as AuthRequest;
-    const today = new Date().toISOString().split("T")[0];
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const { start, end } = monthRange(year, month);
-    const { startDate, endDate } = monthDateRange(year, month);
+    const today = todayBRT();
+    const { year, month } = nowBRT();
+    const { startDate, endDate } = monthDateRangeBRT(year, month);
 
     const apptFilter = apptClinicFilter(authReq);
     const patFilter = patientClinicFilter(authReq);
@@ -91,8 +73,8 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .where(
         and(
           eq(financialRecordsTable.type, "receita"),
-          gte(financialRecordsTable.createdAt, start),
-          lt(financialRecordsTable.createdAt, end),
+          gte(financialRecordsTable.paymentDate, startDate),
+          lte(financialRecordsTable.paymentDate, endDate),
           finFilter ?? undefined
         )
       );

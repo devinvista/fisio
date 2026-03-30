@@ -20,6 +20,7 @@ import {
   proceduresTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { todayBRT, nowBRT, lastDayOfMonth } from "../lib/dateUtils.js";
 
 /**
  * Calcula a próxima data de cobrança para o mês seguinte ao informado,
@@ -63,22 +64,16 @@ function effectiveBillingDay(billingDay: number, year: number, month: number): n
 }
 
 /**
- * Verifica se hoje está dentro da janela de cobrança (billingDay ± toleranceDays para trás).
+ * Verifica se hoje (em BRT) está dentro da janela de cobrança (billingDay ± toleranceDays para trás).
  * Garante que nunca avança para o mês seguinte.
  */
 function isWithinBillingWindow(
   billingDay: number,
-  today: Date,
+  brtToday: { year: number; month: number; day: number },
   toleranceDays: number = 3
 ): boolean {
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
-  const todayDay = today.getDate();
-
-  const effective = effectiveBillingDay(billingDay, year, month);
-
-  // Billing day é hoje ou passou nos últimos toleranceDays dias no mesmo mês
-  return todayDay >= effective && todayDay <= effective + toleranceDays;
+  const effective = effectiveBillingDay(billingDay, brtToday.year, brtToday.month);
+  return brtToday.day >= effective && brtToday.day <= effective + toleranceDays;
 }
 
 export async function runBilling(options: {
@@ -88,13 +83,12 @@ export async function runBilling(options: {
 } = {}): Promise<BillingResult> {
   const { clinicId, toleranceDays = 3, dryRun = false } = options;
 
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
+  const todayStr = todayBRT();
+  const brtToday = nowBRT();
+  const { year, month } = brtToday;
   const monthStr = String(month).padStart(2, "0");
   const monthStart = `${year}-${monthStr}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
+  const lastDay = lastDayOfMonth(year, month);
   const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, "0")}`;
 
   console.log(`[billing] Iniciando ${dryRun ? "(DRY RUN) " : ""}em ${todayStr} — janela: ${toleranceDays} dias${clinicId ? ` — clínica ${clinicId}` : " — todas as clínicas"}`);
@@ -138,8 +132,8 @@ export async function runBilling(options: {
     const procedureName = row.procedureName ?? `Procedimento #${sub.procedureId}`;
 
     try {
-      // Verifica se está dentro da janela de cobrança
-      if (!isWithinBillingWindow(sub.billingDay, today, toleranceDays)) {
+      // Verifica se está dentro da janela de cobrança (usando data BRT)
+      if (!isWithinBillingWindow(sub.billingDay, brtToday, toleranceDays)) {
         const effective = effectiveBillingDay(sub.billingDay, year, month);
         result.skipped++;
         result.details.push({
@@ -148,7 +142,7 @@ export async function runBilling(options: {
           procedureName,
           amount: Number(sub.monthlyAmount),
           action: "skipped_wrong_day",
-          reason: `Dia efetivo de cobrança: ${effective}, hoje: ${today.getDate()}`,
+          reason: `Dia efetivo de cobrança: ${effective}, hoje (BRT): ${brtToday.day}`,
         });
         continue;
       }

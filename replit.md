@@ -22,6 +22,11 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefato
 **Separador de milhar**: ponto (ex.: 1.250)
 **Fuso horário padrão**: America/Sao_Paulo (UTC-3 / UTC-2 no horário de verão)
 
+> **Importante (backend):** Nunca usar `new Date().toISOString()` ou `new Date().getMonth()` para cálculos de negócio. Sempre usar as funções em `artifacts/api-server/src/lib/dateUtils.ts`:
+> - `todayBRT()` → string "YYYY-MM-DD" no fuso de Brasília
+> - `nowBRT()` → `{ year, month, day }` no fuso de Brasília
+> - `monthDateRangeBRT(year, month)` → `{ startDate, endDate }` de um mês
+
 ---
 
 ## Stack Técnica

@@ -4,6 +4,7 @@ import { financialRecordsTable, appointmentsTable, proceduresTable } from "@work
 import { and, eq, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { nowBRT } from "../lib/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -28,7 +29,7 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
 
 router.get("/monthly-revenue", requirePermission("reports.read"), async (req: AuthRequest, res) => {
   try {
-    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const year = parseInt(req.query.year as string) || nowBRT().year;
     const yearStartStr = `${year}-01-01`;
     const yearEndStr = `${year + 1}-01-01`;
 
@@ -83,8 +84,9 @@ router.get("/monthly-revenue", requirePermission("reports.read"), async (req: Au
 
 router.get("/procedure-revenue", requirePermission("reports.read"), async (req: AuthRequest, res) => {
   try {
-    const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
-    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const brt = nowBRT();
+    const month = parseInt(req.query.month as string) || brt.month;
+    const year = parseInt(req.query.year as string) || brt.year;
     const { startDate, endDate } = monthDateRange(year, month);
 
     const clinicFilter = req.isSuperAdmin || !req.clinicId ? null : eq(financialRecordsTable.clinicId, req.clinicId);
@@ -131,8 +133,9 @@ router.get("/procedure-revenue", requirePermission("reports.read"), async (req: 
 
 router.get("/schedule-occupation", requirePermission("reports.read"), async (req, res) => {
   try {
-    const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
-    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const brt = nowBRT();
+    const month = parseInt(req.query.month as string) || brt.month;
+    const year = parseInt(req.query.year as string) || brt.year;
     const { startDate, endDate } = monthDateRange(year, month);
 
     const appointments = await db
