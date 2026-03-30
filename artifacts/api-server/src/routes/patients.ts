@@ -200,8 +200,8 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
 
     if (cpf !== undefined) {
       const normalizedCpf = normalizeCpf(cpf);
-      if (normalizedCpf.length !== 11) {
-        res.status(400).json({ error: "Bad Request", message: "CPF inválido. Informe os 11 dígitos." });
+      if (!validateCpf(normalizedCpf)) {
+        res.status(400).json({ error: "Bad Request", message: "CPF inválido. Verifique os dígitos informados." });
         return;
       }
       cpf = normalizedCpf;

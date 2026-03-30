@@ -16,9 +16,18 @@ router.use(authMiddleware);
 
 router.get("/", requirePermission("financial.read"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const { patientId } = req.query;
 
-    let query = db
+    const conditions: any[] = [];
+    if (!authReq.isSuperAdmin && authReq.clinicId) {
+      conditions.push(eq(patientSubscriptionsTable.clinicId, authReq.clinicId));
+    }
+    if (patientId) {
+      conditions.push(eq(patientSubscriptionsTable.patientId, parseInt(patientId as string)));
+    }
+
+    const results = await db
       .select({
         subscription: patientSubscriptionsTable,
         patient: patientsTable,
@@ -26,13 +35,9 @@ router.get("/", requirePermission("financial.read"), async (req, res) => {
       })
       .from(patientSubscriptionsTable)
       .leftJoin(patientsTable, eq(patientSubscriptionsTable.patientId, patientsTable.id))
-      .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id));
-
-    if (patientId) {
-      query = query.where(eq(patientSubscriptionsTable.patientId, parseInt(patientId as string))) as any;
-    }
-
-    const results = await query.orderBy(patientSubscriptionsTable.createdAt);
+      .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(patientSubscriptionsTable.createdAt);
     const subscriptions = results.map(({ subscription, patient, procedure }) => ({
       ...subscription,
       patient,
@@ -48,6 +53,7 @@ router.get("/", requirePermission("financial.read"), async (req, res) => {
 
 router.post("/", requirePermission("financial.write"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const { patientId, procedureId, startDate, billingDay, monthlyAmount, notes } = req.body;
 
     if (!patientId || !procedureId || !startDate || !monthlyAmount) {
@@ -71,6 +77,7 @@ router.post("/", requirePermission("financial.write"), async (req, res) => {
         monthlyAmount: String(monthlyAmount),
         status: "ativa",
         notes: notes || null,
+        clinicId: authReq.clinicId ?? null,
       })
       .returning();
 
@@ -96,11 +103,16 @@ router.post("/", requirePermission("financial.write"), async (req, res) => {
 
 router.put("/:id", requirePermission("financial.write"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const id = parseInt(req.params.id as string);
     const { status, billingDay, monthlyAmount, notes } = req.body;
 
     const isCancelling = status === "cancelada" || status === "inativa";
     const cancelledAt = isCancelling ? new Date() : undefined;
+
+    const whereClause = (!authReq.isSuperAdmin && authReq.clinicId)
+      ? and(eq(patientSubscriptionsTable.id, id), eq(patientSubscriptionsTable.clinicId, authReq.clinicId))
+      : eq(patientSubscriptionsTable.id, id);
 
     const [subscription] = await db
       .update(patientSubscriptionsTable)
@@ -111,7 +123,7 @@ router.put("/:id", requirePermission("financial.write"), async (req, res) => {
         notes: notes !== undefined ? notes : undefined,
         cancelledAt,
       })
-      .where(eq(patientSubscriptionsTable.id, id))
+      .where(whereClause)
       .returning();
 
     if (!subscription) {
@@ -128,11 +140,15 @@ router.put("/:id", requirePermission("financial.write"), async (req, res) => {
 
 router.delete("/:id", requirePermission("financial.write"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const id = parseInt(req.params.id as string);
+    const whereClause = (!authReq.isSuperAdmin && authReq.clinicId)
+      ? and(eq(patientSubscriptionsTable.id, id), eq(patientSubscriptionsTable.clinicId, authReq.clinicId))
+      : eq(patientSubscriptionsTable.id, id);
     await db
       .update(patientSubscriptionsTable)
       .set({ status: "cancelada", cancelledAt: new Date() })
-      .where(eq(patientSubscriptionsTable.id, id));
+      .where(whereClause);
     res.status(204).send();
   } catch (err) {
     console.error(err);

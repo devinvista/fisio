@@ -101,9 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const switchClinic = async (newClinicId: number) => {
     try {
+      const currentToken = localStorage.getItem("fisiogest_token");
       const res = await fetch(`/api/auth/switch-clinic`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+        },
         body: JSON.stringify({ clinicId: newClinicId === 0 ? null : newClinicId }),
       });
       if (!res.ok) throw new Error("Failed to switch clinic");

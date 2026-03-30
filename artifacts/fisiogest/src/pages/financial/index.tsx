@@ -107,12 +107,18 @@ export default function Financial() {
     refetchRec();
   };
 
+  function authHeaders(): Record<string, string> {
+    const token = localStorage.getItem("fisiogest_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   const handleDeleteRecord = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/financial/records/${deleteTarget.id}`, {
         method: "DELETE",
+        headers: authHeaders(),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -136,6 +142,7 @@ export default function Financial() {
     try {
       const res = await fetch("/api/subscriptions/run-billing", {
         method: "POST",
+        headers: authHeaders(),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -298,7 +305,7 @@ export default function Financial() {
               ) : (() => {
                 const mrr = (dashboard as any)?.mrr ?? 0;
                 const revenue = dashboard?.monthlyRevenue ?? 0;
-                const pct = revenue > 0 ? Math.round((mrr / (revenue + mrr)) * 100) : (mrr > 0 ? 100 : 0);
+                const pct = revenue > 0 ? Math.min(100, Math.round((mrr / revenue) * 100)) : (mrr > 0 ? 100 : 0);
                 return (
                   <>
                     <p className="text-xl font-bold text-slate-800">{pct}%</p>
@@ -419,15 +426,26 @@ export default function Financial() {
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Descrição</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Categoria / Procedimento</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
+                      <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Status</th>
                       <th className="py-3 px-5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Valor</th>
                       <th className="py-3 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {records.map((record) => (
+                    {records.map((record) => {
+                      const displayDate = (record as any).paymentDate ?? (record as any).dueDate ?? record.createdAt;
+                      const recStatus: string = (record as any).status ?? "pago";
+                      const statusCfg: Record<string, { label: string; cls: string }> = {
+                        pago: { label: "Pago", cls: "bg-green-100 text-green-700" },
+                        pendente: { label: "Pendente", cls: "bg-amber-100 text-amber-700" },
+                        estornado: { label: "Estornado", cls: "bg-red-100 text-red-700" },
+                        cancelado: { label: "Cancelado", cls: "bg-slate-100 text-slate-500" },
+                      };
+                      const { label: statusLabel, cls: statusCls } = statusCfg[recStatus] ?? { label: recStatus, cls: "bg-slate-100 text-slate-500" };
+                      return (
                       <tr key={record.id} className="group hover:bg-slate-50/60 transition-colors">
                         <td className="py-3.5 px-5 text-sm text-slate-500 whitespace-nowrap">
-                          {format(new Date(record.createdAt), "dd/MM/yy")}
+                          {format(new Date(displayDate), "dd/MM/yy")}
                         </td>
                         <td className="py-3.5 px-5 text-sm font-medium text-slate-800 max-w-[160px] truncate">
                           {record.description}
@@ -457,6 +475,11 @@ export default function Financial() {
                             {record.type === "receita" ? "Entrada" : "Saída"}
                           </Badge>
                         </td>
+                        <td className="py-3.5 px-5 hidden sm:table-cell">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusCls}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
                         <td className={`py-3.5 px-5 text-sm font-bold text-right whitespace-nowrap ${
                           record.type === "receita" ? "text-green-600" : "text-red-600"
                         }`}>
@@ -472,7 +495,8 @@ export default function Financial() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
 
                   {records.length > 0 && (

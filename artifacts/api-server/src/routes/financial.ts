@@ -204,6 +204,10 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
         procedureId: financialRecordsTable.procedureId,
         transactionType: financialRecordsTable.transactionType,
         status: financialRecordsTable.status,
+        paymentDate: financialRecordsTable.paymentDate,
+        dueDate: financialRecordsTable.dueDate,
+        paymentMethod: financialRecordsTable.paymentMethod,
+        subscriptionId: financialRecordsTable.subscriptionId,
         procedureName: proceduresTable.name,
         createdAt: financialRecordsTable.createdAt,
       })
@@ -470,10 +474,13 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
     }
 
     // Busca o registro antes de atualizar para checar transição de status
+    const cc = clinicCond(req);
+    const existingWhere = cc ? and(eq(financialRecordsTable.id, id), cc) : eq(financialRecordsTable.id, id);
+
     const [existing] = await db
       .select()
       .from(financialRecordsTable)
-      .where(eq(financialRecordsTable.id, id));
+      .where(existingWhere);
 
     if (!existing) {
       res.status(404).json({ error: "Not Found" });
@@ -487,7 +494,7 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
         paymentDate: paymentDate || undefined,
         paymentMethod: paymentMethod || undefined,
       })
-      .where(eq(financialRecordsTable.id, id))
+      .where(existingWhere)
       .returning();
 
     if (!record) {
