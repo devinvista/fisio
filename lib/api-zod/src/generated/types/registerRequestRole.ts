@@ -12,5 +12,5 @@ export type RegisterRequestRole =
 export const RegisterRequestRole = {
   admin: "admin",
   profissional: "profissional",
-  recepcionista: "recepcionista",
+  recepcionista: "secretaria",
 } as const;

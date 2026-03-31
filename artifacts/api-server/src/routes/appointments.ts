@@ -7,6 +7,7 @@ import { requirePermission } from "../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
+import { parseIntParam } from "../lib/validate.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -511,7 +512,8 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 
 router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do agendamento");
+    if (id === null) return;
     const details = await getWithDetails(id, (req as AuthRequest).clinicId);
     if (!details) {
       res.status(404).json({ error: "Not Found" });
@@ -526,7 +528,8 @@ router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
 
 router.put("/:id", requirePermission("appointments.update"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do agendamento");
+    if (id === null) return;
     const { patientId, procedureId, date, startTime, status, notes } = req.body;
 
     let endTime: string | undefined;
@@ -615,7 +618,8 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
 
 router.delete("/:id", requirePermission("appointments.delete"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do agendamento");
+    if (id === null) return;
     const authReq = req as AuthRequest;
     const whereClause = (!authReq.isSuperAdmin && authReq.clinicId)
       ? and(eq(appointmentsTable.id, id), eq(appointmentsTable.clinicId, authReq.clinicId))

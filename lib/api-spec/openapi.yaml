@@ -1028,7 +1028,7 @@ components:
           minLength: 6
         role:
           type: string
-          enum: [admin, profissional, recepcionista]
+          enum: [admin, profissional, secretaria]
           default: profissional
       required:
         - name

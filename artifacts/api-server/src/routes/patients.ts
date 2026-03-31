@@ -5,6 +5,7 @@ import { eq, ilike, or, and, sql, desc } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
+import { parseIntParam } from "../lib/validate.js";
 
 function normalizeCpf(value: string): string {
   return value.replace(/\D/g, "");
@@ -144,7 +145,8 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
 
 router.get("/:id", requirePermission("patients.read"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do paciente");
+    if (id === null) return;
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(patientsTable.id, id)
       : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
@@ -194,7 +196,8 @@ router.get("/:id", requirePermission("patients.read"), async (req: AuthRequest, 
 
 router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do paciente");
+    if (id === null) return;
     const { name, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
     let { cpf } = req.body;
 
@@ -248,7 +251,8 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
 
 router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequest, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseIntParam(req.params.id, res, "ID do paciente");
+    if (id === null) return;
 
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(patientsTable.id, id)

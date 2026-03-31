@@ -144,7 +144,7 @@ export default function Register() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="profissional">Profissional (Fisio/Estética)</SelectItem>
-                  <SelectItem value="recepcionista">Recepcionista</SelectItem>
+                  <SelectItem value="secretaria">Recepcionista</SelectItem>
                   <SelectItem value="admin">Administrador</SelectItem>
                 </SelectContent>
               </Select>

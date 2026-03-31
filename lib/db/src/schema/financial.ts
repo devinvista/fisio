@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, date, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { appointmentsTable } from "./appointments";
@@ -22,7 +22,13 @@ export const financialRecordsTable = pgTable("financial_records", {
   dueDate: date("due_date"),
   subscriptionId: integer("subscription_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_financial_records_clinic_id").on(table.clinicId),
+  index("idx_financial_records_status").on(table.status),
+  index("idx_financial_records_due_date").on(table.dueDate),
+  index("idx_financial_records_patient_id").on(table.patientId),
+  index("idx_financial_records_type").on(table.type),
+]);
 
 export const insertFinancialRecordSchema = createInsertSchema(financialRecordsTable).omit({ id: true, createdAt: true });
 export type InsertFinancialRecord = z.infer<typeof insertFinancialRecordSchema>;
