@@ -70,19 +70,15 @@ import { cn } from "@/lib/utils";
 
 const HOUR_START = 7;
 const HOUR_END = 19;
-const SLOT_HEIGHT = 80; // px per hour
+const SLOT_HEIGHT = 64; // px per hour
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 
-const STATUS_CONFIG: Record<string, {
-  label: string;
-  bg: string; text: string; dot: string; border: string; badge: string;
-  accent: string; cardBg: string; cardText: string; cardSub: string;
-}> = {
-  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    accent: "bg-blue-500",    cardBg: "bg-blue-500",    cardText: "text-white", cardSub: "text-white/70" },
-  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500", cardBg: "bg-emerald-500", cardText: "text-white", cardSub: "text-white/70" },
-  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   accent: "bg-slate-400",   cardBg: "bg-slate-400",   cardText: "text-white", cardSub: "text-white/70" },
-  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      accent: "bg-red-400",     cardBg: "bg-red-400",     cardText: "text-white", cardSub: "text-white/70" },
-  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", accent: "bg-orange-400",  cardBg: "bg-orange-400",  cardText: "text-white", cardSub: "text-white/70" },
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; border: string; badge: string; cardBg: string; cardSub: string }> = {
+  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    cardBg: "bg-blue-500",    cardSub: "text-white/70" },
+  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", cardBg: "bg-emerald-500", cardSub: "text-white/70" },
+  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   cardBg: "bg-slate-400",   cardSub: "text-white/70" },
+  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      cardBg: "bg-red-400",     cardSub: "text-white/70" },
+  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", cardBg: "bg-orange-400",  cardSub: "text-white/70" },
 };
 
 type Appointment = AppointmentWithDetails;
@@ -460,50 +456,38 @@ export default function Agenda() {
           {/* Day headers + time grid — only for week/day view */}
           {view !== "month" && (
           <><div
-            className="grid border-b border-slate-200 bg-slate-50/80 sticky top-0 z-30"
+            className="grid border-b border-slate-200 bg-slate-50/70"
             style={{ gridTemplateColumns: `56px repeat(${daysCount}, 1fr)` }}
           >
             <div className="border-r border-slate-200" />
             {weekDays.map((day, i) => {
               const dayAppts = getDayAppointments(day);
               const today = isToday(day);
-              const activeCount = dayAppts.filter(a => !["cancelado", "faltou"].includes(a.status)).length;
               return (
                 <div
                   key={i}
                   className={cn(
-                    "py-2.5 px-2 text-center border-r border-slate-200 last:border-r-0 relative",
-                    today && "bg-primary/[0.04]"
+                    "py-3 px-2 text-center border-r border-slate-200 last:border-r-0",
+                    today && "bg-primary/5"
                   )}
                 >
-                  {today && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/40 rounded-t" />}
-                  <p className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider",
-                    today ? "text-primary/70" : "text-slate-400"
-                  )}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     {format(day, "EEE", { locale: ptBR })}
                   </p>
-                  <div className="flex items-center justify-center mt-1">
+                  <div className="flex items-center justify-center gap-2 mt-1">
                     <span
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-colors",
-                        today ? "bg-primary text-white shadow-md shadow-primary/30" : "text-slate-800"
+                        today ? "bg-primary text-white" : "text-slate-800"
                       )}
                     >
                       {format(day, "d")}
                     </span>
                   </div>
-                  {activeCount > 0 ? (
-                    <div className="flex items-center justify-center mt-1">
-                      <span className={cn(
-                        "inline-flex items-center justify-center min-w-[18px] h-[14px] rounded-full text-[9px] font-bold px-1",
-                        today ? "bg-primary/10 text-primary" : "bg-slate-200 text-slate-500"
-                      )}>
-                        {activeCount}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="h-[18px]" />
+                  {dayAppts.length > 0 && (
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      {dayAppts.length} consulta{dayAppts.length !== 1 ? "s" : ""}
+                    </p>
                   )}
                 </div>
               );
@@ -525,10 +509,10 @@ export default function Agenda() {
                   {hours.map((h) => (
                     <div
                       key={h}
-                      className="border-b border-slate-100 flex items-start justify-end pr-2 pt-1.5"
+                      className="border-b border-slate-100 flex items-start justify-end pr-2 pt-1"
                       style={{ height: SLOT_HEIGHT }}
                     >
-                      <span className="text-[10px] font-semibold text-slate-300 leading-none tabular-nums">
+                      <span className="text-[10px] font-medium text-slate-400 leading-none">
                         {String(h).padStart(2, "0")}:00
                       </span>
                     </div>
@@ -630,14 +614,15 @@ export default function Agenda() {
                           const startMin = timeToMinutes(startTime);
                           const endMin = timeToMinutes(endTime);
                           const top = toTop(startMin);
-                          const height = Math.max(minutesToHeight(endMin - startMin), 24);
+                          const height = Math.max(minutesToHeight(endMin - startMin), 28);
                           const widthPct = 100 / totalCols;
                           const leftPct = col * widthPct;
-                          const tiny = height < 36;
-                          const short = height < 62;
+                          const short = height < 48;
                           const occupancy = grpApts.length;
                           const spotsLeft = maxCapacity - occupancy;
                           const firstApt = grpApts[0];
+
+                          const tiny = height < 36;
 
                           return (
                             <div
@@ -651,46 +636,61 @@ export default function Agenda() {
                               }}
                               onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
                             >
-                              <div className="px-2.5 py-2 h-full flex flex-col text-white">
+                              <div className="px-2.5 py-2 h-full flex flex-col text-white gap-0.5">
                                 {tiny ? (
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <p className="text-[10px] font-bold truncate leading-none flex-1">{firstApt.procedure?.name}</p>
-                                    <span className="text-[9px] font-bold bg-white/20 px-1 rounded shrink-0">{occupancy}/{maxCapacity}</span>
+                                  /* Tiny: just time + occupancy badge */
+                                  <div className="flex items-center justify-between gap-1">
+                                    <p className="text-[9px] font-bold leading-none truncate">{startTime}</p>
+                                    <span className="text-[8px] font-bold bg-white/20 rounded-full px-1.5 py-0.5 leading-none shrink-0">
+                                      {occupancy}/{maxCapacity}
+                                    </span>
                                   </div>
                                 ) : short ? (
+                                  /* Short: title + badge + time */
                                   <>
-                                    <div className="flex items-center gap-1 min-w-0">
-                                      <p className="text-[10px] font-bold truncate leading-tight flex-1">{firstApt.procedure?.name}</p>
-                                      <span className="text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full shrink-0">{occupancy}/{maxCapacity}</span>
-                                    </div>
-                                    <p className="text-[9px] text-white/70 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="flex items-start gap-1 min-w-0">
-                                      <p className="text-[11px] font-bold leading-tight flex-1 truncate">{firstApt.procedure?.name}</p>
+                                    <div className="flex items-start justify-between gap-1">
+                                      <p className="text-[10px] font-bold truncate leading-tight flex-1">
+                                        {firstApt.procedure?.name}
+                                      </p>
                                       <span className={cn(
-                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none mt-px",
-                                        spotsLeft > 0 ? "bg-white/25 text-white" : "bg-red-200 text-red-800"
+                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none",
+                                        spotsLeft > 0 ? "bg-white/20 text-white" : "bg-red-200/80 text-red-900"
                                       )}>
                                         {occupancy}/{maxCapacity}
                                       </span>
                                     </div>
-                                    <p className="text-[10px] text-white/70 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
-                                    {height >= 62 && (
-                                      <div className="flex flex-wrap gap-1 mt-1.5">
-                                        {grpApts.map((a) => (
-                                          <span key={a.id} className="text-[9px] font-semibold bg-white/20 text-white px-1.5 py-0.5 rounded-full leading-none">
-                                            {a.patient?.name?.split(" ")[0]}
-                                          </span>
-                                        ))}
-                                        {spotsLeft > 0 && (
-                                          <span className="text-[9px] font-semibold bg-white/10 text-white/60 px-1.5 py-0.5 rounded-full leading-none">
-                                            +{spotsLeft}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
+                                    <p className="text-[9px] opacity-70 leading-none">{startTime} – {endTime}</p>
+                                  </>
+                                ) : (
+                                  /* Normal: title + badge + time + patient chips */
+                                  <>
+                                    <div className="flex items-start justify-between gap-1">
+                                      <p className="text-[11px] font-bold truncate leading-tight flex-1">
+                                        {firstApt.procedure?.name}
+                                      </p>
+                                      <span className={cn(
+                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none",
+                                        spotsLeft > 0 ? "bg-white/20 text-white" : "bg-red-200/80 text-red-900"
+                                      )}>
+                                        {occupancy}/{maxCapacity}
+                                      </span>
+                                    </div>
+                                    <p className="text-[9px] opacity-70 leading-none">{startTime} – {endTime}</p>
+                                    <div className="flex flex-wrap gap-1 mt-auto pt-1">
+                                      {grpApts.slice(0, 3).map((a) => (
+                                        <span
+                                          key={a.id}
+                                          className="text-[9px] font-semibold bg-white/20 rounded-full px-2 py-0.5 leading-none whitespace-nowrap"
+                                        >
+                                          {a.patient?.name?.split(" ")[0]}
+                                        </span>
+                                      ))}
+                                      {spotsLeft > 0 && (
+                                        <span className="text-[9px] font-semibold bg-white/10 rounded-full px-2 py-0.5 leading-none opacity-70 whitespace-nowrap">
+                                          +{spotsLeft}
+                                        </span>
+                                      )}
+                                    </div>
                                   </>
                                 )}
                               </div>
@@ -703,19 +703,20 @@ export default function Agenda() {
                         const startMin = timeToMinutes(apt.startTime);
                         const endMin = timeToMinutes(apt.endTime);
                         const top = toTop(startMin);
-                        const height = Math.max(minutesToHeight(endMin - startMin), 24);
+                        const height = Math.max(minutesToHeight(endMin - startMin), 28);
                         const cfg = STATUS_CONFIG[apt.status] || STATUS_CONFIG.agendado;
                         const widthPct = 100 / totalCols;
                         const leftPct = col * widthPct;
+                        const short = height < 48;
+
                         const tiny = height < 36;
-                        const short = height < 62;
 
                         return (
                           <div
                             key={apt.id}
                             className={cn(
                               "absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20",
-                              cfg.cardBg,
+                              cfg.cardBg
                             )}
                             style={{
                               top: top + 2,
@@ -725,18 +726,20 @@ export default function Agenda() {
                             }}
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
-                            <div className="px-2.5 py-2 h-full flex flex-col text-white">
+                            <div className="px-2.5 py-2 h-full flex flex-col text-white gap-0.5">
                               {tiny ? (
-                                <p className="text-[10px] font-bold truncate leading-none">
+                                <p className="text-[9px] font-bold leading-none truncate">
                                   {apt.patient?.name?.split(" ")[0]}
                                 </p>
                               ) : short ? (
                                 <>
                                   <div className="flex items-center gap-1">
                                     {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-80" />}
-                                    <p className="text-[10px] font-bold truncate leading-tight flex-1">{apt.patient?.name?.split(" ")[0]}</p>
+                                    <p className="text-[10px] font-bold truncate leading-tight flex-1">
+                                      {apt.patient?.name?.split(" ")[0]}
+                                    </p>
                                   </div>
-                                  <p className={cn("text-[9px] tabular-nums leading-tight", cfg.cardSub)}>{apt.startTime}</p>
+                                  <p className={cn("text-[9px] leading-none tabular-nums", cfg.cardSub)}>{apt.startTime}</p>
                                 </>
                               ) : (
                                 <>
@@ -746,8 +749,8 @@ export default function Agenda() {
                                       <Globe className="w-3 h-3 shrink-0 mt-0.5 opacity-80" />
                                     )}
                                   </div>
-                                  <p className={cn("text-[10px] truncate leading-tight mt-0.5", cfg.cardSub)}>{apt.procedure?.name}</p>
-                                  <p className={cn("text-[9px] tabular-nums mt-0.5", cfg.cardSub)}>{apt.startTime} – {apt.endTime}</p>
+                                  <p className={cn("text-[10px] truncate leading-tight", cfg.cardSub)}>{apt.procedure?.name}</p>
+                                  <p className={cn("text-[9px] tabular-nums", cfg.cardSub)}>{apt.startTime} – {apt.endTime}</p>
                                 </>
                               )}
                             </div>
@@ -854,6 +857,7 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
   if (appointments.length === 0) return [];
 
   // Separate group-session appointments from singles.
+  // Cancelled/missed appointments in a group are shown individually.
   const groupMap = new Map<string, Appointment[]>();
   const singles: Appointment[] = [];
 
@@ -868,6 +872,7 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
     }
   }
 
+  // Build a unified slot list for layout calculation.
   type Slot =
     | { kind: "single"; apt: Appointment }
     | { kind: "group"; key: string; apts: Appointment[] };
@@ -882,55 +887,31 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
   const getEnd = (s: Slot) =>
     timeToMinutes(s.kind === "single" ? s.apt.endTime : s.apts[0].endTime);
 
-  slots.sort((a, b) => getStart(a) - getStart(b) || getEnd(b) - getEnd(a));
+  slots.sort((a, b) => getStart(a) - getStart(b));
 
-  // Step 1 — find contiguous overlap clusters.
-  // Each cluster is a maximal group of mutually-reachable overlapping slots.
-  const clusters: Slot[][] = [];
-  let clusterSlots: Slot[] = [];
-  let clusterEnd = 0;
+  // Overlap grouping for column layout.
+  const layoutGroups: Slot[][] = [];
+  let current: Slot[] = [];
+  let maxEnd = 0;
 
   for (const slot of slots) {
     const start = getStart(slot);
     const end = getEnd(slot);
-    if (clusterSlots.length === 0 || start < clusterEnd) {
-      clusterSlots.push(slot);
-      clusterEnd = Math.max(clusterEnd, end);
+    if (current.length === 0 || start < maxEnd) {
+      current.push(slot);
+      maxEnd = Math.max(maxEnd, end);
     } else {
-      clusters.push(clusterSlots);
-      clusterSlots = [slot];
-      clusterEnd = end;
+      layoutGroups.push(current);
+      current = [slot];
+      maxEnd = end;
     }
   }
-  if (clusterSlots.length > 0) clusters.push(clusterSlots);
+  if (current.length > 0) layoutGroups.push(current);
 
-  // Step 2 — within each cluster, assign columns using greedy interval colouring.
-  // This gives non-overlapping items the same column → they share width fairly.
   const result: PositionedItem[] = [];
-
-  for (const cluster of clusters) {
-    // colEndTimes[c] = the end-time of the last slot assigned to column c.
-    const colEndTimes: number[] = [];
-    const slotCols: number[] = [];
-
-    for (const slot of cluster) {
-      const start = getStart(slot);
-      const end = getEnd(slot);
-      // Re-use the earliest column whose last appointment has already ended.
-      let col = colEndTimes.findIndex((t) => t <= start);
-      if (col === -1) {
-        col = colEndTimes.length;
-        colEndTimes.push(end);
-      } else {
-        colEndTimes[col] = end;
-      }
-      slotCols.push(col);
-    }
-
-    const totalCols = colEndTimes.length;
-
-    cluster.forEach((slot, idx) => {
-      const col = slotCols[idx];
+  for (const group of layoutGroups) {
+    const totalCols = group.length;
+    group.forEach((slot, col) => {
       if (slot.kind === "single") {
         result.push({ type: "single", appointment: slot.apt, col, totalCols });
       } else {
@@ -948,7 +929,6 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
       }
     });
   }
-
   return result;
 }
 
