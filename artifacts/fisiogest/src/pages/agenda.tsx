@@ -739,7 +739,7 @@ export default function Agenda() {
                                       {apt.patient?.name?.split(" ")[0]}
                                     </p>
                                   </div>
-                                  <p className={cn("text-[9px] leading-none tabular-nums", cfg.cardSub)}>{apt.startTime}</p>
+                                  <p className={cn("text-[9px] truncate leading-none", cfg.cardSub)}>{apt.procedure?.name}</p>
                                 </>
                               ) : (
                                 <>
