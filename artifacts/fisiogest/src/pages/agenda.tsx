@@ -70,15 +70,19 @@ import { cn } from "@/lib/utils";
 
 const HOUR_START = 7;
 const HOUR_END = 19;
-const SLOT_HEIGHT = 64; // px per hour
+const SLOT_HEIGHT = 80; // px per hour
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; border: string; badge: string }> = {
-  agendado:   { label: "Agendado",   bg: "bg-blue-500",   text: "text-white", dot: "bg-blue-500",   border: "border-blue-600",   badge: "bg-blue-100 text-blue-700" },
-  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700" },
-  concluido:  { label: "Concluído",  bg: "bg-slate-400",  text: "text-white", dot: "bg-slate-400",  border: "border-slate-500",  badge: "bg-slate-100 text-slate-600" },
-  cancelado:  { label: "Cancelado",  bg: "bg-red-400",    text: "text-white", dot: "bg-red-400",    border: "border-red-500",    badge: "bg-red-100 text-red-700" },
-  faltou:     { label: "Faltou",     bg: "bg-orange-400", text: "text-white", dot: "bg-orange-400", border: "border-orange-500", badge: "bg-orange-100 text-orange-700" },
+const STATUS_CONFIG: Record<string, {
+  label: string;
+  bg: string; text: string; dot: string; border: string; badge: string;
+  accent: string; cardBg: string; cardText: string; cardSub: string;
+}> = {
+  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    accent: "bg-blue-500",    cardBg: "bg-blue-50 border border-blue-200/70",        cardText: "text-blue-900",    cardSub: "text-blue-500/80" },
+  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500", cardBg: "bg-emerald-50 border border-emerald-200/70",    cardText: "text-emerald-900", cardSub: "text-emerald-600/80" },
+  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   accent: "bg-slate-400",   cardBg: "bg-slate-100 border border-slate-200/70",      cardText: "text-slate-600",   cardSub: "text-slate-400" },
+  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      accent: "bg-red-400",     cardBg: "bg-red-50 border border-red-200/70",          cardText: "text-red-800",     cardSub: "text-red-400/80" },
+  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", accent: "bg-orange-400",  cardBg: "bg-orange-50 border border-orange-200/70",    cardText: "text-orange-800",  cardSub: "text-orange-500/80" },
 };
 
 type Appointment = AppointmentWithDetails;
@@ -456,38 +460,50 @@ export default function Agenda() {
           {/* Day headers + time grid — only for week/day view */}
           {view !== "month" && (
           <><div
-            className="grid border-b border-slate-200 bg-slate-50/70"
+            className="grid border-b border-slate-200 bg-slate-50/80 sticky top-0 z-30"
             style={{ gridTemplateColumns: `56px repeat(${daysCount}, 1fr)` }}
           >
             <div className="border-r border-slate-200" />
             {weekDays.map((day, i) => {
               const dayAppts = getDayAppointments(day);
               const today = isToday(day);
+              const activeCount = dayAppts.filter(a => !["cancelado", "faltou"].includes(a.status)).length;
               return (
                 <div
                   key={i}
                   className={cn(
-                    "py-3 px-2 text-center border-r border-slate-200 last:border-r-0",
-                    today && "bg-primary/5"
+                    "py-2.5 px-2 text-center border-r border-slate-200 last:border-r-0 relative",
+                    today && "bg-primary/[0.04]"
                   )}
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {today && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/40 rounded-t" />}
+                  <p className={cn(
+                    "text-[10px] font-bold uppercase tracking-wider",
+                    today ? "text-primary/70" : "text-slate-400"
+                  )}>
                     {format(day, "EEE", { locale: ptBR })}
                   </p>
-                  <div className="flex items-center justify-center gap-2 mt-1">
+                  <div className="flex items-center justify-center mt-1">
                     <span
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-colors",
-                        today ? "bg-primary text-white" : "text-slate-800"
+                        today ? "bg-primary text-white shadow-md shadow-primary/30" : "text-slate-800"
                       )}
                     >
                       {format(day, "d")}
                     </span>
                   </div>
-                  {dayAppts.length > 0 && (
-                    <p className="text-[9px] text-slate-400 mt-0.5">
-                      {dayAppts.length} consulta{dayAppts.length !== 1 ? "s" : ""}
-                    </p>
+                  {activeCount > 0 ? (
+                    <div className="flex items-center justify-center mt-1">
+                      <span className={cn(
+                        "inline-flex items-center justify-center min-w-[18px] h-[14px] rounded-full text-[9px] font-bold px-1",
+                        today ? "bg-primary/10 text-primary" : "bg-slate-200 text-slate-500"
+                      )}>
+                        {activeCount}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="h-[18px]" />
                   )}
                 </div>
               );
@@ -509,10 +525,10 @@ export default function Agenda() {
                   {hours.map((h) => (
                     <div
                       key={h}
-                      className="border-b border-slate-100 flex items-start justify-end pr-2 pt-1"
+                      className="border-b border-slate-100 flex items-start justify-end pr-2 pt-1.5"
                       style={{ height: SLOT_HEIGHT }}
                     >
-                      <span className="text-[10px] font-medium text-slate-400 leading-none">
+                      <span className="text-[10px] font-semibold text-slate-300 leading-none tabular-nums">
                         {String(h).padStart(2, "0")}:00
                       </span>
                     </div>
@@ -614,10 +630,11 @@ export default function Agenda() {
                           const startMin = timeToMinutes(startTime);
                           const endMin = timeToMinutes(endTime);
                           const top = toTop(startMin);
-                          const height = Math.max(minutesToHeight(endMin - startMin), 28);
+                          const height = Math.max(minutesToHeight(endMin - startMin), 24);
                           const widthPct = 100 / totalCols;
                           const leftPct = col * widthPct;
-                          const short = height < 48;
+                          const tiny = height < 36;
+                          const short = height < 62;
                           const occupancy = grpApts.length;
                           const spotsLeft = maxCapacity - occupancy;
                           const firstApt = grpApts[0];
@@ -629,7 +646,7 @@ export default function Agenda() {
                           return (
                             <div
                               key={`group-${item.procedureId}-${startTime}`}
-                              className="absolute rounded-lg px-2 py-1 cursor-pointer overflow-hidden transition-all hover:brightness-95 hover:shadow-md z-10 border-l-2 bg-violet-500 text-white border-violet-600"
+                              className="absolute rounded-lg overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:shadow-lg hover:-translate-y-px hover:z-20 bg-violet-50 border border-violet-200/70"
                               style={{
                                 top: top + 2,
                                 height: height - 4,
@@ -638,44 +655,53 @@ export default function Agenda() {
                               }}
                               onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
                             >
+                              {/* Accent bar */}
+                              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-500" />
                               {grpScheduleColor && (
                                 <span
-                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
+                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full shrink-0"
                                   style={{ backgroundColor: grpScheduleColor }}
                                   title={schedules.find((s) => s.id === firstApt.scheduleId)?.name}
                                 />
                               )}
-                              {short ? (
-                                <div className="flex items-center gap-1">
-                                  <Users className="w-2.5 h-2.5 shrink-0 opacity-80" />
-                                  <p className="text-[10px] font-semibold truncate">
-                                    {startTime} · {occupancy}/{maxCapacity}
-                                  </p>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex items-start justify-between gap-1">
-                                    <p className="text-[11px] font-bold truncate leading-tight flex-1">
-                                      {firstApt.procedure?.name}
-                                    </p>
-                                    <span className={cn(
-                                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-tight",
-                                      spotsLeft > 0 ? "bg-white/25 text-white" : "bg-red-200 text-red-800"
-                                    )}>
-                                      {occupancy}/{maxCapacity}
-                                    </span>
+                              <div className="pl-2.5 pr-1.5 h-full flex flex-col justify-center text-violet-900">
+                                {tiny ? (
+                                  <div className="flex items-center gap-1">
+                                    <Users className="w-2.5 h-2.5 shrink-0 text-violet-500" />
+                                    <p className="text-[10px] font-bold truncate leading-none">{occupancy}/{maxCapacity}</p>
                                   </div>
-                                  <p className="text-[9px] opacity-70 mt-0.5">{startTime} – {endTime}</p>
-                                  <p className="text-[9px] opacity-90 truncate leading-tight mt-1">
-                                    {grpApts.map((a) => a.patient?.name?.split(" ")[0]).join(" · ")}
-                                  </p>
-                                  {spotsLeft > 0 && height >= 80 && (
-                                    <p className="text-[9px] opacity-60 flex items-center gap-0.5 mt-0.5">
-                                      <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
+                                ) : short ? (
+                                  <>
+                                    <div className="flex items-center gap-1">
+                                      <Users className="w-2.5 h-2.5 shrink-0 text-violet-500" />
+                                      <p className="text-[10px] font-bold truncate leading-tight flex-1">{firstApt.procedure?.name}</p>
+                                      <span className="text-[9px] font-semibold text-violet-500 shrink-0">{occupancy}/{maxCapacity}</span>
+                                    </div>
+                                    <p className="text-[9px] text-violet-500/80 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex items-start justify-between gap-1 mb-0.5">
+                                      <p className="text-[11px] font-bold truncate leading-tight flex-1">{firstApt.procedure?.name}</p>
+                                      <span className={cn(
+                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none",
+                                        spotsLeft > 0 ? "bg-violet-100 text-violet-700" : "bg-red-100 text-red-700"
+                                      )}>
+                                        {occupancy}/{maxCapacity}
+                                      </span>
+                                    </div>
+                                    <p className="text-[9px] text-violet-500/80 tabular-nums leading-tight">{startTime} – {endTime}</p>
+                                    <p className="text-[9px] text-violet-700/80 truncate leading-tight mt-0.5">
+                                      {grpApts.map((a) => a.patient?.name?.split(" ")[0]).join(" · ")}
                                     </p>
-                                  )}
-                                </>
-                              )}
+                                    {spotsLeft > 0 && height >= 100 && (
+                                      <p className="text-[9px] text-violet-400 flex items-center gap-0.5 mt-0.5">
+                                        <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </div>
                           );
                         }
@@ -685,11 +711,12 @@ export default function Agenda() {
                         const startMin = timeToMinutes(apt.startTime);
                         const endMin = timeToMinutes(apt.endTime);
                         const top = toTop(startMin);
-                        const height = Math.max(minutesToHeight(endMin - startMin), 28);
+                        const height = Math.max(minutesToHeight(endMin - startMin), 24);
                         const cfg = STATUS_CONFIG[apt.status] || STATUS_CONFIG.agendado;
                         const widthPct = 100 / totalCols;
                         const leftPct = col * widthPct;
-                        const short = height < 48;
+                        const tiny = height < 36;
+                        const short = height < 62;
 
                         const aptScheduleColor = !selectedScheduleId && apt.scheduleId
                           ? schedules.find((s) => s.id === apt.scheduleId)?.color
@@ -699,8 +726,8 @@ export default function Agenda() {
                           <div
                             key={apt.id}
                             className={cn(
-                              "absolute rounded-lg px-2 py-1 cursor-pointer overflow-hidden transition-all hover:brightness-95 hover:shadow-md z-10 border-l-2",
-                              cfg.bg, cfg.text, cfg.border
+                              "absolute rounded-lg overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:shadow-lg hover:-translate-y-px hover:z-20",
+                              cfg.cardBg,
                             )}
                             style={{
                               top: top + 2,
@@ -710,32 +737,41 @@ export default function Agenda() {
                             }}
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
+                            {/* Accent bar */}
+                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", cfg.accent)} />
                             {aptScheduleColor && (
                               <span
-                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full opacity-90 shrink-0"
+                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full shrink-0"
                                 style={{ backgroundColor: aptScheduleColor }}
                                 title={schedules.find((s) => s.id === apt.scheduleId)?.name}
                               />
                             )}
-                            {short ? (
-                              <div className="flex items-center gap-1">
-                                {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-90" />}
-                                <p className="text-[10px] font-semibold truncate leading-tight">
-                                  {apt.patient?.name?.split(" ")[0]} · {apt.startTime}
+                            <div className={cn("pl-2.5 pr-1.5 h-full flex flex-col justify-center", cfg.cardText)}>
+                              {tiny ? (
+                                <p className="text-[10px] font-bold truncate leading-none">
+                                  {apt.patient?.name?.split(" ")[0]}
                                 </p>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-start justify-between gap-1">
-                                  <p className="text-[11px] font-bold truncate leading-tight flex-1">{apt.patient?.name}</p>
-                                  {apt.source === "online" && (
-                                    <Globe className="w-3 h-3 shrink-0 opacity-80 mt-0.5" />
-                                  )}
-                                </div>
-                                <p className="text-[10px] opacity-80 truncate leading-tight mt-0.5">{apt.procedure?.name}</p>
-                                <p className="text-[9px] opacity-70 mt-0.5">{apt.startTime} – {apt.endTime}</p>
-                              </>
-                            )}
+                              ) : short ? (
+                                <>
+                                  <div className="flex items-center gap-1">
+                                    {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-70" />}
+                                    <p className="text-[10px] font-bold truncate leading-tight">{apt.patient?.name?.split(" ")[0]}</p>
+                                  </div>
+                                  <p className={cn("text-[9px] tabular-nums leading-tight", cfg.cardSub)}>{apt.startTime}</p>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p className="text-[11px] font-bold truncate leading-tight flex-1">{apt.patient?.name}</p>
+                                    {apt.source === "online" && (
+                                      <Globe className={cn("w-3 h-3 shrink-0 mt-0.5 opacity-70", cfg.cardSub)} />
+                                    )}
+                                  </div>
+                                  <p className={cn("text-[10px] truncate leading-tight mt-0.5", cfg.cardSub)}>{apt.procedure?.name}</p>
+                                  <p className={cn("text-[9px] tabular-nums mt-0.5", cfg.cardSub)}>{apt.startTime} – {apt.endTime}</p>
+                                </>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -839,7 +875,6 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
   if (appointments.length === 0) return [];
 
   // Separate group-session appointments from singles.
-  // Cancelled/missed appointments in a group are shown individually.
   const groupMap = new Map<string, Appointment[]>();
   const singles: Appointment[] = [];
 
@@ -854,7 +889,6 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
     }
   }
 
-  // Build a unified slot list for layout calculation.
   type Slot =
     | { kind: "single"; apt: Appointment }
     | { kind: "group"; key: string; apts: Appointment[] };
@@ -869,31 +903,55 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
   const getEnd = (s: Slot) =>
     timeToMinutes(s.kind === "single" ? s.apt.endTime : s.apts[0].endTime);
 
-  slots.sort((a, b) => getStart(a) - getStart(b));
+  slots.sort((a, b) => getStart(a) - getStart(b) || getEnd(b) - getEnd(a));
 
-  // Overlap grouping for column layout.
-  const layoutGroups: Slot[][] = [];
-  let current: Slot[] = [];
-  let maxEnd = 0;
+  // Step 1 — find contiguous overlap clusters.
+  // Each cluster is a maximal group of mutually-reachable overlapping slots.
+  const clusters: Slot[][] = [];
+  let clusterSlots: Slot[] = [];
+  let clusterEnd = 0;
 
   for (const slot of slots) {
     const start = getStart(slot);
     const end = getEnd(slot);
-    if (current.length === 0 || start < maxEnd) {
-      current.push(slot);
-      maxEnd = Math.max(maxEnd, end);
+    if (clusterSlots.length === 0 || start < clusterEnd) {
+      clusterSlots.push(slot);
+      clusterEnd = Math.max(clusterEnd, end);
     } else {
-      layoutGroups.push(current);
-      current = [slot];
-      maxEnd = end;
+      clusters.push(clusterSlots);
+      clusterSlots = [slot];
+      clusterEnd = end;
     }
   }
-  if (current.length > 0) layoutGroups.push(current);
+  if (clusterSlots.length > 0) clusters.push(clusterSlots);
 
+  // Step 2 — within each cluster, assign columns using greedy interval colouring.
+  // This gives non-overlapping items the same column → they share width fairly.
   const result: PositionedItem[] = [];
-  for (const group of layoutGroups) {
-    const totalCols = group.length;
-    group.forEach((slot, col) => {
+
+  for (const cluster of clusters) {
+    // colEndTimes[c] = the end-time of the last slot assigned to column c.
+    const colEndTimes: number[] = [];
+    const slotCols: number[] = [];
+
+    for (const slot of cluster) {
+      const start = getStart(slot);
+      const end = getEnd(slot);
+      // Re-use the earliest column whose last appointment has already ended.
+      let col = colEndTimes.findIndex((t) => t <= start);
+      if (col === -1) {
+        col = colEndTimes.length;
+        colEndTimes.push(end);
+      } else {
+        colEndTimes[col] = end;
+      }
+      slotCols.push(col);
+    }
+
+    const totalCols = colEndTimes.length;
+
+    cluster.forEach((slot, idx) => {
+      const col = slotCols[idx];
       if (slot.kind === "single") {
         result.push({ type: "single", appointment: slot.apt, col, totalCols });
       } else {
@@ -911,6 +969,7 @@ function positionAppointments(appointments: Appointment[]): PositionedItem[] {
       }
     });
   }
+
   return result;
 }
 
