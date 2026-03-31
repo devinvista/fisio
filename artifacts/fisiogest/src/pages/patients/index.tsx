@@ -403,15 +403,28 @@ function CreatePatientForm({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = {
+      name: formData.name,
+      cpf: formData.cpf,
+      phone: formData.phone,
+      email: formData.email || undefined,
+      birthDate: formData.birthDate || undefined,
+      profession: formData.profession || undefined,
+      address: formData.address || undefined,
+      emergencyContact: formData.emergencyContact || undefined,
+      notes: formData.notes || undefined,
+    };
     mutation.mutate(
-      { data: formData },
+      { data: payload },
       {
         onSuccess: () => {
           toast({ title: "Sucesso", description: "Paciente cadastrado com sucesso!" });
           onSuccess();
         },
-        onError: () => {
-          toast({ variant: "destructive", title: "Erro", description: "Falha ao cadastrar paciente." });
+        onError: (err: any) => {
+          const message =
+            err?.data?.message ?? err?.message ?? "Falha ao cadastrar paciente.";
+          toast({ variant: "destructive", title: "Erro", description: message });
         },
       }
     );

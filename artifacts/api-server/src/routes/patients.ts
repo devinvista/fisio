@@ -112,13 +112,13 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       .values({
         name,
         cpf: normalizedCpf,
-        birthDate,
+        birthDate: birthDate || null,
         phone,
-        email,
-        address,
-        profession,
-        emergencyContact,
-        notes,
+        email: email || null,
+        address: address || null,
+        profession: profession || null,
+        emergencyContact: emergencyContact || null,
+        notes: notes || null,
         clinicId: req.clinicId ?? null,
       })
       .returning();
@@ -213,7 +213,17 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
 
     const [patient] = await db
       .update(patientsTable)
-      .set({ name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes })
+      .set({
+        name,
+        cpf,
+        birthDate: birthDate !== undefined ? (birthDate || null) : undefined,
+        phone,
+        email: email !== undefined ? (email || null) : undefined,
+        address: address !== undefined ? (address || null) : undefined,
+        profession: profession !== undefined ? (profession || null) : undefined,
+        emergencyContact: emergencyContact !== undefined ? (emergencyContact || null) : undefined,
+        notes: notes !== undefined ? (notes || null) : undefined,
+      })
       .where(condition)
       .returning();
 
