@@ -639,14 +639,10 @@ export default function Agenda() {
                           const spotsLeft = maxCapacity - occupancy;
                           const firstApt = grpApts[0];
 
-                          const grpScheduleColor = !selectedScheduleId && firstApt.scheduleId
-                            ? schedules.find((s) => s.id === firstApt.scheduleId)?.color
-                            : undefined;
-
                           return (
                             <div
                               key={`group-${item.procedureId}-${startTime}`}
-                              className="absolute rounded-lg overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:shadow-lg hover:-translate-y-px hover:z-20 bg-violet-50 border border-violet-200/70"
+                              className="absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20 bg-violet-500"
                               style={{
                                 top: top + 2,
                                 height: height - 4,
@@ -655,49 +651,45 @@ export default function Agenda() {
                               }}
                               onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
                             >
-                              {/* Accent bar */}
-                              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-violet-500" />
-                              {grpScheduleColor && (
-                                <span
-                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: grpScheduleColor }}
-                                  title={schedules.find((s) => s.id === firstApt.scheduleId)?.name}
-                                />
-                              )}
-                              <div className="pl-2.5 pr-1.5 h-full flex flex-col justify-center text-violet-900">
+                              <div className="px-2.5 py-2 h-full flex flex-col text-white">
                                 {tiny ? (
-                                  <div className="flex items-center gap-1">
-                                    <Users className="w-2.5 h-2.5 shrink-0 text-violet-500" />
-                                    <p className="text-[10px] font-bold truncate leading-none">{occupancy}/{maxCapacity}</p>
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <p className="text-[10px] font-bold truncate leading-none flex-1">{firstApt.procedure?.name}</p>
+                                    <span className="text-[9px] font-bold bg-white/20 px-1 rounded shrink-0">{occupancy}/{maxCapacity}</span>
                                   </div>
                                 ) : short ? (
                                   <>
-                                    <div className="flex items-center gap-1">
-                                      <Users className="w-2.5 h-2.5 shrink-0 text-violet-500" />
+                                    <div className="flex items-center gap-1 min-w-0">
                                       <p className="text-[10px] font-bold truncate leading-tight flex-1">{firstApt.procedure?.name}</p>
-                                      <span className="text-[9px] font-semibold text-violet-500 shrink-0">{occupancy}/{maxCapacity}</span>
+                                      <span className="text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full shrink-0">{occupancy}/{maxCapacity}</span>
                                     </div>
-                                    <p className="text-[9px] text-violet-500/80 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
+                                    <p className="text-[9px] text-white/70 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
                                   </>
                                 ) : (
                                   <>
-                                    <div className="flex items-start justify-between gap-1 mb-0.5">
-                                      <p className="text-[11px] font-bold truncate leading-tight flex-1">{firstApt.procedure?.name}</p>
+                                    <div className="flex items-start gap-1 min-w-0">
+                                      <p className="text-[11px] font-bold leading-tight flex-1 truncate">{firstApt.procedure?.name}</p>
                                       <span className={cn(
-                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none",
-                                        spotsLeft > 0 ? "bg-violet-100 text-violet-700" : "bg-red-100 text-red-700"
+                                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none mt-px",
+                                        spotsLeft > 0 ? "bg-white/25 text-white" : "bg-red-200 text-red-800"
                                       )}>
                                         {occupancy}/{maxCapacity}
                                       </span>
                                     </div>
-                                    <p className="text-[9px] text-violet-500/80 tabular-nums leading-tight">{startTime} – {endTime}</p>
-                                    <p className="text-[9px] text-violet-700/80 truncate leading-tight mt-0.5">
-                                      {grpApts.map((a) => a.patient?.name?.split(" ")[0]).join(" · ")}
-                                    </p>
-                                    {spotsLeft > 0 && height >= 100 && (
-                                      <p className="text-[9px] text-violet-400 flex items-center gap-0.5 mt-0.5">
-                                        <Users className="w-2.5 h-2.5" /> {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""} livre{spotsLeft !== 1 ? "s" : ""}
-                                      </p>
+                                    <p className="text-[10px] text-white/70 tabular-nums leading-tight mt-0.5">{startTime} – {endTime}</p>
+                                    {height >= 62 && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {grpApts.map((a) => (
+                                          <span key={a.id} className="text-[9px] font-semibold bg-white/20 text-white px-1.5 py-0.5 rounded-full leading-none">
+                                            {a.patient?.name?.split(" ")[0]}
+                                          </span>
+                                        ))}
+                                        {spotsLeft > 0 && (
+                                          <span className="text-[9px] font-semibold bg-white/10 text-white/60 px-1.5 py-0.5 rounded-full leading-none">
+                                            +{spotsLeft}
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
                                   </>
                                 )}
