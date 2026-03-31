@@ -78,11 +78,11 @@ const STATUS_CONFIG: Record<string, {
   bg: string; text: string; dot: string; border: string; badge: string;
   accent: string; cardBg: string; cardText: string; cardSub: string;
 }> = {
-  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    accent: "bg-blue-500",    cardBg: "bg-blue-50 border border-blue-200/70",        cardText: "text-blue-900",    cardSub: "text-blue-500/80" },
-  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500", cardBg: "bg-emerald-50 border border-emerald-200/70",    cardText: "text-emerald-900", cardSub: "text-emerald-600/80" },
-  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   accent: "bg-slate-400",   cardBg: "bg-slate-100 border border-slate-200/70",      cardText: "text-slate-600",   cardSub: "text-slate-400" },
-  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      accent: "bg-red-400",     cardBg: "bg-red-50 border border-red-200/70",          cardText: "text-red-800",     cardSub: "text-red-400/80" },
-  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", accent: "bg-orange-400",  cardBg: "bg-orange-50 border border-orange-200/70",    cardText: "text-orange-800",  cardSub: "text-orange-500/80" },
+  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    accent: "bg-blue-500",    cardBg: "bg-blue-500",    cardText: "text-white", cardSub: "text-white/70" },
+  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500", cardBg: "bg-emerald-500", cardText: "text-white", cardSub: "text-white/70" },
+  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   accent: "bg-slate-400",   cardBg: "bg-slate-400",   cardText: "text-white", cardSub: "text-white/70" },
+  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      accent: "bg-red-400",     cardBg: "bg-red-400",     cardText: "text-white", cardSub: "text-white/70" },
+  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", accent: "bg-orange-400",  cardBg: "bg-orange-400",  cardText: "text-white", cardSub: "text-white/70" },
 };
 
 type Appointment = AppointmentWithDetails;
@@ -710,15 +710,11 @@ export default function Agenda() {
                         const tiny = height < 36;
                         const short = height < 62;
 
-                        const aptScheduleColor = !selectedScheduleId && apt.scheduleId
-                          ? schedules.find((s) => s.id === apt.scheduleId)?.color
-                          : undefined;
-
                         return (
                           <div
                             key={apt.id}
                             className={cn(
-                              "absolute rounded-lg overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:shadow-lg hover:-translate-y-px hover:z-20",
+                              "absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20",
                               cfg.cardBg,
                             )}
                             style={{
@@ -729,16 +725,7 @@ export default function Agenda() {
                             }}
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
-                            {/* Accent bar */}
-                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", cfg.accent)} />
-                            {aptScheduleColor && (
-                              <span
-                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: aptScheduleColor }}
-                                title={schedules.find((s) => s.id === apt.scheduleId)?.name}
-                              />
-                            )}
-                            <div className={cn("pl-2.5 pr-1.5 h-full flex flex-col justify-center", cfg.cardText)}>
+                            <div className="px-2.5 py-2 h-full flex flex-col text-white">
                               {tiny ? (
                                 <p className="text-[10px] font-bold truncate leading-none">
                                   {apt.patient?.name?.split(" ")[0]}
@@ -746,8 +733,8 @@ export default function Agenda() {
                               ) : short ? (
                                 <>
                                   <div className="flex items-center gap-1">
-                                    {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-70" />}
-                                    <p className="text-[10px] font-bold truncate leading-tight">{apt.patient?.name?.split(" ")[0]}</p>
+                                    {apt.source === "online" && <Globe className="w-2.5 h-2.5 shrink-0 opacity-80" />}
+                                    <p className="text-[10px] font-bold truncate leading-tight flex-1">{apt.patient?.name?.split(" ")[0]}</p>
                                   </div>
                                   <p className={cn("text-[9px] tabular-nums leading-tight", cfg.cardSub)}>{apt.startTime}</p>
                                 </>
@@ -756,7 +743,7 @@ export default function Agenda() {
                                   <div className="flex items-start justify-between gap-1">
                                     <p className="text-[11px] font-bold truncate leading-tight flex-1">{apt.patient?.name}</p>
                                     {apt.source === "online" && (
-                                      <Globe className={cn("w-3 h-3 shrink-0 mt-0.5 opacity-70", cfg.cardSub)} />
+                                      <Globe className="w-3 h-3 shrink-0 mt-0.5 opacity-80" />
                                     )}
                                   </div>
                                   <p className={cn("text-[10px] truncate leading-tight mt-0.5", cfg.cardSub)}>{apt.procedure?.name}</p>
