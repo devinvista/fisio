@@ -16,6 +16,9 @@ import {
   Phone,
   Mail,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
   Loader2,
   LayoutGrid,
   LayoutList,
@@ -29,6 +32,8 @@ import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "cards" | "list";
+type SortField = "name" | "birthDate" | "phone" | "email" | "profession";
+type SortDir = "asc" | "desc";
 
 interface Patient {
   id: number;
@@ -61,8 +66,19 @@ export default function PatientsList() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    return (localStorage.getItem("patients_view_mode") as ViewMode) ?? "cards";
+    return (localStorage.getItem("patients_view_mode") as ViewMode) ?? "list";
   });
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function handleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -202,7 +218,12 @@ export default function PatientsList() {
         ) : viewMode === "cards" ? (
           <CardView patients={patients} />
         ) : (
-          <ListView patients={patients} />
+          <ListView
+            patients={patients}
+            sortField={sortField}
+            sortDir={sortDir}
+            onSort={handleSort}
+          />
         )}
 
       </div>
@@ -291,24 +312,68 @@ function CardView({ patients }: { patients: Patient[] }) {
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
-function ListView({ patients }: { patients: Patient[] }) {
+interface ListViewProps {
+  patients: Patient[];
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (field: SortField) => void;
+}
+
+function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
+  if (sortField !== field) return <ChevronsUpDown className="w-3 h-3 ml-1 opacity-40" />;
+  return sortDir === "asc"
+    ? <ChevronUp className="w-3 h-3 ml-1 text-primary" />
+    : <ChevronDown className="w-3 h-3 ml-1 text-primary" />;
+}
+
+function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
+  const sorted = [...patients].sort((a, b) => {
+    let va: string = "";
+    let vb: string = "";
+    if (sortField === "name") { va = a.name ?? ""; vb = b.name ?? ""; }
+    else if (sortField === "birthDate") { va = a.birthDate ?? ""; vb = b.birthDate ?? ""; }
+    else if (sortField === "phone") { va = a.phone ?? ""; vb = b.phone ?? ""; }
+    else if (sortField === "email") { va = a.email ?? ""; vb = b.email ?? ""; }
+    else if (sortField === "profession") { va = a.profession ?? ""; vb = b.profession ?? ""; }
+    const cmp = va.localeCompare(vb, "pt-BR", { sensitivity: "base" });
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const cols = "2fr 110px 140px 160px 120px 36px";
+
+  function HeaderCell({ field, label }: { field: SortField; label: string }) {
+    const active = sortField === field;
+    return (
+      <button
+        onClick={() => onSort(field)}
+        className={cn(
+          "flex items-center text-[11px] font-bold uppercase tracking-wider transition-colors select-none",
+          active ? "text-primary" : "text-slate-400 hover:text-slate-600"
+        )}
+      >
+        {label}
+        <SortIcon field={field} sortField={sortField} sortDir={sortDir} />
+      </button>
+    );
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       {/* Header */}
       <div
-        className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"
-        style={{ gridTemplateColumns: "2fr 110px 140px 160px 110px 40px" }}
+        className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5"
+        style={{ gridTemplateColumns: cols }}
       >
-        <span>Paciente</span>
-        <span>Nascimento</span>
-        <span>Telefone</span>
-        <span>E-mail</span>
-        <span>Profissão</span>
+        <HeaderCell field="name" label="Paciente" />
+        <HeaderCell field="birthDate" label="Nascimento" />
+        <HeaderCell field="phone" label="Telefone" />
+        <HeaderCell field="email" label="E-mail" />
+        <HeaderCell field="profession" label="Profissão" />
         <span />
       </div>
 
       {/* Rows */}
-      {patients.map((patient, idx) => {
+      {sorted.map((patient, idx) => {
         const age = calcAge(patient.birthDate);
         const dob = formatDate(patient.birthDate);
         const initials = patient.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
@@ -318,9 +383,9 @@ function ListView({ patients }: { patients: Patient[] }) {
             <div
               className={cn(
                 "grid items-center px-4 py-3 hover:bg-primary/[0.03] transition-colors cursor-pointer group",
-                idx !== patients.length - 1 && "border-b border-slate-100"
+                idx !== sorted.length - 1 && "border-b border-slate-100"
               )}
-              style={{ gridTemplateColumns: "2fr 110px 140px 160px 110px 40px" }}
+              style={{ gridTemplateColumns: cols }}
             >
               {/* Name + CPF */}
               <div className="flex items-center gap-3 min-w-0 pr-2">
