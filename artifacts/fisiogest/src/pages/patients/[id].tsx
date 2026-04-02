@@ -3019,13 +3019,13 @@ const STEP_TO_ROUTE: Record<string, string> = {
 
 const JOURNEY_META: Record<string, { icon: React.ReactNode; description: string; actionLabel: string }> = {
   cadastro:         { icon: <User className="w-4 h-4" />,          description: "Registro do paciente no sistema", actionLabel: "" },
-  anamnese:         { icon: <ClipboardList className="w-4 h-4" />, description: "Coleta do histórico clínico e queixa principal", actionLabel: "Abrir Anamnese" },
-  avaliacao:        { icon: <Activity className="w-4 h-4" />,      description: "Avaliação física e funcional do paciente", actionLabel: "Abrir Avaliações" },
-  plano_tratamento: { icon: <Target className="w-4 h-4" />,        description: "Objetivos e técnicas de tratamento", actionLabel: "Abrir Plano" },
-  procedimentos:    { icon: <Package className="w-4 h-4" />,       description: "Aquisição de pacotes de sessões", actionLabel: "Ver Pacotes" },
-  agendamento:      { icon: <CalendarDays className="w-4 h-4" />,  description: "Marcação do primeiro atendimento", actionLabel: "Abrir Agenda" },
-  tratamento:       { icon: <TrendingUp className="w-4 h-4" />,    description: "Realização das sessões de fisioterapia", actionLabel: "Abrir Evoluções" },
-  alta:             { icon: <BadgeCheck className="w-4 h-4" />,    description: "Alta fisioterapêutica formal (COFFITO)", actionLabel: "Abrir Alta" },
+  anamnese:         { icon: <ClipboardList className="w-4 h-4" />, description: "Coleta do histórico clínico e queixa principal", actionLabel: "Ir para Anamnese" },
+  avaliacao:        { icon: <Activity className="w-4 h-4" />,      description: "Avaliação física e funcional do paciente", actionLabel: "Ir para Avaliações" },
+  plano_tratamento: { icon: <Target className="w-4 h-4" />,        description: "Objetivos e técnicas de tratamento", actionLabel: "Ir para Plano" },
+  procedimentos:    { icon: <Package className="w-4 h-4" />,       description: "Aquisição de pacotes de sessões", actionLabel: "Ir para Pacotes" },
+  agendamento:      { icon: <CalendarDays className="w-4 h-4" />,  description: "Marcação do primeiro atendimento", actionLabel: "Ir para Agenda" },
+  tratamento:       { icon: <TrendingUp className="w-4 h-4" />,    description: "Realização das sessões de fisioterapia", actionLabel: "Ir para Evoluções" },
+  alta:             { icon: <BadgeCheck className="w-4 h-4" />,    description: "Alta fisioterapêutica formal (COFFITO)", actionLabel: "Ir para Alta" },
 };
 
 const CIRCLE_STYLE: Record<JourneyStatus, { ring: string; bg: string; text: string }> = {
@@ -3237,37 +3237,33 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
         )}
       </div>
 
-      {/* ── Stat pills + progress ── */}
+      {/* ── Stat pills (4 always visible) ── */}
       {steps.length > 0 && (
-        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {stats.completed > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
-                <Check className="w-3 h-3" />{stats.completed} concluída{stats.completed !== 1 ? "s" : ""}
-              </span>
-            )}
-            {stats.in_progress > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
-                <Clock className="w-3 h-3" />{stats.in_progress} em andamento
-              </span>
-            )}
-            {stats.pending > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                <div className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />{stats.pending} pendente{stats.pending !== 1 ? "s" : ""}
-              </span>
-            )}
-            {stats.cancelled > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">
-                <XCircle className="w-3 h-3" />{stats.cancelled} cancelada{stats.cancelled !== 1 ? "s" : ""}
-              </span>
-            )}
+        <div className="rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+          <div className="grid grid-cols-4 gap-2">
+            <div className={`flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 border ${stats.completed > 0 ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-100"}`}>
+              <span className={`text-lg font-bold leading-none ${stats.completed > 0 ? "text-emerald-600" : "text-slate-300"}`}>{stats.completed}</span>
+              <span className={`text-[10px] font-medium text-center leading-tight ${stats.completed > 0 ? "text-emerald-600" : "text-slate-400"}`}>Concluída{stats.completed !== 1 ? "s" : ""}</span>
+            </div>
+            <div className={`flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 border ${stats.in_progress > 0 ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100"}`}>
+              <span className={`text-lg font-bold leading-none ${stats.in_progress > 0 ? "text-amber-600" : "text-slate-300"}`}>{stats.in_progress}</span>
+              <span className={`text-[10px] font-medium text-center leading-tight ${stats.in_progress > 0 ? "text-amber-600" : "text-slate-400"}`}>Em andamento</span>
+            </div>
+            <div className={`flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 border ${stats.pending > 0 ? "bg-slate-100 border-slate-200" : "bg-slate-50 border-slate-100"}`}>
+              <span className={`text-lg font-bold leading-none ${stats.pending > 0 ? "text-slate-600" : "text-slate-300"}`}>{stats.pending}</span>
+              <span className={`text-[10px] font-medium text-center leading-tight ${stats.pending > 0 ? "text-slate-600" : "text-slate-400"}`}>Pendente{stats.pending !== 1 ? "s" : ""}</span>
+            </div>
+            <div className={`flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 border ${stats.cancelled > 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-100"}`}>
+              <span className={`text-lg font-bold leading-none ${stats.cancelled > 0 ? "text-red-500" : "text-slate-300"}`}>{stats.cancelled}</span>
+              <span className={`text-[10px] font-medium text-center leading-tight ${stats.cancelled > 0 ? "text-red-500" : "text-slate-400"}`}>Cancelada{stats.cancelled !== 1 ? "s" : ""}</span>
+            </div>
           </div>
-          <div>
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="text-slate-500 font-medium">Progresso geral</span>
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-[11px] mb-1">
+              <span className="text-slate-400 font-medium">Progresso geral</span>
               <span className="font-bold text-primary">{progressPct}%</span>
             </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full transition-all duration-700"
                 style={{ width: `${progressPct}%` }}
@@ -3354,7 +3350,12 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
                     relative z-10 w-9 h-9 rounded-full border-2 flex items-center justify-center
                     font-bold text-sm transition-all duration-200 shrink-0
                     ${circle.ring} ${circle.bg} ${circle.text}
-                    ${isCurrentFocus ? "ring-2 ring-offset-1 ring-primary/30 shadow-sm" : ""}
+                    ${isCurrentFocus && step.status === "in_progress"
+                      ? "ring-2 ring-offset-2 ring-amber-400 shadow-md scale-105"
+                      : isCurrentFocus
+                      ? "ring-2 ring-offset-1 ring-primary/40 shadow-sm"
+                      : ""
+                    }
                   `}>
                     {step.status === "completed"
                       ? <Check className="w-4 h-4" />
@@ -3370,9 +3371,13 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
 
                 {/* ── Card ── */}
                 <div className={`
-                  flex-1 mb-3 rounded-xl border shadow-sm overflow-hidden transition-all duration-200
+                  flex-1 mb-3 rounded-xl border overflow-hidden transition-all duration-200
                   ${card.border} ${card.bg}
-                  ${isCurrentFocus ? "ring-1 ring-primary/20" : ""}
+                  ${isCurrentFocus && step.status === "in_progress"
+                    ? "shadow-md ring-1 ring-amber-300/60 border-l-[3px] border-l-amber-400"
+                    : isCurrentFocus
+                    ? "shadow-sm ring-1 ring-primary/20"
+                    : "shadow-sm"}
                 `}>
                   {/* Card header — always visible */}
                   <button
