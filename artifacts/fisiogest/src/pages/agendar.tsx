@@ -233,14 +233,23 @@ function StepSeusDados({
     }, 600);
   }, []);
 
-  const handlePhoneChange = (val: string) => {
-    setForm((prev) => ({ ...prev, phone: val }));
-    runLookup(val);
-  };
-
+  // CPF is the primary lookup field — triggers search only when all 11 digits are present
   const handleCpfChange = (val: string) => {
     setForm((prev) => ({ ...prev, cpf: val }));
-    // Run lookup by CPF whenever a patient hasn't been found yet (phone may be filled but returned nothing)
+    const digits = val.replace(/\D/g, "");
+    if (digits.length === 11) {
+      runLookup(val);
+    } else if (digits.length < 8) {
+      // Reset lookup state when user clears the CPF field
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setLookupState("idle");
+      setFoundPatient(null);
+    }
+  };
+
+  // Phone is secondary — only triggers lookup if CPF hasn't already found the patient
+  const handlePhoneChange = (val: string) => {
+    setForm((prev) => ({ ...prev, phone: val }));
     if (lookupState !== "found") {
       runLookup(val);
     }
@@ -258,7 +267,7 @@ function StepSeusDados({
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-800 mb-1">Seus Dados</h2>
         <p className="text-slate-500 text-sm">
-          Preencha seus dados para agendar. Se já for paciente, suas informações serão preenchidas automaticamente.
+          Digite seu CPF para buscar seu cadastro automaticamente. Se for seu primeiro agendamento, preencha os demais campos.
         </p>
       </div>
 
@@ -321,18 +330,17 @@ function StepSeusDados({
       {/* Form fields */}
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Telefone — triggers lookup */}
+          {/* CPF — campo principal de identificação, sempre dispara lookup */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
+            <Label className="text-sm font-medium text-slate-700">CPF *</Label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <Input
                 autoFocus
                 required
-                placeholder="(11) 99999-0000"
-                value={form.phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                className={`h-11 rounded-xl pl-9 pr-10 transition-all
+                placeholder="000.000.000-00"
+                value={form.cpf}
+                onChange={(e) => handleCpfChange(e.target.value)}
+                className={`h-11 rounded-xl pr-10 transition-all
                   ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}
                   ${lookupState === "new" ? "border-blue-300" : ""}`}
               />
@@ -344,17 +352,21 @@ function StepSeusDados({
             </div>
           </div>
 
-          {/* CPF — also triggers lookup if phone is empty */}
+          {/* Telefone — campo secundário de identificação */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-slate-700">CPF</Label>
-            <Input
-              placeholder="000.000.000-00 (opcional)"
-              value={form.cpf}
-              onChange={(e) => handleCpfChange(e.target.value)}
-              className={`h-11 rounded-xl transition-all
-                ${isPreFilled && form.cpf ? "border-emerald-300 bg-emerald-50/30" : ""}
-                ${lookupState === "new" ? "border-blue-300" : ""}`}
-            />
+            <Label className="text-sm font-medium text-slate-700">Telefone / WhatsApp *</Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <Input
+                required
+                placeholder="(11) 99999-0000"
+                value={form.phone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                className={`h-11 rounded-xl pl-9 transition-all
+                  ${isPreFilled ? "border-emerald-300 bg-emerald-50/30" : ""}
+                  ${lookupState === "new" ? "border-blue-300" : ""}`}
+              />
+            </div>
           </div>
         </div>
 
