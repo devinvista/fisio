@@ -48,15 +48,26 @@ router.get("/patient-lookup", async (req, res) => {
     const cleaned = q.replace(/\D/g, "");
     let patient: typeof patientsTable.$inferSelect | undefined;
 
-    // Try CPF (formatted or raw 11 digits)
+    // Try CPF — search by formatted AND raw digits to handle both storage formats
     if (cleaned.length === 11) {
       const cpfFormatted = cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
       const rows = await db
         .select()
         .from(patientsTable)
-        .where(eq(patientsTable.cpf, cpfFormatted))
+        .where(
+          sql`regexp_replace(${patientsTable.cpf}, '[^0-9]', '', 'g') = ${cleaned}`
+        )
         .limit(1);
       patient = rows[0];
+      // Fallback: exact match on formatted string
+      if (!patient) {
+        const rows2 = await db
+          .select()
+          .from(patientsTable)
+          .where(eq(patientsTable.cpf, cpfFormatted))
+          .limit(1);
+        patient = rows2[0];
+      }
     }
 
     // Try phone (exact match on cleaned digits, last 9 or 10 chars)

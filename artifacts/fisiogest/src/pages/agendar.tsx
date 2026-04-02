@@ -35,6 +35,14 @@ import LogoMark from "@/components/logo-mark";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function formatCpfMask(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
 function formatCurrency(value: number | string) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value));
 }
@@ -233,13 +241,14 @@ function StepSeusDados({
     }, 600);
   }, []);
 
-  // CPF is the primary lookup field — triggers search only when all 11 digits are present
+  // CPF is the primary lookup field — applies mask and triggers search on all 11 digits
   const handleCpfChange = (val: string) => {
-    setForm((prev) => ({ ...prev, cpf: val }));
-    const digits = val.replace(/\D/g, "");
+    const masked = formatCpfMask(val);
+    setForm((prev) => ({ ...prev, cpf: masked }));
+    const digits = masked.replace(/\D/g, "");
     if (digits.length === 11) {
-      runLookup(val);
-    } else if (digits.length < 8) {
+      runLookup(masked);
+    } else if (digits.length === 0) {
       // Reset lookup state when user clears the CPF field
       if (debounceRef.current) clearTimeout(debounceRef.current);
       setLookupState("idle");
