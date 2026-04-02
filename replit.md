@@ -225,7 +225,7 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `appointments` | id, patientId, procedureId, date, startTime, **endTime** (calculado), status, notes |
 | `anamnesis` | id, patientId (único), mainComplaint, diseaseHistory, medications, painScale… |
 | `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis |
-| `treatment_plans` | id, patientId (único), objectives, techniques, frequency, estimatedSessions, status |
+| `treatment_plans` | id, patientId (múltiplos por paciente), **clinicId** (FK → clinics), objectives, techniques, frequency, estimatedSessions, status |
 | `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications, **painScale** (0–10) |
 | `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
 | `patient_subscriptions` | id, patientId, procedureId, startDate, billingDay, monthlyAmount, status, clinicId, **cancelledAt** (timestamp), **nextBillingDate** (date) |
@@ -279,7 +279,11 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 | GET/POST | `/anamnesis` | Upsert anamnese |
 | GET/POST | `/evaluations` | Listar / Criar avaliação |
 | PUT/DELETE | `/evaluations/:id` | Atualizar / Excluir |
-| GET/POST | `/treatment-plan` | Upsert plano de tratamento |
+| GET | `/treatment-plans` | Listar todos os planos do paciente |
+| POST | `/treatment-plans` | Criar novo plano (com clinicId do paciente) |
+| GET/PUT | `/treatment-plans/:planId` | Buscar / Atualizar plano específico |
+| DELETE | `/treatment-plans/:planId` | Excluir plano |
+| GET/POST | `/treatment-plan` | Compat: upsert do plano ativo mais recente |
 | GET/POST | `/evolutions` | Listar / Criar evolução |
 | PUT/DELETE | `/evolutions/:id` | Atualizar / Excluir |
 | GET/POST | `/discharge-summary` | Upsert alta fisioterapêutica (COFFITO) |

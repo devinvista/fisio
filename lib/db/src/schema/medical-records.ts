@@ -1,7 +1,8 @@
-import { pgTable, serial, integer, text, timestamp, date, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, date, numeric, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { patientsTable } from "./patients";
+import { clinicsTable } from "./clinics";
 import { appointmentsTable } from "./appointments";
 
 export const anamnesisTable = pgTable("anamnesis", {
@@ -42,7 +43,8 @@ export type Evaluation = typeof evaluationsTable.$inferSelect;
 
 export const treatmentPlansTable = pgTable("treatment_plans", {
   id: serial("id").primaryKey(),
-  patientId: integer("patient_id").notNull().unique().references(() => patientsTable.id),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id),
+  clinicId: integer("clinic_id").references(() => clinicsTable.id),
   objectives: text("objectives"),
   techniques: text("techniques"),
   frequency: text("frequency"),
@@ -52,7 +54,10 @@ export const treatmentPlansTable = pgTable("treatment_plans", {
   status: text("status").notNull().default("ativo"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_treatment_plans_patient_id").on(table.patientId),
+  index("idx_treatment_plans_clinic_id").on(table.clinicId),
+]);
 
 export const insertTreatmentPlanSchema = createInsertSchema(treatmentPlansTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertTreatmentPlan = z.infer<typeof insertTreatmentPlanSchema>;

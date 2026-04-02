@@ -183,17 +183,62 @@ router.delete("/evaluations/:evaluationId", requirePermission("medical.write"), 
   }
 });
 
-router.get("/treatment-plan", requirePermission("medical.read"), async (req: Request<P>, res) => {
+// ─── Multi-plan: list all plans for patient ────────────────────────────────
+router.get("/treatment-plans", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
+    const plans = await db
+      .select()
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.patientId, patientId))
+      .orderBy(desc(treatmentPlansTable.createdAt));
+    res.json(plans);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Multi-plan: create a new plan ─────────────────────────────────────────
+router.post("/treatment-plans", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const authReq = req as AuthRequest;
+    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
+
+    const [patient] = await db.select({ clinicId: patientsTable.clinicId }).from(patientsTable).where(eq(patientsTable.id, patientId)).limit(1);
+    const clinicId = patient?.clinicId ?? authReq.clinicId ?? null;
+
+    const [plan] = await db
+      .insert(treatmentPlansTable)
+      .values({ patientId, clinicId, objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null })
+      .returning();
+
+    await logAudit({
+      userId: authReq.userId,
+      patientId,
+      action: "create",
+      entityType: "treatment_plan",
+      entityId: plan?.id,
+      summary: "Plano de tratamento criado",
+    });
+    res.status(201).json(plan);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Multi-plan: get specific plan ─────────────────────────────────────────
+router.get("/treatment-plans/:planId", requirePermission("medical.read"), async (req: Request<{ patientId: string; planId: string }>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const planId = parseInt(req.params.planId);
     const [plan] = await db
       .select()
       .from(treatmentPlansTable)
-      .where(eq(treatmentPlansTable.patientId, patientId));
-    if (!plan) {
-      res.status(404).json({ error: "Not Found", message: "Plano de tratamento não encontrado" });
-      return;
-    }
+      .where(and(eq(treatmentPlansTable.id, planId), eq(treatmentPlansTable.patientId, patientId)));
+    if (!plan) { res.status(404).json({ error: "Not Found" }); return; }
     res.json(plan);
   } catch (err) {
     console.error(err);
@@ -201,37 +246,121 @@ router.get("/treatment-plan", requirePermission("medical.read"), async (req: Req
   }
 });
 
-router.post("/treatment-plan", requirePermission("medical.write"), async (req: Request<P>, res) => {
+// ─── Multi-plan: update specific plan ──────────────────────────────────────
+router.put("/treatment-plans/:planId", requirePermission("medical.write"), async (req: Request<{ patientId: string; planId: string }>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
+    const planId = parseInt(req.params.planId);
+    const { objectives, techniques, frequency, estimatedSessions, status, startDate, responsibleProfessional } = req.body;
 
-    const existing = await db
-      .select()
-      .from(treatmentPlansTable)
-      .where(eq(treatmentPlansTable.patientId, patientId));
+    const [existing] = await db.select({ id: treatmentPlansTable.id }).from(treatmentPlansTable)
+      .where(and(eq(treatmentPlansTable.id, planId), eq(treatmentPlansTable.patientId, patientId)));
+    if (!existing) { res.status(404).json({ error: "Not Found" }); return; }
 
-    const isPlanUpdate = existing.length > 0;
-    let plan;
-    if (isPlanUpdate) {
-      [plan] = await db
-        .update(treatmentPlansTable)
-        .set({ objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null, updatedAt: new Date() })
-        .where(eq(treatmentPlansTable.patientId, patientId))
-        .returning();
-    } else {
-      [plan] = await db
-        .insert(treatmentPlansTable)
-        .values({ patientId, objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null })
-        .returning();
-    }
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (objectives !== undefined) updateData.objectives = objectives;
+    if (techniques !== undefined) updateData.techniques = techniques;
+    if (frequency !== undefined) updateData.frequency = frequency;
+    if (estimatedSessions !== undefined) updateData.estimatedSessions = estimatedSessions;
+    if (status !== undefined) updateData.status = status;
+    if (startDate !== undefined) updateData.startDate = startDate || null;
+    if (responsibleProfessional !== undefined) updateData.responsibleProfessional = responsibleProfessional || null;
+
+    const [plan] = await db
+      .update(treatmentPlansTable)
+      .set(updateData as any)
+      .where(eq(treatmentPlansTable.id, planId))
+      .returning();
+
     await logAudit({
       userId: (req as AuthRequest).userId,
       patientId,
-      action: isPlanUpdate ? "update" : "create",
+      action: "update",
+      entityType: "treatment_plan",
+      entityId: planId,
+      summary: "Plano de tratamento atualizado",
+    });
+    res.json(plan);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Multi-plan: delete specific plan ──────────────────────────────────────
+router.delete("/treatment-plans/:planId", requirePermission("medical.write"), async (req: Request<{ patientId: string; planId: string }>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const planId = parseInt(req.params.planId);
+    const [existing] = await db.select({ id: treatmentPlansTable.id }).from(treatmentPlansTable)
+      .where(and(eq(treatmentPlansTable.id, planId), eq(treatmentPlansTable.patientId, patientId)));
+    if (!existing) { res.status(404).json({ error: "Not Found" }); return; }
+    await db.delete(treatmentPlansTable).where(eq(treatmentPlansTable.id, planId));
+    await logAudit({
+      userId: (req as AuthRequest).userId,
+      patientId,
+      action: "delete",
+      entityType: "treatment_plan",
+      entityId: planId,
+      summary: "Plano de tratamento excluído",
+    });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Compat: single-plan GET (returns most recent active plan) ──────────────
+router.get("/treatment-plan", requirePermission("medical.read"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const plans = await db
+      .select()
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.patientId, patientId))
+      .orderBy(desc(treatmentPlansTable.createdAt));
+    const active = plans.find(p => p.status === "ativo") ?? plans[0];
+    if (!active) { res.status(404).json({ error: "Not Found", message: "Plano de tratamento não encontrado" }); return; }
+    res.json(active);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Compat: single-plan POST (updates most recent or creates) ─────────────
+router.post("/treatment-plan", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const authReq = req as AuthRequest;
+    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
+
+    const plans = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId)).orderBy(desc(treatmentPlansTable.createdAt));
+    const existing = plans.find(p => p.status === "ativo") ?? plans[0];
+
+    let plan;
+    if (existing) {
+      [plan] = await db
+        .update(treatmentPlansTable)
+        .set({ objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null, updatedAt: new Date() })
+        .where(eq(treatmentPlansTable.id, existing.id))
+        .returning();
+    } else {
+      const [patient] = await db.select({ clinicId: patientsTable.clinicId }).from(patientsTable).where(eq(patientsTable.id, patientId)).limit(1);
+      const clinicId = patient?.clinicId ?? authReq.clinicId ?? null;
+      [plan] = await db
+        .insert(treatmentPlansTable)
+        .values({ patientId, clinicId, objectives, techniques, frequency, estimatedSessions, status, startDate: startDate || null, responsibleProfessional: responsibleProfessional || null })
+        .returning();
+    }
+    await logAudit({
+      userId: authReq.userId,
+      patientId,
+      action: existing ? "update" : "create",
       entityType: "treatment_plan",
       entityId: plan?.id,
-      summary: isPlanUpdate ? "Plano de tratamento atualizado" : "Plano de tratamento criado",
+      summary: existing ? "Plano de tratamento atualizado" : "Plano de tratamento criado",
     });
     res.json(plan);
   } catch (err) {

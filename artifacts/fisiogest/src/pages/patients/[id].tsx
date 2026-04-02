@@ -2245,21 +2245,42 @@ function TreatmentPlanItemsSection({
 // ─── Treatment Plan Tab ─────────────────────────────────────────────────────────
 
 function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?: PatientBasic }) {
-  const { data, isLoading, isError } = useGetTreatmentPlan(patientId);
-  const mutation = useSaveTreatmentPlan();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isNewPlan = !isLoading && (!data || isError);
   const { data: clinic } = useQuery<ClinicInfo | null>({ queryKey: ["clinic-current"], queryFn: fetchClinicForPrint, staleTime: 60000 });
 
-  // Plan items query hoisted here to avoid the callback/infinite-loop pattern
-  const planItemsKey = data?.id ? [`/api/treatment-plans/${data.id}/procedures`] : null;
-  const { data: planItems = [] } = useQuery<PlanProcedureItem[]>({
-    queryKey: planItemsKey ?? ["plan-items-disabled"],
-    queryFn: () => fetch(`/api/treatment-plans/${data!.id}/procedures`, {
+  // ─── All plans list ──────────────────────────────────────────────────────
+  const plansKey = [`/api/patients/${patientId}/treatment-plans`];
+  const { data: allPlans = [], isLoading: plansLoading } = useQuery<any[]>({
+    queryKey: plansKey,
+    queryFn: () => fetch(`/api/patients/${patientId}/treatment-plans`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
     }).then(r => r.json()),
-    enabled: !!data?.id,
+    enabled: !!patientId,
+  });
+
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [creatingNew, setCreatingNew] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Auto-select most recent active plan on load
+  useEffect(() => {
+    if (allPlans.length > 0 && selectedPlanId === null) {
+      const active = allPlans.find(p => p.status === "ativo") ?? allPlans[0];
+      setSelectedPlanId(active.id);
+    }
+  }, [allPlans, selectedPlanId]);
+
+  const selectedPlan = allPlans.find(p => p.id === selectedPlanId) ?? null;
+
+  // ─── Plan items for selected plan ───────────────────────────────────────
+  const planItemsKey = selectedPlanId ? [`/api/treatment-plans/${selectedPlanId}/procedures`] : null;
+  const { data: planItems = [] } = useQuery<PlanProcedureItem[]>({
+    queryKey: planItemsKey ?? ["plan-items-disabled"],
+    queryFn: () => fetch(`/api/treatment-plans/${selectedPlanId}/procedures`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+    }).then(r => r.json()),
+    enabled: !!selectedPlanId,
   });
 
   const { data: appointments = [] } = useQuery<any[]>({
@@ -2270,12 +2291,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
     enabled: !!patientId,
   });
 
-  // Count sessions where patient actually attended ("presenca" = attended, "concluido" = marked completed)
-  const completedSessions = appointments.filter(
-    (a: any) => a.status === "concluido" || a.status === "presenca"
-  ).length;
-
-  const planItemsInitRef = useRef(false);
+  const completedSessions = appointments.filter((a: any) => a.status === "concluido" || a.status === "presenca").length;
 
   const { data: professionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
     queryKey: ["/api/users/professionals"],
@@ -2284,237 +2300,332 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
     }).then(r => r.json()),
   });
 
-  const [form, setForm] = useState({
-    objectives: "", techniques: "", frequency: "",
-    estimatedSessions: "" as string | number,
-    startDate: "",
-    responsibleProfessional: "",
-    status: "ativo" as "ativo" | "concluido" | "suspenso",
-  });
+  // ─── Form state per selected plan ───────────────────────────────────────
+  const emptyForm = { objectives: "", techniques: "", frequency: "", estimatedSessions: "" as string | number, startDate: "", responsibleProfessional: "", status: "ativo" as "ativo" | "concluido" | "suspenso" };
+  const [form, setForm] = useState(emptyForm);
+  const planItemsInitRef = useRef(false);
 
   useEffect(() => {
-    if (data) {
+    planItemsInitRef.current = false;
+    if (selectedPlan) {
       setForm({
-        objectives: data.objectives || "",
-        techniques: data.techniques || "",
-        frequency: data.frequency || "",
-        estimatedSessions: data.estimatedSessions || "",
-        startDate: (data as any).startDate || "",
-        responsibleProfessional: (data as any).responsibleProfessional || "",
-        status: (data.status as "ativo" | "concluido" | "suspenso") || "ativo",
+        objectives: selectedPlan.objectives || "",
+        techniques: selectedPlan.techniques || "",
+        frequency: selectedPlan.frequency || "",
+        estimatedSessions: selectedPlan.estimatedSessions || "",
+        startDate: selectedPlan.startDate || "",
+        responsibleProfessional: selectedPlan.responsibleProfessional || "",
+        status: (selectedPlan.status as "ativo" | "concluido" | "suspenso") || "ativo",
       });
+    } else {
+      setForm(emptyForm);
     }
-  }, [data]);
+  }, [selectedPlanId, allPlans]);
 
-  // Auto-sync estimatedSessions and frequency from planItems when items change
+  // Auto-sync sessions/freq from plan items
   useEffect(() => {
-    if (!planItemsInitRef.current) {
-      planItemsInitRef.current = true;
-      return;
-    }
+    if (!planItemsInitRef.current) { planItemsInitRef.current = true; return; }
     if (planItems.length === 0) return;
-
     const totalSess = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
     const spwValues = planItems.map(i => i.sessionsPerWeek ?? 0).filter(v => v > 0);
     const maxSpw = spwValues.length > 0 ? Math.max(...spwValues) : 0;
     const freqStr = maxSpw > 0 ? `${maxSpw}x/semana` : "";
-
-    setForm(f => ({
-      ...f,
-      ...(totalSess > 0 ? { estimatedSessions: totalSess } : {}),
-      ...(freqStr ? { frequency: freqStr } : {}),
-    }));
+    setForm(f => ({ ...f, ...(totalSess > 0 ? { estimatedSessions: totalSess } : {}), ...(freqStr ? { frequency: freqStr } : {}) }));
   }, [planItems]);
 
-  // Auto-suggest total sessions from planItems
-  const suggestedSessions = planItems.reduce((s, i) => i.packageType === "mensal" ? s : s + (i.totalSessions ?? 0), 0);
+  // ─── Mutations ───────────────────────────────────────────────────────────
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    mutation.mutate({
-      patientId,
-      data: {
-        ...form,
-        estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : null,
-        startDate: form.startDate || null,
-        responsibleProfessional: form.responsibleProfessional || null,
-      } as any,
-    }, {
-      onSuccess: () => {
-        toast({ title: "Salvo com sucesso", description: "Plano de tratamento atualizado." });
-        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/treatment-plan`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
-      },
-      onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
-    });
+  const handleSave = async () => {
+    if (!selectedPlanId) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/treatment-plans/${selectedPlanId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+        body: JSON.stringify({ ...form, estimatedSessions: form.estimatedSessions ? Number(form.estimatedSessions) : null, startDate: form.startDate || null, responsibleProfessional: form.responsibleProfessional || null }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Salvo com sucesso", description: "Plano de tratamento atualizado." });
+      queryClient.invalidateQueries({ queryKey: plansKey });
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const statusStyles = {
+  const handleCreatePlan = async () => {
+    setCreatingNew(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/treatment-plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+        body: JSON.stringify({ status: "ativo" }),
+      });
+      if (!res.ok) throw new Error();
+      const created = await res.json();
+      await queryClient.invalidateQueries({ queryKey: plansKey });
+      setSelectedPlanId(created.id);
+      toast({ title: "Novo plano criado", description: "Preencha os dados e salve." });
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível criar o plano.", variant: "destructive" });
+    } finally {
+      setCreatingNew(false);
+    }
+  };
+
+  const handleDeletePlan = async (planId: number) => {
+    setDeletingId(planId);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/treatment-plans/${planId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Plano excluído" });
+      await queryClient.invalidateQueries({ queryKey: plansKey });
+      // Select next plan
+      const remaining = allPlans.filter(p => p.id !== planId);
+      setSelectedPlanId(remaining.length > 0 ? remaining[0].id : null);
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível excluir.", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const statusStyles: Record<string, string> = {
     ativo: "bg-green-100 text-green-700 border-green-200",
     concluido: "bg-slate-100 text-slate-700 border-slate-200",
     suspenso: "bg-orange-100 text-orange-700 border-orange-200",
   };
+  const statusLabel: Record<string, string> = { ativo: "Ativo", concluido: "Concluído", suspenso: "Suspenso" };
 
-  if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
+  if (plansLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
   return (
-    <Card className="border-none shadow-md">
-      <CardHeader className="border-b border-slate-100 pb-4">
-        <div className="flex items-start justify-between flex-wrap gap-2">
-          <div>
-            <CardTitle className="text-xl">Plano de Tratamento</CardTitle>
-            <CardDescription>Objetivos, procedimentos, estimativas e base para contrato</CardDescription>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center border px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status]}`}>
-              {form.status === "ativo" ? "Ativo" : form.status === "concluido" ? "Concluído" : "Suspenso"}
-            </span>
-            {patient && (
-              <>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
-                  onClick={() => printDocument(generatePlanHTML(patient, form, appointments, planItems, clinic), `Plano de Tratamento — ${patient.name}`)}>
-                  <Printer className="w-3.5 h-3.5" /> Imprimir Plano
-                </Button>
-                <Button size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => printDocument(generateContractHTML(patient, form, planItems, clinic), `Contrato — ${patient.name}`)}>
-                  <ScrollText className="w-3.5 h-3.5" /> Gerar Contrato
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="p-6 space-y-5">
-
-        {/* Objectives */}
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <Target className="w-4 h-4 text-primary" /> Objetivos do Tratamento
-          </Label>
-          <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-            value={form.objectives} onChange={e => setForm({ ...form, objectives: e.target.value })}
-            placeholder="Quais os objetivos terapêuticos a serem alcançados..." />
-        </div>
-
-        {/* Techniques */}
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <Stethoscope className="w-4 h-4 text-primary" /> Técnicas e Recursos
-          </Label>
-          <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-            value={form.techniques} onChange={e => setForm({ ...form, techniques: e.target.value })}
-            placeholder="Técnicas fisioterapêuticas, eletroterapia, exercícios..." />
-        </div>
-
-        {/* Responsible professional */}
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-primary" /> Profissional Responsável
-          </Label>
-          <Select
-            value={form.responsibleProfessional}
-            onValueChange={v => setForm({ ...form, responsibleProfessional: v })}
-          >
-            <SelectTrigger className="bg-slate-50 border-slate-200 focus:bg-white">
-              <SelectValue placeholder="Selecionar profissional..." />
-            </SelectTrigger>
-            <SelectContent>
-              {professionals.length === 0 && (
-                <SelectItem value="__none" disabled>Nenhum profissional cadastrado</SelectItem>
+    <div className="space-y-4">
+      {/* ── Plan selector strip ─────────────────────────────────────────── */}
+      <Card className="border-none shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-semibold text-slate-600 shrink-0">Planos de Tratamento</span>
+            <div className="flex items-center gap-2 flex-wrap flex-1">
+              {allPlans.map((plan, idx) => {
+                const isSelected = plan.id === selectedPlanId;
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => setSelectedPlanId(plan.id)}
+                    className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all ${
+                      isSelected
+                        ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-primary/40 hover:bg-primary/5"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${
+                      plan.status === "ativo" ? "bg-green-400" : plan.status === "suspenso" ? "bg-orange-400" : "bg-slate-400"
+                    } ${isSelected ? "opacity-100" : ""}`} />
+                    <span>Plano {idx + 1}</span>
+                    <span className={`text-[10px] font-normal ${isSelected ? "text-white/70" : "text-slate-400"}`}>
+                      {plan.startDate ? new Date(plan.startDate).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }) : statusLabel[plan.status] ?? plan.status}
+                    </span>
+                    {allPlans.length > 1 && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={e => { e.stopPropagation(); handleDeletePlan(plan.id); }}
+                        className={`ml-1 rounded-full p-0.5 transition-opacity ${isSelected ? "text-white/60 hover:text-white" : "text-slate-300 hover:text-red-400"} ${deletingId === plan.id ? "opacity-50 pointer-events-none" : ""}`}
+                        title="Excluir plano"
+                      >
+                        {deletingId === plan.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {allPlans.length === 0 && (
+                <span className="text-sm text-slate-400 italic">Nenhum plano cadastrado</span>
               )}
-              {professionals.map(p => (
-                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Frequency, start date, estimated sessions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-              Frequência
-              {planItems.length > 0 && (
-                <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>
-              )}
-            </Label>
-            <Input className="bg-slate-50 border-slate-200 focus:bg-white"
-              value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}
-              placeholder="Ex: 3x/semana..." />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Data de Início</Label>
-            <Input type="date" className="bg-slate-50 border-slate-200 focus:bg-white"
-              value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-              Sessões Estimadas
-              {planItems.length > 0 && (
-                <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>
-              )}
-            </Label>
-            <Input type="number" min={1} className="bg-slate-50 border-slate-200 focus:bg-white"
-              value={form.estimatedSessions} onChange={e => setForm({ ...form, estimatedSessions: e.target.value })}
-              placeholder="Ex: 20" />
-          </div>
-        </div>
-
-        {/* Status */}
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700">Status do Tratamento</Label>
-          <Select value={form.status} onValueChange={(v: "ativo" | "concluido" | "suspenso") => setForm({ ...form, status: v })}>
-            <SelectTrigger className="bg-slate-50 border-slate-200 w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ativo">Ativo</SelectItem>
-              <SelectItem value="concluido">Concluído</SelectItem>
-              <SelectItem value="suspenso">Suspenso</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Session progress */}
-        {(form.estimatedSessions || completedSessions > 0) && (
-          <div className="pt-2 border-t border-slate-100 space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" /> Progresso Geral de Sessões
-              </Label>
-              <span className={`text-sm font-bold ${form.estimatedSessions && completedSessions >= Number(form.estimatedSessions) ? "text-green-600" : "text-primary"}`}>
-                {completedSessions} / {form.estimatedSessions || "—"}
-              </span>
             </div>
-            {form.estimatedSessions ? (
-              <>
-                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                  <div
-                    className={`h-2.5 rounded-full transition-all duration-500 ${completedSessions >= Number(form.estimatedSessions) ? "bg-green-500" : "bg-primary"}`}
-                    style={{ width: `${Math.min(100, (completedSessions / Number(form.estimatedSessions)) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-400">
-                  {completedSessions >= Number(form.estimatedSessions)
-                    ? "✓ Meta atingida! Considere registrar a alta."
-                    : `${Math.max(0, Number(form.estimatedSessions) - completedSessions)} sessão(ões) restante(s)`}
-                </p>
-              </>
-            ) : (
-              <p className="text-xs text-slate-400">{completedSessions} sessão(ões) concluída(s). Defina o total estimado para ver o progresso.</p>
-            )}
+            <Button size="sm" variant="outline" className="h-8 px-3 rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/5 shrink-0"
+              onClick={handleCreatePlan} disabled={creatingNew}>
+              {creatingNew ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Novo Plano
+            </Button>
           </div>
-        )}
+        </CardContent>
+      </Card>
 
-        {/* Items section — procedures/packages with progress and financial forecast */}
-        <TreatmentPlanItemsSection planId={data?.id} planItems={planItems} planItemsKey={planItemsKey} />
+      {/* ── Selected plan card ──────────────────────────────────────────── */}
+      {selectedPlan ? (
+        <Card className="border-none shadow-md">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <div className="flex items-start justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle className="text-xl">
+                  Plano {allPlans.findIndex(p => p.id === selectedPlanId) + 1}
+                  {selectedPlan.startDate && (
+                    <span className="ml-2 text-sm font-normal text-slate-400">
+                      — desde {new Date(selectedPlan.startDate).toLocaleDateString("pt-BR")}
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription>Objetivos, procedimentos, estimativas e base para contrato</CardDescription>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center border px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyles[form.status] ?? ""}`}>
+                  {statusLabel[form.status] ?? form.status}
+                </span>
+                {patient && (
+                  <>
+                    <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5"
+                      onClick={() => printDocument(generatePlanHTML(patient, form, appointments, planItems, clinic), `Plano de Tratamento — ${patient.name}`)}>
+                      <Printer className="w-3.5 h-3.5" /> Imprimir Plano
+                    </Button>
+                    <Button size="sm" className="h-8 px-3 rounded-xl text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => printDocument(generateContractHTML(patient, form, planItems, clinic), `Contrato — ${patient.name}`)}>
+                      <ScrollText className="w-3.5 h-3.5" /> Gerar Contrato
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 space-y-5">
 
-        {/* Save button */}
-        <div className="pt-3 flex justify-end">
-          <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={mutation.isPending}>
-            {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-            Salvar Plano
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            {/* Objectives */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Target className="w-4 h-4 text-primary" /> Objetivos do Tratamento
+              </Label>
+              <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                value={form.objectives} onChange={e => setForm({ ...form, objectives: e.target.value })}
+                placeholder="Quais os objetivos terapêuticos a serem alcançados..." />
+            </div>
+
+            {/* Techniques */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Stethoscope className="w-4 h-4 text-primary" /> Técnicas e Recursos
+              </Label>
+              <Textarea className="min-h-[100px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                value={form.techniques} onChange={e => setForm({ ...form, techniques: e.target.value })}
+                placeholder="Técnicas fisioterapêuticas, eletroterapia, exercícios..." />
+            </div>
+
+            {/* Responsible professional */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-primary" /> Profissional Responsável
+              </Label>
+              <Select value={form.responsibleProfessional} onValueChange={v => setForm({ ...form, responsibleProfessional: v })}>
+                <SelectTrigger className="bg-slate-50 border-slate-200 focus:bg-white">
+                  <SelectValue placeholder="Selecionar profissional..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {professionals.length === 0 && <SelectItem value="__none" disabled>Nenhum profissional cadastrado</SelectItem>}
+                  {professionals.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Frequency, start date, estimated sessions */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                  Frequência
+                  {planItems.length > 0 && <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>}
+                </Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white"
+                  value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} placeholder="Ex: 3x/semana..." />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-700">Data de Início</Label>
+                <Input type="date" className="bg-slate-50 border-slate-200 focus:bg-white"
+                  value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                  Sessões Estimadas
+                  {planItems.length > 0 && <span className="text-[10px] text-slate-400 font-normal">— calculado dos itens</span>}
+                </Label>
+                <Input type="number" min={1} className="bg-slate-50 border-slate-200 focus:bg-white"
+                  value={form.estimatedSessions} onChange={e => setForm({ ...form, estimatedSessions: e.target.value })} placeholder="Ex: 20" />
+              </div>
+            </div>
+
+            {/* Status */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Status do Tratamento</Label>
+              <Select value={form.status} onValueChange={(v: "ativo" | "concluido" | "suspenso") => setForm({ ...form, status: v })}>
+                <SelectTrigger className="bg-slate-50 border-slate-200 w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="concluido">Concluído</SelectItem>
+                  <SelectItem value="suspenso">Suspenso</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Session progress */}
+            {(form.estimatedSessions || completedSessions > 0) && (
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" /> Progresso Geral de Sessões
+                  </Label>
+                  <span className={`text-sm font-bold ${form.estimatedSessions && completedSessions >= Number(form.estimatedSessions) ? "text-green-600" : "text-primary"}`}>
+                    {completedSessions} / {form.estimatedSessions || "—"}
+                  </span>
+                </div>
+                {form.estimatedSessions ? (
+                  <>
+                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                      <div className={`h-2.5 rounded-full transition-all duration-500 ${completedSessions >= Number(form.estimatedSessions) ? "bg-green-500" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, (completedSessions / Number(form.estimatedSessions)) * 100)}%` }} />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {completedSessions >= Number(form.estimatedSessions)
+                        ? "✓ Meta atingida! Considere registrar a alta."
+                        : `${Math.max(0, Number(form.estimatedSessions) - completedSessions)} sessão(ões) restante(s)`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">{completedSessions} sessão(ões) concluída(s). Defina o total estimado para ver o progresso.</p>
+                )}
+              </div>
+            )}
+
+            {/* Items section */}
+            <TreatmentPlanItemsSection planId={selectedPlanId ?? undefined} planItems={planItems} planItemsKey={planItemsKey} />
+
+            {/* Save button */}
+            <div className="pt-3 flex justify-end">
+              <Button onClick={handleSave} className="h-11 px-8 rounded-xl shadow-md shadow-primary/20" disabled={saving}>
+                {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Salvar Plano
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-none shadow-sm">
+          <CardContent className="p-10 text-center">
+            <div className="space-y-3">
+              <p className="text-slate-400 text-sm">Nenhum plano selecionado.</p>
+              <Button size="sm" variant="outline" className="gap-1.5 rounded-xl border-primary/30 text-primary hover:bg-primary/5"
+                onClick={handleCreatePlan} disabled={creatingNew}>
+                {creatingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Criar Primeiro Plano
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
