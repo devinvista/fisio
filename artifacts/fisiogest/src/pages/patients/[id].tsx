@@ -1244,6 +1244,7 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Anamnese atualizada." });
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/anamnesis`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
       },
       onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
     });
@@ -1418,6 +1419,7 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
       onSuccess: () => {
         toast({ title: "Avaliação criada", description: "Nova avaliação registrada com sucesso." });
         invalidate();
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
         setForm(emptyEvalForm);
         setShowForm(false);
       },
@@ -2339,6 +2341,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Plano de tratamento atualizado." });
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/treatment-plan`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
       },
       onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
     });
@@ -3036,7 +3039,9 @@ function JornadaTab({ patientId }: { patientId: number }) {
         headers: { Authorization: `Bearer ${token()}` },
       }).then((r) => r.ok ? r.json() : []),
     enabled: !!patientId,
-    staleTime: 15_000,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const advanceMutation = useMutation({
@@ -4345,6 +4350,7 @@ function DischargeTab({ patientId, patient }: { patientId: number; patient?: Pat
       onSuccess: () => {
         toast({ title: "Alta registrada", description: "Documento de alta fisioterapêutica salvo com sucesso." });
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/discharge-summary`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
         setEditing(false);
       },
       onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
