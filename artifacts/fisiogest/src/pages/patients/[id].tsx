@@ -153,11 +153,15 @@ function printDocument(html: string, title: string) {
   w.document.close();
 }
 
+function todayBRTDate(): Date {
+  return parseISO(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date()));
+}
+
 function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, string>, professional?: { name?: string; council?: string }, clinic?: ClinicInfo | null) {
-  const age = patient.birthDate ? differenceInYears(new Date(), parseISO(patient.birthDate)) : null;
+  const age = patient.birthDate ? differenceInYears(todayBRTDate(), parseISO(patient.birthDate)) : null;
   const ageStr = age ? `, ${age} anos` : "";
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
-  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const today = format(todayBRTDate(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const dischargeDate = discharge.dischargeDate
     ? format(parseISO(discharge.dischargeDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
     : today;
@@ -189,7 +193,7 @@ function generateDischargeHTML(patient: PatientBasic, discharge: Record<string, 
 }
 
 function generateEvolutionsHTML(patient: PatientBasic, evolutions: any[], appointments: any[], clinic?: ClinicInfo | null) {
-  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const today = format(todayBRTDate(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
   const clinicName = clinic?.name || "FisioGest Pro";
   const sortedAppts = [...appointments].sort((a, b) =>
@@ -256,7 +260,7 @@ function generatePlanHTML(
   planItems: PlanProcedureItem[] = [],
   clinic?: ClinicInfo | null
 ) {
-  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const today = format(todayBRTDate(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const clinicName = clinic?.name || "FisioGest Pro";
   const completedAppts = [...appointments].filter((a) => a.status === "concluido" || a.status === "presenca")
     .sort((a, b) => new Date(b.date + "T" + (b.startTime || "00:00")).getTime() - new Date(a.date + "T" + (a.startTime || "00:00")).getTime());
@@ -334,7 +338,7 @@ function generateContractHTML(
   planItems: PlanProcedureItem[],
   clinic?: ClinicInfo | null
 ) {
-  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const today = format(todayBRTDate(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   const cpfFmt = patient.cpf ? patient.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
   const clinicName = clinic?.name || "FisioGest Pro";
   const clinicCrefito = clinic?.crefito || "";
@@ -529,8 +533,8 @@ interface ProntuarioData {
 
 function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: string } {
   const p = d.patient;
-  const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-  const age = p.birthDate ? differenceInYears(new Date(), parseISO(p.birthDate)) : null;
+  const today = format(todayBRTDate(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const age = p.birthDate ? differenceInYears(todayBRTDate(), parseISO(p.birthDate)) : null;
   const cpfFmt = p.cpf ? p.cpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "—";
   const evolutions = d.evolutions ?? [];
   const evaluations = d.evaluations ?? [];
@@ -4850,10 +4854,10 @@ function AtestadoDialog({ open, onClose, patientId, patient, onCreated, appointm
   const [content, setContent]   = useState("");
   const [saving, setSaving]     = useState(false);
 
-  const age = patient.birthDate ? differenceInYears(new Date(), parseISO(patient.birthDate)) : null;
+  const age = patient.birthDate ? differenceInYears(todayBRTDate(), parseISO(patient.birthDate)) : null;
   const dateStr = appointmentDate
     ? format(parseISO(appointmentDate), "dd/MM/yyyy", { locale: ptBR })
-    : format(new Date(), "dd/MM/yyyy", { locale: ptBR });
+    : format(todayBRTDate(), "dd/MM/yyyy", { locale: ptBR });
 
   useEffect(() => {
     if (!open) return;

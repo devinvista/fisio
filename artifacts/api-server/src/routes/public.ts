@@ -375,10 +375,11 @@ router.post("/book", async (req, res) => {
     let patientId: number;
 
     if (patientCpf) {
+      const normalizedCpf = patientCpf.replace(/\D/g, "");
       const existingPatient = await db
         .select({ id: patientsTable.id })
         .from(patientsTable)
-        .where(eq(patientsTable.cpf, patientCpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")))
+        .where(sql`regexp_replace(${patientsTable.cpf}, '[^0-9]', '', 'g') = ${normalizedCpf}`)
         .limit(1);
 
       if (existingPatient.length > 0) {
@@ -389,12 +390,11 @@ router.post("/book", async (req, res) => {
           .set({ phone: patientPhone, ...(patientEmail ? { email: patientEmail } : {}) })
           .where(eq(patientsTable.id, patientId));
       } else {
-        const cpfFormatted = patientCpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
         const [newPatient] = await db
           .insert(patientsTable)
           .values({
             name: patientName,
-            cpf: cpfFormatted,
+            cpf: normalizedCpf,
             phone: patientPhone,
             email: patientEmail || null,
           })

@@ -43,6 +43,19 @@ function formatCpfMask(value: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
 
+function formatPhoneMask(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length === 0) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function todayBRT(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+}
+
 function formatCurrency(value: number | string) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value));
 }
@@ -258,9 +271,10 @@ function StepSeusDados({
 
   // Phone is secondary — only triggers lookup if CPF hasn't already found the patient
   const handlePhoneChange = (val: string) => {
-    setForm((prev) => ({ ...prev, phone: val }));
+    const masked = formatPhoneMask(val);
+    setForm((prev) => ({ ...prev, phone: masked }));
     if (lookupState !== "found") {
-      runLookup(val);
+      runLookup(masked);
     }
   };
 
@@ -965,7 +979,7 @@ function BookingView({ token }: { token: string }) {
   if (!booking) return null;
 
   const statusInfo = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "text-slate-700 bg-slate-100" };
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayBRT();
   const canCancel = booking.status === "agendado" && booking.date >= today;
 
   return (

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -188,8 +188,12 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
     if (type) conditions.push(eq(financialRecordsTable.type, type));
     if (month && year) {
       const { startDate, endDate } = monthDateRange(year, month);
-      conditions.push(gte(financialRecordsTable.paymentDate, startDate));
-      conditions.push(lte(financialRecordsTable.paymentDate, endDate));
+      conditions.push(
+        or(
+          and(gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate)),
+          and(isNull(financialRecordsTable.paymentDate), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate))
+        )!
+      );
     }
 
     const records = await db
