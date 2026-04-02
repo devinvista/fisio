@@ -18,6 +18,7 @@ const secret = JWT_SECRET || "fisiogest-dev-secret-key-do-not-use-in-production"
 
 export interface AuthRequest extends Request {
   userId?: number;
+  userName?: string | null;
   userRoles?: Role[];
   clinicId?: number | null;
   isSuperAdmin?: boolean;
@@ -34,11 +35,13 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
   try {
     const payload = jwt.verify(token, secret) as {
       userId: number;
+      userName?: string | null;
       roles: Role[];
       clinicId?: number | null;
       isSuperAdmin?: boolean;
     };
     req.userId = payload.userId;
+    req.userName = payload.userName ?? null;
     req.userRoles = payload.roles ?? [];
     req.clinicId = payload.clinicId ?? null;
     req.isSuperAdmin = payload.isSuperAdmin ?? false;
@@ -52,7 +55,8 @@ export function generateToken(
   userId: number,
   roles: Role[],
   clinicId: number | null,
-  isSuperAdmin: boolean
+  isSuperAdmin: boolean,
+  userName?: string | null
 ): string {
-  return jwt.sign({ userId, roles, clinicId, isSuperAdmin }, secret, { expiresIn: "7d" });
+  return jwt.sign({ userId, userName: userName ?? null, roles, clinicId, isSuperAdmin }, secret, { expiresIn: "7d" });
 }

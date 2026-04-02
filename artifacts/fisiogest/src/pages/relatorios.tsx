@@ -108,7 +108,7 @@ export default function Relatorios() {
 
   const totalCategoryRevenue = categoryRevenue.reduce((s, c) => s + c.revenue, 0);
 
-  const monthLabel = MONTH_NAMES[parseInt(selectedMonth) - 1];
+  const monthLabel = MONTH_NAMES[parseInt(selectedMonth, 10) - 1];
 
   return (
     <AppLayout title="Relatórios">

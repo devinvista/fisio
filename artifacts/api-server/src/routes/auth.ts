@@ -122,7 +122,7 @@ router.post("/register", async (req, res) => {
       return { clinic, user };
     });
 
-    const token = generateToken(user.id, ["admin"], clinic.id, false);
+    const token = generateToken(user.id, ["admin"], clinic.id, false, user.name);
     res.status(201).json({
       token,
       user: {
@@ -185,7 +185,7 @@ router.post("/login", async (req, res) => {
     }
 
     if (user.isSuperAdmin) {
-      const token = generateToken(user.id, [], null, true);
+      const token = generateToken(user.id, [], null, true, user.name);
       const clinics = await getUserClinics(user.id);
       res.json({
         token,
@@ -219,7 +219,7 @@ router.post("/login", async (req, res) => {
       if (found) activeClinic = found;
     }
 
-    const token = generateToken(user.id, activeClinic.roles, activeClinic.id, false);
+    const token = generateToken(user.id, activeClinic.roles, activeClinic.id, false, user.name);
     res.json({
       token,
       user: {
@@ -245,7 +245,7 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
     const { clinicId } = req.body;
 
     if (req.isSuperAdmin && (clinicId === null || clinicId === 0)) {
-      const token = generateToken(req.userId!, [], null, true);
+      const token = generateToken(req.userId!, [], null, true, req.userName);
       res.json({ token, clinicId: null });
       return;
     }
@@ -265,7 +265,7 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
         res.status(404).json({ error: "Not Found", message: "Clínica não encontrada" });
         return;
       }
-      const token = generateToken(req.userId!, ["admin"], Number(clinicId), true);
+      const token = generateToken(req.userId!, ["admin"], Number(clinicId), true, req.userName);
       res.json({ token, clinicId: Number(clinicId), clinicName: clinic.name });
       return;
     }
@@ -276,7 +276,7 @@ router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
       return;
     }
 
-    const token = generateToken(req.userId!, roles, Number(clinicId), false);
+    const token = generateToken(req.userId!, roles, Number(clinicId), false, req.userName);
     res.json({ token, clinicId: Number(clinicId), roles });
   } catch (err) {
     console.error(err);
