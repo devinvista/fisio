@@ -36,6 +36,7 @@ import {
   FileImage, File, Download, ScrollText, Printer, BadgeCheck, CalendarDays,
   ClipboardCheck, PenLine, Package, Layers, RefreshCw, Info,
   ArrowRight, Milestone, RotateCcw, Filter,
+  Check, ArrowUpRight, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,7 +46,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { format, differenceInYears, parseISO } from "date-fns";
+import { format, differenceInYears, differenceInDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/use-auth";
@@ -2975,7 +2976,6 @@ function AuditLogSection({ patientId }: { patientId: number }) {
 // ─── Jornada do Cliente ─────────────────────────────────────────────────────────
 
 type JourneyStatus = "pending" | "in_progress" | "completed" | "cancelled";
-type JourneyFilter = "all" | "pending" | "in_progress" | "completed";
 
 interface JourneyStep {
   id: number;
@@ -2993,46 +2993,79 @@ interface JourneyStep {
   updatedAt: string;
 }
 
-const JOURNEY_LABELS: Record<string, { icon: React.ReactNode; description: string }> = {
-  cadastro:         { icon: <User className="w-4 h-4" />,         description: "Registro do paciente no sistema" },
-  anamnese:         { icon: <ClipboardList className="w-4 h-4" />, description: "Coleta do histórico clínico e queixa principal" },
-  avaliacao:        { icon: <Activity className="w-4 h-4" />,      description: "Avaliação física e funcional do paciente" },
-  plano_tratamento: { icon: <Target className="w-4 h-4" />,        description: "Definição de objetivos e técnicas de tratamento" },
-  procedimentos:    { icon: <Package className="w-4 h-4" />,       description: "Aquisição de procedimentos ou pacotes de sessões" },
-  agendamento:      { icon: <CalendarDays className="w-4 h-4" />,  description: "Marcação do primeiro atendimento" },
-  tratamento:       { icon: <TrendingUp className="w-4 h-4" />,    description: "Realização das sessões de fisioterapia" },
-  alta:             { icon: <BadgeCheck className="w-4 h-4" />,    description: "Alta fisioterapêutica formal (COFFITO)" },
+const STEP_NAMES: Record<string, string> = {
+  cadastro:         "Cadastro",
+  anamnese:         "Anamnese",
+  avaliacao:        "Avaliação Física",
+  plano_tratamento: "Plano de Tratamento",
+  procedimentos:    "Procedimentos / Pacotes",
+  agendamento:      "Agendamento",
+  tratamento:       "Tratamento em andamento",
+  alta:             "Alta Fisioterapêutica",
 };
 
-const STATUS_CONFIG: Record<JourneyStatus, { label: string; color: string; bg: string; border: string; dot: string; badge: string }> = {
-  pending:     { label: "Pendente",     color: "text-slate-500",  bg: "bg-slate-50",  border: "border-slate-200", dot: "bg-slate-300",  badge: "bg-slate-100 text-slate-600" },
-  in_progress: { label: "Em andamento", color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-200", dot: "bg-amber-400",  badge: "bg-amber-100 text-amber-700" },
-  completed:   { label: "Concluído",    color: "text-emerald-600",bg: "bg-emerald-50",border: "border-emerald-200",dot: "bg-emerald-500",badge: "bg-emerald-100 text-emerald-700" },
-  cancelled:   { label: "Cancelado",    color: "text-red-500",    bg: "bg-red-50",    border: "border-red-200",   dot: "bg-red-400",    badge: "bg-red-100 text-red-600" },
+const STEP_TO_TAB: Record<string, string> = {
+  anamnese:         "anamnesis",
+  avaliacao:        "evaluations",
+  plano_tratamento: "treatment",
+  tratamento:       "evolutions",
+  alta:             "discharge",
 };
 
-function StatusIcon({ status }: { status: JourneyStatus }) {
-  if (status === "completed")   return <CheckCircle className="w-5 h-5 text-emerald-500" />;
-  if (status === "in_progress") return <Clock className="w-5 h-5 text-amber-500 animate-pulse" />;
-  if (status === "cancelled")   return <XCircle className="w-5 h-5 text-red-400" />;
-  return <div className="w-5 h-5 rounded-full border-2 border-slate-300 bg-white" />;
-}
+const STEP_TO_ROUTE: Record<string, string> = {
+  procedimentos: "/pacotes",
+  agendamento:   "/agenda",
+};
 
-function JornadaTab({ patientId }: { patientId: number }) {
+const JOURNEY_META: Record<string, { icon: React.ReactNode; description: string; actionLabel: string }> = {
+  cadastro:         { icon: <User className="w-4 h-4" />,          description: "Registro do paciente no sistema", actionLabel: "" },
+  anamnese:         { icon: <ClipboardList className="w-4 h-4" />, description: "Coleta do histórico clínico e queixa principal", actionLabel: "Abrir Anamnese" },
+  avaliacao:        { icon: <Activity className="w-4 h-4" />,      description: "Avaliação física e funcional do paciente", actionLabel: "Abrir Avaliações" },
+  plano_tratamento: { icon: <Target className="w-4 h-4" />,        description: "Objetivos e técnicas de tratamento", actionLabel: "Abrir Plano" },
+  procedimentos:    { icon: <Package className="w-4 h-4" />,       description: "Aquisição de pacotes de sessões", actionLabel: "Ver Pacotes" },
+  agendamento:      { icon: <CalendarDays className="w-4 h-4" />,  description: "Marcação do primeiro atendimento", actionLabel: "Abrir Agenda" },
+  tratamento:       { icon: <TrendingUp className="w-4 h-4" />,    description: "Realização das sessões de fisioterapia", actionLabel: "Abrir Evoluções" },
+  alta:             { icon: <BadgeCheck className="w-4 h-4" />,    description: "Alta fisioterapêutica formal (COFFITO)", actionLabel: "Abrir Alta" },
+};
+
+const CIRCLE_STYLE: Record<JourneyStatus, { ring: string; bg: string; text: string }> = {
+  pending:     { ring: "border-slate-200",   bg: "bg-white",      text: "text-slate-400"  },
+  in_progress: { ring: "border-amber-400",   bg: "bg-amber-50",   text: "text-amber-600"  },
+  completed:   { ring: "border-emerald-400", bg: "bg-emerald-50", text: "text-emerald-600" },
+  cancelled:   { ring: "border-red-300",     bg: "bg-red-50",     text: "text-red-500"    },
+};
+
+const CARD_STYLE: Record<JourneyStatus, { border: string; bg: string; badge: string }> = {
+  pending:     { border: "border-slate-200",      bg: "bg-white",        badge: "bg-slate-100 text-slate-600"   },
+  in_progress: { border: "border-amber-200",      bg: "bg-amber-50/60",  badge: "bg-amber-100 text-amber-700"   },
+  completed:   { border: "border-emerald-200/70", bg: "bg-white",        badge: "bg-emerald-100 text-emerald-700" },
+  cancelled:   { border: "border-red-200",        bg: "bg-red-50/40",    badge: "bg-red-100 text-red-600"       },
+};
+
+const CONNECTOR_COLOR: Record<JourneyStatus, string> = {
+  completed:   "bg-emerald-300",
+  in_progress: "bg-amber-300",
+  pending:     "bg-slate-200",
+  cancelled:   "bg-red-200",
+};
+
+function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavigateToTab: (tab: string) => void }) {
   const token = () => localStorage.getItem("fisiogest_token");
   const { user, isSuperAdmin } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [filter, setFilter] = useState<JourneyFilter>("all");
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [editingStep, setEditingStep] = useState<JourneyStep | null>(null);
+  const [cancelConfirmStep, setCancelConfirmStep] = useState<JourneyStep | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editResponsible, setEditResponsible] = useState("");
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const isAdmin = isSuperAdmin || ((user as any)?.roles ?? []).includes("admin");
 
-  const { data: steps = [], isLoading, refetch } = useQuery<JourneyStep[]>({
+  const { data: steps = [], isLoading } = useQuery<JourneyStep[]>({
     queryKey: [`/api/patients/${patientId}/journey`],
     queryFn: () =>
       fetch(`/api/patients/${patientId}/journey`, {
@@ -3043,6 +3076,9 @@ function JornadaTab({ patientId }: { patientId: number }) {
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
+
+  const invalidateJourney = () =>
+    queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
 
   const advanceMutation = useMutation({
     mutationFn: ({ stepId }: { stepId: number }) =>
@@ -3058,12 +3094,11 @@ function JornadaTab({ patientId }: { patientId: number }) {
         return r.json();
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
-      toast({ title: "Etapa avançada com sucesso" });
+      invalidateJourney();
+      toast({ title: "Etapa concluída", description: "A próxima etapa foi iniciada automaticamente." });
     },
-    onError: (err: Error) => {
-      toast({ title: "Não foi possível avançar", description: err.message, variant: "destructive" });
-    },
+    onError: (err: Error) =>
+      toast({ title: "Não foi possível avançar", description: err.message, variant: "destructive" }),
   });
 
   const cancelMutation = useMutation({
@@ -3073,11 +3108,12 @@ function JornadaTab({ patientId }: { patientId: number }) {
         headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel" }),
       }).then(async (r) => {
-        if (!r.ok) throw new Error("Erro ao cancelar etapa");
+        if (!r.ok) throw new Error("Erro ao cancelar");
         return r.json();
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
+      invalidateJourney();
+      setCancelConfirmStep(null);
       toast({ title: "Etapa cancelada" });
     },
     onError: () => toast({ title: "Erro ao cancelar etapa", variant: "destructive" }),
@@ -3094,9 +3130,9 @@ function JornadaTab({ patientId }: { patientId: number }) {
         return r.json();
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
+      invalidateJourney();
       setEditingStep(null);
-      toast({ title: "Etapa atualizada" });
+      toast({ title: "Observações salvas" });
     },
     onError: () => toast({ title: "Erro ao salvar alterações", variant: "destructive" }),
   });
@@ -3111,40 +3147,74 @@ function JornadaTab({ patientId }: { patientId: number }) {
         return r.json();
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
+      invalidateJourney();
       setResetConfirmOpen(false);
       toast({ title: "Jornada reiniciada" });
     },
     onError: () => toast({ title: "Erro ao reiniciar jornada", variant: "destructive" }),
   });
 
-  const completedCount = steps.filter((s) => s.status === "completed").length;
-  const totalCount = steps.length;
-  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  // ── Computed ──────────────────────────────────────────────────────────────
+  const stats = {
+    completed:   steps.filter(s => s.status === "completed").length,
+    in_progress: steps.filter(s => s.status === "in_progress").length,
+    pending:     steps.filter(s => s.status === "pending").length,
+    cancelled:   steps.filter(s => s.status === "cancelled").length,
+  };
+  const activeCount = steps.filter(s => s.status !== "cancelled").length;
+  const progressPct = activeCount > 0 ? Math.round((stats.completed / activeCount) * 100) : 0;
 
-  const FILTER_OPTIONS: { key: JourneyFilter; label: string }[] = [
-    { key: "all",         label: "Todas" },
-    { key: "pending",     label: "Pendentes" },
-    { key: "in_progress", label: "Em andamento" },
-    { key: "completed",   label: "Concluídas" },
-  ];
-
-  const filtered = filter === "all" ? steps : steps.filter((s) => s.status === filter);
+  const focusStep =
+    steps.find(s => s.status === "in_progress") ||
+    steps.find(s => {
+      if (s.status !== "pending") return false;
+      const prev = steps.find(p => p.stepOrder === s.stepOrder - 1);
+      return !prev || prev.status !== "pending";
+    });
 
   function formatDate(val: string | null | undefined) {
     if (!val) return null;
     try { return format(new Date(val), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }); } catch { return null; }
   }
 
-  function canAdvance(step: JourneyStep): boolean {
+  function canAdvanceStep(step: JourneyStep) {
     if (step.status === "completed" || step.status === "cancelled") return false;
-    const prev = steps.find((s) => s.stepOrder === step.stepOrder - 1);
+    const prev = steps.find(s => s.stepOrder === step.stepOrder - 1);
     return !prev || prev.status !== "pending";
   }
 
+  const toggleExpanded = (id: number) => setExpandedSteps(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const isExpanded = (step: JourneyStep) =>
+    (step.status !== "completed" && step.status !== "cancelled") || expandedSteps.has(step.id);
+
+  const handleShortcut = (step: JourneyStep) => {
+    const tab = STEP_TO_TAB[step.stepKey];
+    const route = STEP_TO_ROUTE[step.stepKey];
+    if (tab) onNavigateToTab(tab);
+    else if (route) setLocation(route);
+  };
+
+  const getStepDuration = (step: JourneyStep): string | null => {
+    if (step.stepKey !== "tratamento") return null;
+    if (step.status === "in_progress" && step.startedAt) {
+      const d = differenceInDays(new Date(), new Date(step.startedAt));
+      return d === 0 ? "Iniciado hoje" : d === 1 ? "1 dia em andamento" : `${d} dias em andamento`;
+    }
+    if (step.status === "completed" && step.startedAt && step.completedAt) {
+      const d = differenceInDays(new Date(step.completedAt), new Date(step.startedAt));
+      return d > 0 ? `Duração: ${d} dia${d !== 1 ? "s" : ""}` : null;
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -3152,273 +3222,322 @@ function JornadaTab({ patientId }: { patientId: number }) {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-slate-800">Jornada do Cliente</h3>
-            <p className="text-sm text-slate-500">Acompanhe todas as etapas do atendimento clínico em sequência.</p>
+            <p className="text-sm text-slate-500">Acompanhe todas as etapas do atendimento clínico.</p>
           </div>
         </div>
         {isAdmin && (
           <Button
-            variant="outline"
-            size="sm"
+            variant="outline" size="sm"
             className="h-8 gap-1.5 text-xs text-slate-500 border-slate-200 shrink-0"
             onClick={() => setResetConfirmOpen(true)}
             disabled={resetMutation.isPending}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Reiniciar
+            <RotateCcw className="w-3.5 h-3.5" /> Reiniciar
           </Button>
         )}
       </div>
 
-      {/* Progress bar */}
-      {totalCount > 0 && (
-        <div className="rounded-xl border border-slate-100 bg-white p-4 space-y-2 shadow-sm">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600 font-medium">Progresso geral</span>
-            <span className="font-bold text-primary">{completedCount}/{totalCount} etapas</span>
+      {/* ── Stat pills + progress ── */}
+      {steps.length > 0 && (
+        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {stats.completed > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                <Check className="w-3 h-3" />{stats.completed} concluída{stats.completed !== 1 ? "s" : ""}
+              </span>
+            )}
+            {stats.in_progress > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                <Clock className="w-3 h-3" />{stats.in_progress} em andamento
+              </span>
+            )}
+            {stats.pending > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                <div className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />{stats.pending} pendente{stats.pending !== 1 ? "s" : ""}
+              </span>
+            )}
+            {stats.cancelled > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">
+                <XCircle className="w-3 h-3" />{stats.cancelled} cancelada{stats.cancelled !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
-          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>{progressPct}% concluído</span>
-            <div className="flex items-center gap-3">
-              {(["completed", "in_progress", "pending"] as JourneyStatus[]).map((s) => {
-                const cnt = steps.filter((x) => x.status === s).length;
-                if (!cnt) return null;
-                return (
-                  <span key={s} className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[s].dot}`} />
-                    {STATUS_CONFIG[s].label}: {cnt}
-                  </span>
-                );
-              })}
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-slate-500 font-medium">Progresso geral</span>
+              <span className="font-bold text-primary">{progressPct}%</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full transition-all duration-700"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
           </div>
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-        {FILTER_OPTIONS.map((opt) => {
-          const cnt = opt.key === "all" ? steps.length : steps.filter((s) => s.status === opt.key).length;
-          return (
-            <button
-              key={opt.key}
-              onClick={() => setFilter(opt.key)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                filter === opt.key
-                  ? "bg-primary text-white border-primary shadow-sm"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-              }`}
-            >
-              {opt.label} ({cnt})
-            </button>
-          );
-        })}
-      </div>
+      {/* ── "Próxima ação" banner ── */}
+      {!isLoading && focusStep && (
+        <div className={`rounded-xl p-4 border flex items-center gap-3 ${
+          focusStep.status === "in_progress" ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/20"
+        }`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            focusStep.status === "in_progress" ? "bg-amber-100" : "bg-primary/10"
+          }`}>
+            <Zap className={`w-4 h-4 ${focusStep.status === "in_progress" ? "text-amber-600" : "text-primary"}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-[11px] font-bold uppercase tracking-wide ${
+              focusStep.status === "in_progress" ? "text-amber-600" : "text-primary"
+            }`}>
+              {focusStep.status === "in_progress" ? "Em andamento" : "Próxima etapa"}
+            </p>
+            <p className="text-sm font-semibold text-slate-800 truncate">
+              {STEP_NAMES[focusStep.stepKey] || focusStep.stepKey}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {(STEP_TO_TAB[focusStep.stepKey] || STEP_TO_ROUTE[focusStep.stepKey]) && (
+              <Button
+                variant="outline" size="sm"
+                className="h-7 text-xs gap-1 border-slate-200 text-slate-600 hover:border-slate-300"
+                onClick={() => handleShortcut(focusStep)}
+              >
+                <ArrowUpRight className="w-3 h-3" />
+                {JOURNEY_META[focusStep.stepKey]?.actionLabel || "Abrir"}
+              </Button>
+            )}
+            {canAdvanceStep(focusStep) && (
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1 bg-primary hover:bg-primary/90"
+                disabled={advanceMutation.isPending}
+                onClick={() => advanceMutation.mutate({ stepId: focusStep.id })}
+              >
+                {advanceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                Concluir
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* Timeline */}
+      {/* ── Timeline ── */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-slate-300" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : steps.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
           <Milestone className="w-8 h-8 mb-2 opacity-30" />
-          <p className="text-sm font-medium">Nenhuma etapa neste filtro</p>
+          <p className="text-sm font-medium">Nenhuma etapa encontrada</p>
         </div>
       ) : (
-        <div className="relative">
-          {/* Connector line */}
-          <div className="absolute left-[19px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-slate-200 via-slate-100 to-slate-200" />
+        <div>
+          {steps.map((step, idx) => {
+            const meta = JOURNEY_META[step.stepKey];
+            const circle = CIRCLE_STYLE[step.status] || CIRCLE_STYLE.pending;
+            const card = CARD_STYLE[step.status] || CARD_STYLE.pending;
+            const isLast = idx === steps.length - 1;
+            const expanded = isExpanded(step);
+            const duration = getStepDuration(step);
+            const hasLink = !!(STEP_TO_TAB[step.stepKey] || STEP_TO_ROUTE[step.stepKey]);
+            const isCurrentFocus = focusStep?.id === step.id;
+            const isCollapsible = step.status === "completed" || step.status === "cancelled";
 
-          <div className="space-y-3">
-            {filtered.map((step, idx) => {
-              const cfg = STATUS_CONFIG[step.status] || STATUS_CONFIG.pending;
-              const meta = JOURNEY_LABELS[step.stepKey];
-              const isLast = idx === filtered.length - 1;
-              const advancing = advanceMutation.isPending;
-              const cancelling = cancelMutation.isPending;
-
-              return (
-                <div key={step.id} className="relative flex gap-4 group">
-                  {/* Circle */}
-                  <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full border-2 shrink-0 transition-all ${cfg.border} ${cfg.bg}`}>
-                    <StatusIcon status={step.status} />
+            return (
+              <div key={step.id} className="flex gap-3">
+                {/* ── Number circle + connector ── */}
+                <div className="flex flex-col items-center flex-shrink-0">
+                  <div className={`
+                    relative z-10 w-9 h-9 rounded-full border-2 flex items-center justify-center
+                    font-bold text-sm transition-all duration-200 shrink-0
+                    ${circle.ring} ${circle.bg} ${circle.text}
+                    ${isCurrentFocus ? "ring-2 ring-offset-1 ring-primary/30 shadow-sm" : ""}
+                  `}>
+                    {step.status === "completed"
+                      ? <Check className="w-4 h-4" />
+                      : step.status === "cancelled"
+                      ? <XCircle className="w-3.5 h-3.5" />
+                      : <span className="text-xs font-bold leading-none">{step.stepOrder}</span>
+                    }
                   </div>
+                  {!isLast && (
+                    <div className={`w-0.5 flex-1 min-h-[20px] mt-0.5 mb-0.5 rounded-full ${CONNECTOR_COLOR[step.status]}`} />
+                  )}
+                </div>
 
-                  {/* Card */}
-                  <div className={`flex-1 rounded-xl border ${cfg.border} ${cfg.bg} p-4 shadow-sm transition-all`}>
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className={`p-1.5 rounded-lg ${cfg.bg} border ${cfg.border}`}>
-                          {meta?.icon}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400 font-medium">Etapa {step.stepOrder}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}`}>
-                              {cfg.label}
-                            </span>
-                          </div>
-                          <p className="text-sm font-semibold text-slate-800 mt-0.5">
-                            {step.stepKey === "cadastro"         ? "Cadastro" :
-                             step.stepKey === "anamnese"         ? "Anamnese" :
-                             step.stepKey === "avaliacao"        ? "Avaliação" :
-                             step.stepKey === "plano_tratamento" ? "Plano de Tratamento" :
-                             step.stepKey === "procedimentos"    ? "Procedimentos / Pacotes" :
-                             step.stepKey === "agendamento"      ? "Agendamento" :
-                             step.stepKey === "tratamento"       ? "Tratamento em andamento" :
-                             step.stepKey === "alta"             ? "Alta Fisioterapêutica" :
-                             step.stepKey}
-                          </p>
-                        </div>
+                {/* ── Card ── */}
+                <div className={`
+                  flex-1 mb-3 rounded-xl border shadow-sm overflow-hidden transition-all duration-200
+                  ${card.border} ${card.bg}
+                  ${isCurrentFocus ? "ring-1 ring-primary/20" : ""}
+                `}>
+                  {/* Card header — always visible */}
+                  <button
+                    type="button"
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 ${isCollapsible ? "cursor-pointer hover:bg-black/[0.02]" : "cursor-default"}`}
+                    onClick={() => isCollapsible && toggleExpanded(step.id)}
+                  >
+                    <div className={`p-1.5 rounded-lg border ${card.border} shrink-0 bg-white/60`}>
+                      {meta?.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-sm font-semibold ${step.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                          {STEP_NAMES[step.stepKey] || step.stepKey}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${card.badge}`}>
+                          {step.status === "pending"      ? "Pendente"
+                          : step.status === "in_progress" ? "Em andamento"
+                          : step.status === "completed"   ? "Concluído"
+                          : "Cancelado"}
+                        </span>
+                        {duration && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            {duration}
+                          </span>
+                        )}
+                        {step.autoStatus === "completed" && step.status === "completed" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-600 border border-emerald-100 inline-flex items-center gap-1">
+                            <RefreshCw className="w-2.5 h-2.5" />auto
+                          </span>
+                        )}
                       </div>
+                      {!expanded && (
+                        <p className="text-xs text-slate-400 mt-0.5 truncate">
+                          {step.completedAt  ? `Concluído ${formatDate(step.completedAt)}`
+                          : step.cancelledAt ? `Cancelado ${formatDate(step.cancelledAt)}`
+                          : meta?.description}
+                        </p>
+                      )}
+                    </div>
+                    {isCollapsible && (
+                      <div className="shrink-0 text-slate-300">
+                        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
+                    )}
+                  </button>
+
+                  {/* ── Expanded body ── */}
+                  {expanded && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-slate-100/80">
+                      <p className="text-xs text-slate-500 pt-3">{meta?.description}</p>
+
+                      {/* Dates / meta */}
+                      <div className="space-y-1.5 text-xs text-slate-500">
+                        {step.startedAt && (
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-3 h-3 shrink-0" />
+                            Iniciado em {formatDate(step.startedAt)}
+                          </div>
+                        )}
+                        {step.completedAt && (
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                            Concluído em {formatDate(step.completedAt)}
+                          </div>
+                        )}
+                        {step.cancelledAt && (
+                          <div className="flex items-center gap-1.5">
+                            <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+                            Cancelado em {formatDate(step.cancelledAt)}
+                          </div>
+                        )}
+                        {step.responsibleName && (
+                          <div className="flex items-center gap-1.5">
+                            <UserCheck className="w-3 h-3 shrink-0" />
+                            Responsável: <strong className="text-slate-700 ml-0.5">{step.responsibleName}</strong>
+                          </div>
+                        )}
+                        {step.updatedByUserName && (
+                          <div className="flex items-center gap-1.5">
+                            <Info className="w-3 h-3 shrink-0" />
+                            Atualizado por <strong className="text-slate-700 mx-0.5">{step.updatedByUserName}</strong> em {formatDate(step.updatedAt)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {step.notes && (
+                        <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
+                          <span className="font-semibold text-slate-400 uppercase tracking-wide text-[10px]">Obs · </span>
+                          {step.notes}
+                        </div>
+                      )}
 
                       {/* Actions */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                          title="Editar observações"
-                          onClick={() => {
-                            setEditingStep(step);
-                            setEditNotes(step.notes ?? "");
-                            setEditResponsible(step.responsibleName ?? "");
-                          }}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-
-                        {step.status !== "completed" && step.status !== "cancelled" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
-                            title="Cancelar etapa"
-                            disabled={cancelling}
-                            onClick={() => cancelMutation.mutate({ stepId: step.id })}
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                        {hasLink ? (
+                          <button
+                            type="button"
+                            onClick={() => handleShortcut(step)}
+                            className="text-xs text-primary/70 hover:text-primary flex items-center gap-1 transition-colors font-medium"
                           >
-                            <XCircle className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-
-                        {canAdvance(step) && (
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                            {JOURNEY_META[step.stepKey]?.actionLabel || "Abrir"}
+                          </button>
+                        ) : <div />}
+                        <div className="flex items-center gap-1.5">
                           <Button
-                            size="sm"
-                            className="h-7 text-xs px-2.5 gap-1 bg-primary hover:bg-primary/90"
-                            disabled={advancing}
-                            onClick={() => advanceMutation.mutate({ stepId: step.id })}
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                            title="Editar observações"
+                            onClick={() => { setEditingStep(step); setEditNotes(step.notes ?? ""); setEditResponsible(step.responsibleName ?? ""); }}
                           >
-                            {advancing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
-                            Avançar
+                            <Pencil className="w-3.5 h-3.5" />
                           </Button>
-                        )}
+                          {step.status !== "completed" && step.status !== "cancelled" && (
+                            <Button
+                              variant="ghost" size="icon"
+                              className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                              title="Cancelar etapa"
+                              disabled={cancelMutation.isPending}
+                              onClick={() => setCancelConfirmStep(step)}
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {canAdvanceStep(step) && (
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs px-3 gap-1 bg-primary hover:bg-primary/90"
+                              disabled={advanceMutation.isPending}
+                              onClick={() => advanceMutation.mutate({ stepId: step.id })}
+                            >
+                              {advanceMutation.isPending
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <ArrowRight className="w-3 h-3" />}
+                              Avançar
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
-
-                    {/* Description */}
-                    {meta?.description && (
-                      <p className="text-xs text-slate-500 mt-1.5 ml-0">{meta.description}</p>
-                    )}
-
-                    {/* Meta info */}
-                    <div className="mt-3 space-y-1 text-xs text-slate-500">
-                      {step.startedAt && (
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3 h-3" />
-                          <span>Iniciado em {formatDate(step.startedAt)}</span>
-                        </div>
-                      )}
-                      {step.completedAt && (
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle className="w-3 h-3 text-emerald-500" />
-                          <span>Concluído em {formatDate(step.completedAt)}</span>
-                        </div>
-                      )}
-                      {step.cancelledAt && (
-                        <div className="flex items-center gap-1.5">
-                          <XCircle className="w-3 h-3 text-red-400" />
-                          <span>Cancelado em {formatDate(step.cancelledAt)}</span>
-                        </div>
-                      )}
-                      {step.responsibleName && (
-                        <div className="flex items-center gap-1.5">
-                          <UserCheck className="w-3 h-3" />
-                          <span>Responsável: <strong className="text-slate-700">{step.responsibleName}</strong></span>
-                        </div>
-                      )}
-                      {step.updatedByUserName && (
-                        <div className="flex items-center gap-1.5">
-                          <Info className="w-3 h-3" />
-                          <span>Última atualização por <strong className="text-slate-700">{step.updatedByUserName}</strong> em {formatDate(step.updatedAt)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Notes */}
-                    {step.notes && (
-                      <div className="mt-3 rounded-lg bg-white/60 border border-slate-100 px-3 py-2 text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
-                        <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">Observações · </span>
-                        {step.notes}
-                      </div>
-                    )}
-
-                    {/* Auto-sync indicator */}
-                    {step.autoStatus === "completed" && step.status === "completed" && (
-                      <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 opacity-70">
-                        <RefreshCw className="w-2.5 h-2.5" />
-                        <span>Concluído automaticamente com base nos registros do prontuário</span>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Edit dialog */}
+      {/* ── Edit dialog ── */}
       <Dialog open={!!editingStep} onOpenChange={(open) => !open && setEditingStep(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar etapa</DialogTitle>
-            <DialogDescription>
-              {editingStep?.stepKey === "cadastro"         ? "Cadastro" :
-               editingStep?.stepKey === "anamnese"         ? "Anamnese" :
-               editingStep?.stepKey === "avaliacao"        ? "Avaliação" :
-               editingStep?.stepKey === "plano_tratamento" ? "Plano de Tratamento" :
-               editingStep?.stepKey === "procedimentos"    ? "Procedimentos / Pacotes" :
-               editingStep?.stepKey === "agendamento"      ? "Agendamento" :
-               editingStep?.stepKey === "tratamento"       ? "Tratamento em andamento" :
-               editingStep?.stepKey === "alta"             ? "Alta Fisioterapêutica" :
-               editingStep?.stepKey}
-            </DialogDescription>
+            <DialogDescription>{STEP_NAMES[editingStep?.stepKey ?? ""] || editingStep?.stepKey}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label className="text-sm">Profissional responsável</Label>
-              <Input
-                placeholder="Nome do responsável"
-                value={editResponsible}
-                onChange={(e) => setEditResponsible(e.target.value)}
-              />
+              <Input placeholder="Nome do responsável" value={editResponsible} onChange={(e) => setEditResponsible(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Observações</Label>
-              <Textarea
-                className="min-h-[100px] resize-none"
-                placeholder="Adicione observações sobre esta etapa..."
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-              />
+              <Textarea className="min-h-[100px] resize-none" placeholder="Adicione observações sobre esta etapa..." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -3427,14 +3546,37 @@ function JornadaTab({ patientId }: { patientId: number }) {
               disabled={editMutation.isPending}
               onClick={() => editingStep && editMutation.mutate({ stepId: editingStep.id, notes: editNotes, responsibleName: editResponsible })}
             >
-              {editMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Salvar
+              {editMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Salvar
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Reset confirm */}
+      {/* ── Cancel confirm ── */}
+      <AlertDialog open={!!cancelConfirmStep} onOpenChange={(open) => !open && setCancelConfirmStep(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar etapa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A etapa <strong>{STEP_NAMES[cancelConfirmStep?.stepKey ?? ""] || cancelConfirmStep?.stepKey}</strong> será
+              marcada como cancelada. Pode ser revertida pelo administrador via "Reiniciar".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => cancelConfirmStep && cancelMutation.mutate({ stepId: cancelConfirmStep.id })}
+              disabled={cancelMutation.isPending}
+            >
+              {cancelMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Sim, cancelar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Reset confirm ── */}
       <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -5150,6 +5292,7 @@ export default function PatientDetail() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("jornada");
 
   const canEdit = hasPermission("patients.update");
   const canDelete = hasPermission("patients.delete");
@@ -5336,7 +5479,7 @@ export default function PatientDetail() {
 
         {/* Main Content */}
         <div className="lg:col-span-2">
-          <Tabs defaultValue="jornada" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="mb-5 space-y-1">
               {/* Jornada do Cliente — featured tab */}
               <TabsList className="w-full bg-gradient-to-r from-primary/5 to-emerald-50 p-1 rounded-xl shadow-sm border border-primary/20 h-auto flex">
@@ -5392,7 +5535,7 @@ export default function PatientDetail() {
               </TabsList>
             </div>
 
-            <TabsContent value="jornada"><JornadaTab patientId={patientId} /></TabsContent>
+            <TabsContent value="jornada"><JornadaTab patientId={patientId} onNavigateToTab={setActiveTab} /></TabsContent>
             <TabsContent value="anamnesis"><AnamnesisTab patientId={patientId} /></TabsContent>
             <TabsContent value="evaluations"><EvaluationsTab patientId={patientId} /></TabsContent>
             <TabsContent value="treatment"><TreatmentPlanTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} /></TabsContent>
