@@ -11,7 +11,7 @@ import {
   dischargeSummariesTable,
   patientPackagesTable,
 } from "@workspace/db";
-import { eq, and, gt, count } from "drizzle-orm";
+import { eq, and, or, gt, count } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { logAudit } from "../lib/auditLog.js";
 
@@ -57,7 +57,7 @@ async function computeAutoStatus(patientId: number): Promise<AutoStatus> {
     db.select({ id: patientPackagesTable.id }).from(patientPackagesTable).where(eq(patientPackagesTable.patientId, patientId)).limit(1),
     db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(eq(appointmentsTable.patientId, patientId)).limit(1),
     db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(
-      and(eq(appointmentsTable.patientId, patientId), eq(appointmentsTable.status, "concluido"))
+      and(eq(appointmentsTable.patientId, patientId), or(eq(appointmentsTable.status, "concluido"), eq(appointmentsTable.status, "presenca")))
     ).limit(1),
     db.select({ id: dischargeSummariesTable.id }).from(dischargeSummariesTable).where(eq(dischargeSummariesTable.patientId, patientId)).limit(1),
   ]);

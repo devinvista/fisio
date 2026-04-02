@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { treatmentPlanProceduresTable, treatmentPlansTable, proceduresTable, packagesTable, patientsTable, appointmentsTable } from "@workspace/db";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 
@@ -53,14 +53,35 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
 
     const patientId = plan.patientId;
 
-    const completedAppts = await db
-      .select({ procedureId: appointmentsTable.procedureId })
-      .from(appointmentsTable)
-      .where(and(
-        eq(appointmentsTable.patientId, patientId),
-        or(eq(appointmentsTable.status, "concluido"), eq(appointmentsTable.status, "presenca"))
-      ));
+    const [rawItems, completedAppts] = await Promise.all([
+      db
+        .select({
+          id: treatmentPlanProceduresTable.id,
+          planId: treatmentPlanProceduresTable.treatmentPlanId,
+          procedureId: treatmentPlanProceduresTable.procedureId,
+          packageId: treatmentPlanProceduresTable.packageId,
+          sessionsPerWeek: treatmentPlanProceduresTable.sessionsPerWeek,
+          totalSessions: treatmentPlanProceduresTable.totalSessions,
+          unitPrice: treatmentPlanProceduresTable.unitPrice,
+          unitMonthlyPrice: treatmentPlanProceduresTable.unitMonthlyPrice,
+          discount: treatmentPlanProceduresTable.discount,
+          priority: treatmentPlanProceduresTable.priority,
+          notes: treatmentPlanProceduresTable.notes,
+          createdAt: treatmentPlanProceduresTable.createdAt,
+        })
+        .from(treatmentPlanProceduresTable)
+        .where(eq(treatmentPlanProceduresTable.treatmentPlanId, planId))
+        .orderBy(treatmentPlanProceduresTable.priority),
+      db
+        .select({ procedureId: appointmentsTable.procedureId })
+        .from(appointmentsTable)
+        .where(and(
+          eq(appointmentsTable.patientId, patientId),
+          or(eq(appointmentsTable.status, "concluido"), eq(appointmentsTable.status, "presenca"))
+        )),
+    ]);
 
+    // Build usage map for session progress tracking
     const procedureUsageMap: Record<number, number> = {};
     for (const a of completedAppts) {
       if (a.procedureId) {
@@ -68,104 +89,91 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
       }
     }
 
-    const rawItems = await db
-      .select({
-        id: treatmentPlanProceduresTable.id,
-        planId: treatmentPlanProceduresTable.treatmentPlanId,
-        procedureId: treatmentPlanProceduresTable.procedureId,
-        packageId: treatmentPlanProceduresTable.packageId,
-        sessionsPerWeek: treatmentPlanProceduresTable.sessionsPerWeek,
-        totalSessions: treatmentPlanProceduresTable.totalSessions,
-        unitPrice: treatmentPlanProceduresTable.unitPrice,
-        unitMonthlyPrice: treatmentPlanProceduresTable.unitMonthlyPrice,
-        discount: treatmentPlanProceduresTable.discount,
-        priority: treatmentPlanProceduresTable.priority,
-        notes: treatmentPlanProceduresTable.notes,
-        createdAt: treatmentPlanProceduresTable.createdAt,
-      })
-      .from(treatmentPlanProceduresTable)
-      .where(eq(treatmentPlanProceduresTable.treatmentPlanId, planId))
-      .orderBy(treatmentPlanProceduresTable.priority);
+    if (rawItems.length === 0) {
+      res.json([]);
+      return;
+    }
 
-    const enriched = await Promise.all(
-      rawItems.map(async (item) => {
-        if (item.packageId) {
-          const [pkg] = await db
-            .select({
-              id: packagesTable.id,
-              name: packagesTable.name,
-              packageType: packagesTable.packageType,
-              totalSessions: packagesTable.totalSessions,
-              sessionsPerWeek: packagesTable.sessionsPerWeek,
-              validityDays: packagesTable.validityDays,
-              price: packagesTable.price,
-              monthlyPrice: packagesTable.monthlyPrice,
-              billingDay: packagesTable.billingDay,
-              absenceCreditLimit: packagesTable.absenceCreditLimit,
-              procedureId: packagesTable.procedureId,
-              procedureName: proceduresTable.name,
-            })
-            .from(packagesTable)
+    // Batch fetch all packages and procedures referenced by the items
+    const packageIds = [...new Set(rawItems.map(i => i.packageId).filter((id): id is number => id != null))];
+    const procedureIds = [...new Set(rawItems.map(i => i.procedureId).filter((id): id is number => id != null))];
+
+    const [packagesRows, proceduresRows] = await Promise.all([
+      packageIds.length > 0
+        ? db.select({
+            id: packagesTable.id,
+            name: packagesTable.name,
+            packageType: packagesTable.packageType,
+            totalSessions: packagesTable.totalSessions,
+            sessionsPerWeek: packagesTable.sessionsPerWeek,
+            validityDays: packagesTable.validityDays,
+            price: packagesTable.price,
+            monthlyPrice: packagesTable.monthlyPrice,
+            billingDay: packagesTable.billingDay,
+            absenceCreditLimit: packagesTable.absenceCreditLimit,
+            procedureId: packagesTable.procedureId,
+            procedureName: proceduresTable.name,
+          }).from(packagesTable)
             .innerJoin(proceduresTable, eq(packagesTable.procedureId, proceduresTable.id))
-            .where(eq(packagesTable.id, item.packageId))
-            .limit(1);
+            .where(inArray(packagesTable.id, packageIds))
+        : Promise.resolve([]),
+      procedureIds.length > 0
+        ? db.select({
+            id: proceduresTable.id,
+            name: proceduresTable.name,
+            price: proceduresTable.price,
+            category: proceduresTable.category,
+            modalidade: proceduresTable.modalidade,
+            durationMinutes: proceduresTable.durationMinutes,
+          }).from(proceduresTable)
+            .where(inArray(proceduresTable.id, procedureIds))
+        : Promise.resolve([]),
+    ]);
 
-          if (pkg) {
-            const usedSessions = procedureUsageMap[pkg.procedureId] ?? 0;
-            const effectiveTotalSessions = item.totalSessions ?? pkg.totalSessions ?? null;
-            const lockedPrice = item.unitPrice ?? pkg.price;
-            const lockedMonthlyPrice = item.unitMonthlyPrice ?? pkg.monthlyPrice;
-            return {
-              ...item,
-              packageName: pkg.name,
-              procedureName: pkg.procedureName,
-              packageType: pkg.packageType,
-              totalSessions: effectiveTotalSessions,
-              sessionsPerWeek: item.sessionsPerWeek ?? pkg.sessionsPerWeek,
-              price: lockedPrice,
-              monthlyPrice: lockedMonthlyPrice,
-              billingDay: pkg.billingDay,
-              absenceCreditLimit: pkg.absenceCreditLimit,
-              usedSessions,
-              discount: item.discount ?? "0",
-            };
-          }
-          return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
+    const pkgMap = new Map(packagesRows.map(p => [p.id, p]));
+    const procMap = new Map(proceduresRows.map(p => [p.id, p]));
+
+    const enriched = rawItems.map((item) => {
+      if (item.packageId) {
+        const pkg = pkgMap.get(item.packageId);
+        if (pkg) {
+          const usedSessions = procedureUsageMap[pkg.procedureId] ?? 0;
+          return {
+            ...item,
+            packageName: pkg.name,
+            procedureName: pkg.procedureName,
+            packageType: pkg.packageType,
+            totalSessions: item.totalSessions ?? pkg.totalSessions ?? null,
+            sessionsPerWeek: item.sessionsPerWeek ?? pkg.sessionsPerWeek,
+            price: item.unitPrice ?? pkg.price,
+            monthlyPrice: item.unitMonthlyPrice ?? pkg.monthlyPrice,
+            billingDay: pkg.billingDay,
+            absenceCreditLimit: pkg.absenceCreditLimit,
+            usedSessions,
+            discount: item.discount ?? "0",
+          };
         }
-
-        if (item.procedureId) {
-          const [proc] = await db
-            .select({
-              id: proceduresTable.id,
-              name: proceduresTable.name,
-              price: proceduresTable.price,
-              category: proceduresTable.category,
-              modalidade: proceduresTable.modalidade,
-              durationMinutes: proceduresTable.durationMinutes,
-            })
-            .from(proceduresTable)
-            .where(eq(proceduresTable.id, item.procedureId))
-            .limit(1);
-
-          if (proc) {
-            const usedSessions = procedureUsageMap[proc.id] ?? 0;
-            const lockedPrice = item.unitPrice ?? proc.price;
-            return {
-              ...item,
-              procedureName: proc.name,
-              packageType: null,
-              price: lockedPrice,
-              monthlyPrice: null,
-              usedSessions,
-              discount: item.discount ?? "0",
-            };
-          }
-          return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
-        }
-
         return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
-      })
-    );
+      }
+
+      if (item.procedureId) {
+        const proc = procMap.get(item.procedureId);
+        if (proc) {
+          return {
+            ...item,
+            procedureName: proc.name,
+            packageType: null,
+            price: item.unitPrice ?? proc.price,
+            monthlyPrice: null,
+            usedSessions: procedureUsageMap[proc.id] ?? 0,
+            discount: item.discount ?? "0",
+          };
+        }
+        return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
+      }
+
+      return { ...item, usedSessions: 0, discount: item.discount ?? "0" };
+    });
 
     res.json(enriched);
   } catch (err) {
@@ -181,6 +189,17 @@ router.post("/", requirePermission("medical.write"), async (req: AuthRequest, re
 
     if (!procedureId && !packageId) {
       res.status(400).json({ error: "Bad Request", message: "procedureId ou packageId é obrigatório" });
+      return;
+    }
+
+    // Verify plan exists before ownership check to give a clear 404
+    const [planExists] = await db
+      .select({ id: treatmentPlansTable.id })
+      .from(treatmentPlansTable)
+      .where(eq(treatmentPlansTable.id, planId))
+      .limit(1);
+    if (!planExists) {
+      res.status(404).json({ error: "Not Found", message: "Plano de tratamento não encontrado" });
       return;
     }
 

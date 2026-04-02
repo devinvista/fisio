@@ -362,7 +362,8 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
       entityId: plan?.id,
       summary: existing ? "Plano de tratamento atualizado" : "Plano de tratamento criado",
     });
-    res.json(plan);
+    const httpStatus = existing ? 200 : 201;
+    res.status(httpStatus).json(plan);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

@@ -8,8 +8,6 @@ import {
   useCreateEvaluation,
   useUpdateEvaluation,
   useDeleteEvaluation,
-  useGetTreatmentPlan,
-  useSaveTreatmentPlan,
   useListEvolutions,
   useCreateEvolution,
   useUpdateEvolution,
@@ -1724,7 +1722,7 @@ function TreatmentPlanItemsSection({
       body.discount = discAmt;
       body.sessionsPerWeek = itemSpw || selectedPkg.sessionsPerWeek;
       body.totalSessions = itemSessions ? Number(itemSessions) : (selectedPkg.totalSessions ?? null);
-    } else if (selectedProc) {
+    } else if (addMode === "procedure" && selectedProc) {
       const effectivePrice = Number(itemCustomPrice || selectedProc.price || 0);
       const sessCount = Number(itemSessions) || 1;
       const discAmt = resolveDiscountAmount(itemDiscount, itemDiscountType, effectivePrice * sessCount);
@@ -2378,6 +2376,8 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
 
   const handleDeletePlan = async (planId: number) => {
     setDeletingId(planId);
+    // Capture remaining plans from current state before invalidation
+    const remaining = allPlans.filter(p => p.id !== planId);
     try {
       const res = await fetch(`/api/patients/${patientId}/treatment-plans/${planId}`, {
         method: "DELETE",
@@ -2385,10 +2385,9 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
       });
       if (!res.ok) throw new Error();
       toast({ title: "Plano excluído" });
-      await queryClient.invalidateQueries({ queryKey: plansKey });
-      // Select next plan
-      const remaining = allPlans.filter(p => p.id !== planId);
+      // Set next selection before invalidating so UI doesn't flicker on stale data
       setSelectedPlanId(remaining.length > 0 ? remaining[0].id : null);
+      await queryClient.invalidateQueries({ queryKey: plansKey });
     } catch {
       toast({ title: "Erro", description: "Não foi possível excluir.", variant: "destructive" });
     } finally {
@@ -2430,7 +2429,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
                     } ${isSelected ? "opacity-100" : ""}`} />
                     <span>Plano {idx + 1}</span>
                     <span className={`text-[10px] font-normal ${isSelected ? "text-white/70" : "text-slate-400"}`}>
-                      {plan.startDate ? new Date(plan.startDate).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }) : statusLabel[plan.status] ?? plan.status}
+                      {plan.startDate ? new Date(plan.startDate + "T12:00:00").toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }) : statusLabel[plan.status] ?? plan.status}
                     </span>
                     {allPlans.length > 1 && (
                       <span
@@ -2469,7 +2468,7 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
                   Plano {allPlans.findIndex(p => p.id === selectedPlanId) + 1}
                   {selectedPlan.startDate && (
                     <span className="ml-2 text-sm font-normal text-slate-400">
-                      — desde {new Date(selectedPlan.startDate).toLocaleDateString("pt-BR")}
+                      — desde {new Date(selectedPlan.startDate + "T12:00:00").toLocaleDateString("pt-BR")}
                     </span>
                   )}
                 </CardTitle>
