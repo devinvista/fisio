@@ -87,7 +87,7 @@ function formatCurrency(value: string | number) {
 function getMargin(price: string | number, cost: string | number) {
   const p = Number(price);
   const c = Number(cost);
-  if (p === 0) return 0;
+  if (!p || isNaN(p)) return 0;
   return ((p - c) / p) * 100;
 }
 
