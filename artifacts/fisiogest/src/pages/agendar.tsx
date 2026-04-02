@@ -222,6 +222,7 @@ function StepSeusDados({
         setForm((prev) => ({
           ...prev,
           name: r.patient!.name,
+          phone: r.patient!.phone ?? prev.phone,
           email: r.patient!.email ?? prev.email,
           cpf: r.patient!.cpf ?? prev.cpf,
         }));
@@ -239,7 +240,8 @@ function StepSeusDados({
 
   const handleCpfChange = (val: string) => {
     setForm((prev) => ({ ...prev, cpf: val }));
-    if (!form.phone || form.phone.replace(/\D/g, "").length < 8) {
+    // Run lookup by CPF whenever a patient hasn't been found yet (phone may be filled but returned nothing)
+    if (lookupState !== "found") {
       runLookup(val);
     }
   };
