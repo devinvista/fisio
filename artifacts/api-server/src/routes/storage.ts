@@ -47,12 +47,10 @@ router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Re
   }
 });
 
-router.get("/public-objects/*filePath", async (req: Request, res: Response) => {
+router.get("/public-objects/{*filePath}", async (req: Request, res: Response) => {
   try {
-    const raw = req.params.filePath;
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
+    const filePath = (req.params as Record<string, string>).filePath ?? "";
 
-    // Guard against path traversal attacks
     if (!filePath || filePath.includes("..") || filePath.startsWith("/")) {
       res.status(400).json({ error: "Caminho de arquivo inválido" });
       return;
@@ -80,11 +78,10 @@ router.get("/public-objects/*filePath", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/objects/*path", authMiddleware, async (req: Request, res: Response) => {
+router.get("/objects/{*objPath}", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    const objectPath = `/objects/${wildcardPath}`;
+    const wildcardParam = (req.params as Record<string, string>).objPath ?? "";
+    const objectPath = `/objects/${wildcardParam}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
     const response = await objectStorageService.downloadObject(objectFile);

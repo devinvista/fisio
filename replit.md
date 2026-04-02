@@ -571,3 +571,21 @@ Análise completa (backend + frontend) detectou bugs de segurança multi-tenant 
 |---|---|---|---|
 | 7 | `pages/financial/index.tsx` | `CreateRecordForm` não resetava os campos após salvar com sucesso — dados do lançamento anterior persistiam ao reabrir o dialog | Reset completo de todos os campos (`type`, `expenseMode`, `amount`, `description`, `category`, `procedureId`) no `onSuccess` |
 | 8 | `pages/relatorios.tsx` | Três `fetch()` para relatórios chamavam `.json()` sem verificar `r.ok` — erros HTTP silenciosos podiam retornar HTML de erro como dados | Adicionado `if (!r.ok) throw new Error(...)` antes de cada `.json()`, permitindo que TanStack Query trate o estado de erro |
+
+---
+
+## Correções de Compatibilidade Express 5 + Melhorias (2026-04-02)
+
+### Backend
+
+| # | Arquivo | Problema | Correção |
+|---|---|---|---|
+| 1 | `routes/storage.ts` | Rotas wildcard `"/public-objects/*filePath"` e `"/objects/*path"` usavam sintaxe Express 4 inválida em Express 5 / path-to-regexp v8 — causaria erro de runtime ao registrar as rotas | Corrigido para sintaxe Express 5: `"/public-objects/{*filePath}"` e `"/objects/{*objPath}"` com acesso via `req.params.filePath/objPath` |
+| 2 | `lib/db/src/index.ts` | `sslmode=require` na `DATABASE_URL` disparava aviso de deprecação do pg v8 em toda inicialização | Substituição automática de `sslmode=require` → `sslmode=verify-full` na string de conexão (mesma segurança, sem warning) |
+
+### Frontend
+
+| # | Arquivo | Problema | Correção |
+|---|---|---|---|
+| 3 | `lib/auth-context.tsx` | `switchClinic()` usava `window.location.href = "/dashboard"` (hard reload + caminho absoluto) ao trocar de clínica | Substituído por `setLocation("/dashboard")` (navegação suave via Wouter, respeitando o base path) |
+| 4 | `App.tsx` | Interceptor 401 redirecionava via `window.location.href = "/login"` com caminho absoluto fixo | Agora usa `import.meta.env.BASE_URL` para compor o caminho: `${base}/login`, garantindo funcionamento com qualquer base path de deploy |

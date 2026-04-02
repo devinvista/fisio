@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem("fisiogest_clinic_id");
       }
-      window.location.href = "/dashboard";
+      setLocation("/dashboard");
     } catch (err) {
       console.error("Failed to switch clinic", err);
     }

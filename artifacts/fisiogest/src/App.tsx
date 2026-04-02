@@ -44,7 +44,8 @@ window.fetch = async (input, init) => {
       localStorage.removeItem("fisiogest_token");
       localStorage.removeItem("fisiogest_clinic_id");
       localStorage.removeItem("fisiogest_clinics");
-      window.location.href = "/login";
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      window.location.href = `${base}/login`;
     }
   }
   return response;
