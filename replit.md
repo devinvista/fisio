@@ -476,6 +476,7 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Padronização pt-BR (datas, moeda, idioma HTML) | ✅ Completo |
 | Identidade visual fisioterapêutica | ✅ Completo |
 | Audit log de ações | ✅ Completo |
+| Jornada do Cliente (timeline clínica no prontuário) | ✅ Completo |
 | Notificações (WhatsApp/e-mail) | 🔲 Pendente |
 | Agendamento self-service pelo paciente | 🔲 Pendente |
 

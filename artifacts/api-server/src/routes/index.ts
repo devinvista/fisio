@@ -19,6 +19,7 @@ import auditLogRouter from "./audit-log.js";
 import packagesRouter from "./packages.js";
 import patientPackagesRouter from "./patient-packages.js";
 import treatmentPlanProceduresRouter from "./treatment-plan-procedures.js";
+import patientJourneyRouter from "./patient-journey.js";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,7 @@ router.use("/clinics", clinicsRouter);
 router.use("/users", usersRouter);
 router.use("/patients", patientsRouter);
 router.use("/patients/:patientId", medicalRecordsRouter);
+router.use("/patients/:patientId", patientJourneyRouter);
 router.use("/patients/:patientId/packages", patientPackagesRouter);
 router.use("/procedures", proceduresRouter);
 router.use("/packages", packagesRouter);

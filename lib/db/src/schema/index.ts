@@ -13,3 +13,4 @@ export * from "./session-credits";
 export * from "./audit-log";
 export * from "./packages";
 export * from "./patient-packages";
+export * from "./patient-journey";
