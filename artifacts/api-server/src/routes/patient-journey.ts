@@ -167,12 +167,19 @@ router.patch("/journey/:stepId", async (req: Request<PS>, res) => {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
-    const { status, notes, responsibleName, action } = req.body as {
-      status?: string;
+    const { notes, responsibleName, action } = req.body as {
       notes?: string;
       responsibleName?: string;
-      action?: "advance" | "cancel" | "edit";
+      action?: "cancel" | "edit";
     };
+
+    if ((req.body as any).action === "advance") {
+      res.status(403).json({
+        error: "Forbidden",
+        message: "O avanço manual de etapas não é permitido. O status é calculado automaticamente com base no preenchimento do cadastro do paciente.",
+      });
+      return;
+    }
 
     const [currentStep] = await db
       .select()
@@ -181,18 +188,6 @@ router.patch("/journey/:stepId", async (req: Request<PS>, res) => {
 
     if (!currentStep) { res.status(404).json({ error: "Etapa não encontrada" }); return; }
 
-    const allSteps = await db
-      .select()
-      .from(patientJourneyStepsTable)
-      .where(eq(patientJourneyStepsTable.patientId, patientId))
-      .orderBy(patientJourneyStepsTable.stepOrder);
-
-    const auto = await computeAutoStatus(patientId);
-    const mergedSteps = allSteps.map((s) => ({
-      ...s,
-      status: mergeStatus(s.status, auto[s.stepKey as keyof AutoStatus] ?? "pending"),
-    }));
-
     const now = new Date();
     const updateData: Partial<typeof patientJourneyStepsTable.$inferInsert> = {
       updatedByUserId: authReq.userId ?? null,
@@ -200,38 +195,13 @@ router.patch("/journey/:stepId", async (req: Request<PS>, res) => {
       updatedAt: now,
     };
 
-    if (action === "advance") {
-      const prevStep = mergedSteps.find((s) => s.stepOrder === currentStep.stepOrder - 1);
-      if (prevStep && prevStep.status === "pending") {
-        res.status(422).json({
-          error: "Unprocessable Entity",
-          message: `Não é possível avançar "${currentStep.stepKey}": a etapa anterior ("${prevStep.stepKey}") ainda está pendente.`,
-        });
-        return;
-      }
-      updateData.status = "completed";
-      updateData.completedAt = now;
-
-      const nextStep = allSteps.find((s) => s.stepOrder === currentStep.stepOrder + 1);
-      if (nextStep && nextStep.status !== "cancelled" && nextStep.status !== "completed") {
-        await db
-          .update(patientJourneyStepsTable)
-          .set({ status: "in_progress", startedAt: now, updatedAt: now })
-          .where(eq(patientJourneyStepsTable.id, nextStep.id));
-      }
-    } else if (action === "cancel") {
+    if (action === "cancel") {
       updateData.status = "cancelled";
       updateData.cancelledAt = now;
-    } else {
-      if (status) updateData.status = status;
     }
 
     if (notes !== undefined) updateData.notes = notes;
     if (responsibleName !== undefined) updateData.responsibleName = responsibleName;
-
-    if (action === "advance" && !currentStep.startedAt) {
-      updateData.startedAt = now;
-    }
 
     await db
       .update(patientJourneyStepsTable)

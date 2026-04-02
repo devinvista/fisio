@@ -35,7 +35,7 @@ import {
   LogOut, Pencil, Trash2, ShieldAlert, UserCheck, Lock, Paperclip, Upload,
   FileImage, File, Download, ScrollText, Printer, BadgeCheck, CalendarDays,
   ClipboardCheck, PenLine, Package, Layers, RefreshCw, Info,
-  ArrowRight, Milestone, RotateCcw, Filter,
+  Milestone, RotateCcw, Filter,
   Check, ArrowUpRight, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -3080,27 +3080,6 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
   const invalidateJourney = () =>
     queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
 
-  const advanceMutation = useMutation({
-    mutationFn: ({ stepId }: { stepId: number }) =>
-      fetch(`/api/patients/${patientId}/journey/${stepId}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "advance" }),
-      }).then(async (r) => {
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.message || "Erro ao avançar etapa");
-        }
-        return r.json();
-      }),
-    onSuccess: () => {
-      invalidateJourney();
-      toast({ title: "Etapa concluída", description: "A próxima etapa foi iniciada automaticamente." });
-    },
-    onError: (err: Error) =>
-      toast({ title: "Não foi possível avançar", description: err.message, variant: "destructive" }),
-  });
-
   const cancelMutation = useMutation({
     mutationFn: ({ stepId }: { stepId: number }) =>
       fetch(`/api/patients/${patientId}/journey/${stepId}`, {
@@ -3175,12 +3154,6 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
   function formatDate(val: string | null | undefined) {
     if (!val) return null;
     try { return format(new Date(val), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }); } catch { return null; }
-  }
-
-  function canAdvanceStep(step: JourneyStep) {
-    if (step.status === "completed" || step.status === "cancelled") return false;
-    const prev = steps.find(s => s.stepOrder === step.stepOrder - 1);
-    return !prev || prev.status !== "pending";
   }
 
   const toggleExpanded = (id: number) => setExpandedSteps(prev => {
@@ -3302,17 +3275,6 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
               >
                 <ArrowUpRight className="w-3 h-3" />
                 {JOURNEY_META[focusStep.stepKey]?.actionLabel || "Abrir"}
-              </Button>
-            )}
-            {canAdvanceStep(focusStep) && (
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1 bg-primary hover:bg-primary/90"
-                disabled={advanceMutation.isPending}
-                onClick={() => advanceMutation.mutate({ stepId: focusStep.id })}
-              >
-                {advanceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                Concluir
               </Button>
             )}
           </div>
@@ -3502,19 +3464,6 @@ function JornadaTab({ patientId, onNavigateToTab }: { patientId: number; onNavig
                               onClick={() => setCancelConfirmStep(step)}
                             >
                               <XCircle className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {canAdvanceStep(step) && (
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs px-3 gap-1 bg-primary hover:bg-primary/90"
-                              disabled={advanceMutation.isPending}
-                              onClick={() => advanceMutation.mutate({ stepId: step.id })}
-                            >
-                              {advanceMutation.isPending
-                                ? <Loader2 className="w-3 h-3 animate-spin" />
-                                : <ArrowRight className="w-3 h-3" />}
-                              Avançar
                             </Button>
                           )}
                         </div>
