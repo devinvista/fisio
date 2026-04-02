@@ -34,7 +34,7 @@ import {
   FileImage, File, Download, ScrollText, Printer, BadgeCheck, CalendarDays,
   ClipboardCheck, PenLine, Package, Layers, RefreshCw, Info,
   Milestone, RotateCcw, Filter,
-  Check, ArrowUpRight, Zap,
+  Check, ArrowUpRight, Zap, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
