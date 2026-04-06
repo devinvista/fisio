@@ -304,10 +304,20 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 ### Procedimentos
 | Método | Caminho | Descrição |
 |---|---|---|
-| GET | `/api/procedures` | Listar (filtro: category) |
+| GET | `/api/procedures` | Listar — LEFT JOIN `procedure_costs` para a clínica; retorna `effectivePrice`, `effectiveTotalCost`, `clinicCost`, `isGlobal` |
 | POST | `/api/procedures` | Criar |
-| PUT | `/api/procedures/:id` | Atualizar (inclui maxCapacity) |
-| DELETE | `/api/procedures/:id` | Excluir |
+| PUT | `/api/procedures/:id` | Atualizar dados base |
+| PATCH | `/api/procedures/:id/toggle-active` | Ativar / desativar |
+| GET | `/api/procedures/:id/costs` | Obter configuração de custos da clínica |
+| PUT | `/api/procedures/:id/costs` | Upsert de custos da clínica (`priceOverride`, `fixedCost`, `variableCost`, `notes`) |
+| DELETE | `/api/procedures/:id/costs` | Remover override de custos da clínica |
+| DELETE | `/api/procedures/:id` | Excluir (cascade em `procedure_costs`) |
+
+**Custos por clínica (`procedure_costs`):**
+- `effectivePrice = priceOverride ?? procedure.price`
+- `effectiveTotalCost = fixedCost + variableCost` (se houver config) `?? procedure.cost`
+- `applyBillingRules` em `appointments.ts` usa `effectivePrice` ao criar `creditoAReceber`
+- Procedimentos globais (`clinicId = null`) podem ter override de preço e custo por clínica
 
 ### Financeiro
 | Método | Caminho | Descrição |

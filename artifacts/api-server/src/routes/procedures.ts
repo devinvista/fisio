@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { proceduresTable, appointmentsTable } from "@workspace/db";
+import { proceduresTable, procedureCostsTable, appointmentsTable } from "@workspace/db";
 import { eq, and, count, ilike, isNull, or, sql } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -8,6 +8,37 @@ import type { Role } from "@workspace/db";
 
 const router = Router();
 router.use(authMiddleware);
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+/** Returns the effective price for a procedure in a specific clinic.
+ *  Falls back to the procedure's own price when no clinic override exists. */
+export async function getEffectiveProcedurePrice(
+  procedureId: number,
+  clinicId: number | null
+): Promise<string> {
+  if (!clinicId) return "";
+  const [row] = await db
+    .select({
+      basePrice: proceduresTable.price,
+      priceOverride: procedureCostsTable.priceOverride,
+    })
+    .from(proceduresTable)
+    .leftJoin(
+      procedureCostsTable,
+      and(
+        eq(procedureCostsTable.procedureId, proceduresTable.id),
+        eq(procedureCostsTable.clinicId, clinicId)
+      )
+    )
+    .where(eq(proceduresTable.id, procedureId))
+    .limit(1);
+
+  if (!row) return "0";
+  return row.priceOverride ?? row.basePrice;
+}
+
+// ─── GET /  (list) ────────────────────────────────────────────────────────────
 
 router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
@@ -23,20 +54,94 @@ router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest,
     if (category) conditions.push(ilike(proceduresTable.category, category));
     if (!isAdmin || !includeInactive) conditions.push(eq(proceduresTable.isActive, true));
 
-    let query = db.select().from(proceduresTable) as any;
-    if (conditions.length === 1) {
-      query = query.where(conditions[0]);
-    } else if (conditions.length > 1) {
-      query = query.where(and(...conditions));
-    }
+    // JOIN with procedure_costs for the current clinic (-1 never matches → null clinicCost)
+    const clinicIdForJoin = req.clinicId ?? -1;
 
-    const procedures = await query.orderBy(proceduresTable.name);
+    const rows = await db
+      .select({
+        id: proceduresTable.id,
+        name: proceduresTable.name,
+        category: proceduresTable.category,
+        modalidade: proceduresTable.modalidade,
+        durationMinutes: proceduresTable.durationMinutes,
+        price: proceduresTable.price,
+        cost: proceduresTable.cost,
+        description: proceduresTable.description,
+        maxCapacity: proceduresTable.maxCapacity,
+        onlineBookingEnabled: proceduresTable.onlineBookingEnabled,
+        billingType: proceduresTable.billingType,
+        monthlyPrice: proceduresTable.monthlyPrice,
+        billingDay: proceduresTable.billingDay,
+        clinicId: proceduresTable.clinicId,
+        isActive: proceduresTable.isActive,
+        createdAt: proceduresTable.createdAt,
+        // Clinic-specific cost override (null when no row in procedure_costs)
+        cc_priceOverride: procedureCostsTable.priceOverride,
+        cc_monthlyPriceOverride: procedureCostsTable.monthlyPriceOverride,
+        cc_fixedCost: procedureCostsTable.fixedCost,
+        cc_variableCost: procedureCostsTable.variableCost,
+        cc_notes: procedureCostsTable.notes,
+      })
+      .from(proceduresTable)
+      .leftJoin(
+        procedureCostsTable,
+        and(
+          eq(procedureCostsTable.procedureId, proceduresTable.id),
+          eq(procedureCostsTable.clinicId, clinicIdForJoin)
+        )
+      )
+      .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(proceduresTable.name);
+
+    const procedures = rows.map((r) => {
+      const hasClinicCost = r.cc_fixedCost !== null;
+      const fixedCost = r.cc_fixedCost ?? "0";
+      const variableCost = r.cc_variableCost ?? "0";
+      const effectiveTotalCost = hasClinicCost
+        ? String(Number(fixedCost) + Number(variableCost))
+        : String(r.cost ?? "0");
+
+      return {
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        modalidade: r.modalidade,
+        durationMinutes: r.durationMinutes,
+        price: r.price,
+        cost: r.cost,
+        description: r.description,
+        maxCapacity: r.maxCapacity,
+        onlineBookingEnabled: r.onlineBookingEnabled,
+        billingType: r.billingType,
+        monthlyPrice: r.monthlyPrice,
+        billingDay: r.billingDay,
+        clinicId: r.clinicId,
+        isActive: r.isActive,
+        createdAt: r.createdAt,
+        isGlobal: r.clinicId === null,
+        effectivePrice: r.cc_priceOverride ?? r.price,
+        effectiveMonthlyPrice: r.cc_monthlyPriceOverride ?? r.monthlyPrice ?? null,
+        effectiveTotalCost,
+        clinicCost: hasClinicCost
+          ? {
+              priceOverride: r.cc_priceOverride,
+              monthlyPriceOverride: r.cc_monthlyPriceOverride,
+              fixedCost,
+              variableCost,
+              notes: r.cc_notes,
+            }
+          : null,
+      };
+    });
+
     res.json(procedures);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// ─── POST / (create) ──────────────────────────────────────────────────────────
 
 router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
@@ -57,7 +162,10 @@ router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest
       return;
     }
     const resolvedModalidade = modalidade || "individual";
-    const resolvedMaxCapacity = maxCapacity ? parseInt(maxCapacity) : (resolvedModalidade === "individual" ? 1 : resolvedModalidade === "dupla" ? 2 : 10);
+    const resolvedMaxCapacity = maxCapacity
+      ? parseInt(maxCapacity)
+      : resolvedModalidade === "individual" ? 1 : resolvedModalidade === "dupla" ? 2 : 10;
+
     const [procedure] = await db
       .insert(proceduresTable)
       .values({
@@ -77,12 +185,15 @@ router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest
         clinicId: req.clinicId ?? null,
       })
       .returning();
-    res.status(201).json(procedure);
+
+    res.status(201).json({ ...procedure, isGlobal: procedure.clinicId === null, clinicCost: null, effectivePrice: procedure.price, effectiveTotalCost: procedure.cost ?? "0" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// ─── PUT /:id (update base data) ──────────────────────────────────────────────
 
 router.put("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
@@ -119,12 +230,149 @@ router.put("/:id", requirePermission("procedures.manage"), async (req: AuthReque
       res.status(404).json({ error: "Not Found" });
       return;
     }
-    res.json(procedure);
+    res.json({ ...procedure, isGlobal: procedure.clinicId === null, clinicCost: null, effectivePrice: procedure.price, effectiveTotalCost: procedure.cost ?? "0" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// ─── GET /:id/costs  (clinic-specific cost config) ───────────────────────────
+
+router.get("/:id/costs", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const clinicId = req.clinicId;
+
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Clínica não selecionada" });
+      return;
+    }
+
+    const [costs] = await db
+      .select()
+      .from(procedureCostsTable)
+      .where(
+        and(
+          eq(procedureCostsTable.procedureId, id),
+          eq(procedureCostsTable.clinicId, clinicId)
+        )
+      )
+      .limit(1);
+
+    res.json(costs ?? null);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── PUT /:id/costs  (upsert clinic-specific costs) ──────────────────────────
+
+router.put("/:id/costs", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const clinicId = req.clinicId;
+
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Clínica não selecionada" });
+      return;
+    }
+
+    const isAdmin = req.isSuperAdmin || (req.userRoles ?? []).includes("admin" as Role);
+    if (!isAdmin) {
+      res.status(403).json({ error: "Forbidden", message: "Apenas administradores podem configurar custos" });
+      return;
+    }
+
+    const { priceOverride, monthlyPriceOverride, fixedCost, variableCost, notes } = req.body;
+
+    const fixedCostVal = fixedCost !== undefined && fixedCost !== "" ? String(fixedCost) : "0";
+    const variableCostVal = variableCost !== undefined && variableCost !== "" ? String(variableCost) : "0";
+    const priceOverrideVal = priceOverride !== undefined && priceOverride !== "" ? String(priceOverride) : null;
+    const monthlyPriceOverrideVal = monthlyPriceOverride !== undefined && monthlyPriceOverride !== "" ? String(monthlyPriceOverride) : null;
+
+    const existing = await db
+      .select({ id: procedureCostsTable.id })
+      .from(procedureCostsTable)
+      .where(
+        and(
+          eq(procedureCostsTable.procedureId, id),
+          eq(procedureCostsTable.clinicId, clinicId)
+        )
+      )
+      .limit(1);
+
+    let result;
+    if (existing.length > 0) {
+      [result] = await db
+        .update(procedureCostsTable)
+        .set({
+          priceOverride: priceOverrideVal,
+          monthlyPriceOverride: monthlyPriceOverrideVal,
+          fixedCost: fixedCostVal,
+          variableCost: variableCostVal,
+          notes: notes || null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(procedureCostsTable.procedureId, id),
+            eq(procedureCostsTable.clinicId, clinicId)
+          )
+        )
+        .returning();
+    } else {
+      [result] = await db
+        .insert(procedureCostsTable)
+        .values({
+          procedureId: id,
+          clinicId,
+          priceOverride: priceOverrideVal,
+          monthlyPriceOverride: monthlyPriceOverrideVal,
+          fixedCost: fixedCostVal,
+          variableCost: variableCostVal,
+          notes: notes || null,
+        })
+        .returning();
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── DELETE /:id/costs  (remove clinic cost override) ────────────────────────
+
+router.delete("/:id/costs", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const clinicId = req.clinicId;
+
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Clínica não selecionada" });
+      return;
+    }
+
+    await db
+      .delete(procedureCostsTable)
+      .where(
+        and(
+          eq(procedureCostsTable.procedureId, id),
+          eq(procedureCostsTable.clinicId, clinicId)
+        )
+      );
+
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── PATCH /:id/toggle-active ─────────────────────────────────────────────────
 
 router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
@@ -154,12 +402,14 @@ router.patch("/:id/toggle-active", requirePermission("procedures.manage"), async
       .where(eq(proceduresTable.id, id))
       .returning();
 
-    res.json(updated);
+    res.json({ ...updated, isGlobal: updated.clinicId === null, clinicCost: null, effectivePrice: updated.price, effectiveTotalCost: updated.cost ?? "0" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// ─── DELETE /:id ─────────────────────────────────────────────────────────────
 
 router.delete("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
@@ -185,6 +435,7 @@ router.delete("/:id", requirePermission("procedures.manage"), async (req: AuthRe
       return;
     }
 
+    // procedure_costs rows are deleted automatically by CASCADE
     await db.delete(proceduresTable).where(deleteCondition);
     res.status(204).send();
   } catch (err) {

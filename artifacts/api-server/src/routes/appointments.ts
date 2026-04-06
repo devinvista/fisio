@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -68,6 +68,24 @@ async function applyBillingRules(
   const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
   const canceledStatuses = ["cancelado"];
 
+  // Resolve effective price: clinic override takes precedence over base procedure price
+  let effectivePrice = String(procedure.price);
+  if (details.clinicId && procedureId) {
+    const [clinicCostRow] = await db
+      .select({ priceOverride: procedureCostsTable.priceOverride })
+      .from(procedureCostsTable)
+      .where(
+        and(
+          eq(procedureCostsTable.procedureId, procedureId),
+          eq(procedureCostsTable.clinicId, details.clinicId)
+        )
+      )
+      .limit(1);
+    if (clinicCostRow?.priceOverride) {
+      effectivePrice = String(clinicCostRow.priceOverride);
+    }
+  }
+
   if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
     if (billingType === "porSessao") {
       await db.transaction(async (tx) => {
@@ -117,7 +135,7 @@ async function applyBillingRules(
           if (existing.length === 0) {
             await tx.insert(financialRecordsTable).values({
               type: "receita",
-              amount: String(procedure.price),
+              amount: effectivePrice,
               description: `${procedure.name} - ${patientName}`,
               category: procedure.category,
               appointmentId,

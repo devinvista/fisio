@@ -45,10 +45,20 @@ import {
   Globe,
   Power,
   PowerOff,
+  DollarSign,
+  Wrench,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+interface ProcedureCost {
+  priceOverride: string | null;
+  monthlyPriceOverride: string | null;
+  fixedCost: string;
+  variableCost: string;
+  notes: string | null;
+}
 
 interface Procedure {
   id: number;
@@ -62,7 +72,12 @@ interface Procedure {
   maxCapacity: number;
   onlineBookingEnabled: boolean;
   isActive: boolean;
+  clinicId: number | null;
   createdAt: string;
+  isGlobal: boolean;
+  effectivePrice: string | number;
+  effectiveTotalCost: string | number;
+  clinicCost: ProcedureCost | null;
 }
 
 type ViewMode = "cards" | "list";
@@ -118,6 +133,13 @@ export default function Procedimentos() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null);
   const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null);
+  const [costingProcedure, setCostingProcedure] = useState<Procedure | null>(null);
+  const [costForm, setCostForm] = useState({
+    priceOverride: "",
+    fixedCost: "",
+    variableCost: "",
+    notes: "",
+  });
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [catalogOptions, setCatalogOptions] = useState({
     clinicName: "FisioGest Pro",
@@ -267,6 +289,39 @@ export default function Procedimentos() {
       toast({ variant: "destructive", title: "Erro ao alterar status", description: err.message });
     },
   });
+
+  const updateCostsMutation = useMutation({
+    mutationFn: async (data: { id: number; priceOverride: string; fixedCost: string; variableCost: string; notes: string }) => {
+      return apiFetch(`/api/procedures/${data.id}/costs`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceOverride: data.priceOverride !== "" ? Number(data.priceOverride) : null,
+          fixedCost: data.fixedCost !== "" ? Number(data.fixedCost) : 0,
+          variableCost: data.variableCost !== "" ? Number(data.variableCost) : 0,
+          notes: data.notes || null,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["procedures"] });
+      setCostingProcedure(null);
+      toast({ title: "Custos da clínica atualizados com sucesso" });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Erro ao salvar custos", description: err.message });
+    },
+  });
+
+  function openConfigCosts(proc: Procedure) {
+    setCostingProcedure(proc);
+    setCostForm({
+      priceOverride: proc.clinicCost?.priceOverride ? String(proc.clinicCost.priceOverride) : "",
+      fixedCost: proc.clinicCost?.fixedCost && proc.clinicCost.fixedCost !== "0" ? String(proc.clinicCost.fixedCost) : "",
+      variableCost: proc.clinicCost?.variableCost && proc.clinicCost.variableCost !== "0" ? String(proc.clinicCost.variableCost) : "",
+      notes: proc.clinicCost?.notes ?? "",
+    });
+  }
 
   function resetForm() {
     setForm({ name: "", category: "Reabilitação", modalidade: "individual", durationMinutes: 60, price: "", cost: "", description: "", maxCapacity: 1, onlineBookingEnabled: false, monthlyPrice: undefined, billingDay: undefined });
@@ -723,9 +778,9 @@ export default function Procedimentos() {
             </Button>
           </div>
         ) : viewMode === "cards" ? (
-          <CardView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} />
+          <CardView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} onConfigCosts={openConfigCosts} />
         ) : (
-          <ListView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} />
+          <ListView procedures={procedures} onEdit={openEdit} onDelete={setDeletingProcedure} isAdmin={isAdmin} onToggleActive={(p) => toggleActiveMutation.mutate(p.id)} onConfigCosts={openConfigCosts} />
         )}
       </div>
 
@@ -1028,6 +1083,126 @@ export default function Procedimentos() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Clinic Cost Configuration Dialog ────────────────────────────── */}
+      <Dialog open={!!costingProcedure} onOpenChange={open => { if (!open) setCostingProcedure(null); }}>
+        <DialogContent className="max-w-md rounded-3xl border-none shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-emerald-600" />
+              Custos da Clínica
+            </DialogTitle>
+            <p className="text-sm text-slate-500 mt-1">
+              Configure preço e custos específicos para{" "}
+              <strong className="text-slate-700">{costingProcedure?.name}</strong> nesta clínica.
+              {costingProcedure?.isGlobal && (
+                <span className="ml-1 text-blue-600 font-medium">Procedimento global.</span>
+              )}
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* Base price reference */}
+            <div className="bg-slate-50 rounded-xl p-3 text-xs">
+              <div className="flex justify-between text-slate-500">
+                <span>Preço base do procedimento</span>
+                <span className="font-semibold text-slate-700">{formatCurrency(costingProcedure?.price ?? 0)}</span>
+              </div>
+              {costingProcedure?.clinicCost?.priceOverride && (
+                <div className="flex justify-between mt-1.5 text-emerald-700 font-semibold border-t border-slate-100 pt-1.5">
+                  <span>Preço atual desta clínica</span>
+                  <span>{formatCurrency(costingProcedure.clinicCost.priceOverride)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label>Preço cobrado por esta clínica (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={costForm.priceOverride}
+                onChange={e => setCostForm(f => ({ ...f, priceOverride: e.target.value }))}
+                placeholder={`Padrão: ${formatCurrency(costingProcedure?.price ?? 0)}`}
+                className="rounded-xl"
+              />
+              <p className="text-[10px] text-slate-400">Deixe em branco para usar o preço padrão do procedimento.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Custo fixo / sessão (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={costForm.fixedCost}
+                  onChange={e => setCostForm(f => ({ ...f, fixedCost: e.target.value }))}
+                  placeholder="0,00"
+                  className="rounded-xl"
+                />
+                <p className="text-[10px] text-slate-400">Aluguel, equipamentos…</p>
+              </div>
+              <div className="space-y-1">
+                <Label>Custo variável / sessão (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={costForm.variableCost}
+                  onChange={e => setCostForm(f => ({ ...f, variableCost: e.target.value }))}
+                  placeholder="0,00"
+                  className="rounded-xl"
+                />
+                <p className="text-[10px] text-slate-400">Materiais, insumos…</p>
+              </div>
+            </div>
+
+            {/* Real-time margin preview */}
+            {(() => {
+              const p = Number(costForm.priceOverride !== "" ? costForm.priceOverride : (costingProcedure?.price ?? 0));
+              const c = Number(costForm.fixedCost || 0) + Number(costForm.variableCost || 0);
+              if (!p) return null;
+              const m = ((p - c) / p) * 100;
+              return (
+                <div className={cn(
+                  "flex items-center justify-between rounded-xl px-4 py-2.5 text-sm",
+                  m >= 60 ? "bg-emerald-50 text-emerald-700" : m >= 35 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"
+                )}>
+                  <span className="font-medium">Margem projetada</span>
+                  <span className="font-bold">{m.toFixed(1)}%</span>
+                </div>
+              );
+            })()}
+
+            <div className="space-y-1">
+              <Label>Observações</Label>
+              <Textarea
+                value={costForm.notes}
+                onChange={e => setCostForm(f => ({ ...f, notes: e.target.value }))}
+                rows={2}
+                placeholder="Ex: Inclui material descartável, taxa de sala..."
+                className="rounded-xl resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setCostingProcedure(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="rounded-xl"
+              onClick={() => costingProcedure && updateCostsMutation.mutate({ ...costForm, id: costingProcedure.id })}
+              disabled={updateCostsMutation.isPending}
+            >
+              <DollarSign className="mr-1.5 h-4 w-4" />
+              {updateCostsMutation.isPending ? "Salvando..." : "Salvar Custos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Delete Confirmation ─────────────────────────────────────────── */}
       <AlertDialog open={!!deletingProcedure} onOpenChange={open => { if (!open) setDeletingProcedure(null); }}>
         <AlertDialogContent className="rounded-2xl">
@@ -1055,18 +1230,22 @@ export default function Procedimentos() {
 
 // ─── Card View ────────────────────────────────────────────────────────────────
 
-function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
+function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onConfigCosts }: {
   procedures: Procedure[];
   onEdit: (p: Procedure) => void;
   onDelete: (p: Procedure) => void;
   isAdmin?: boolean;
   onToggleActive?: (p: Procedure) => void;
+  onConfigCosts?: (p: Procedure) => void;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {procedures.map(proc => {
-        const margin = getMargin(proc.price, proc.cost ?? 0);
+        const effectivePrice = proc.effectivePrice ?? proc.price;
+        const effectiveCost = proc.effectiveTotalCost ?? proc.cost ?? 0;
+        const margin = getMargin(effectivePrice, effectiveCost);
         const marginColor = margin >= 60 ? "bg-emerald-500" : margin >= 35 ? "bg-amber-400" : "bg-red-400";
+        const hasClinicOverride = !!proc.clinicCost?.priceOverride;
 
         return (
           <div
@@ -1087,6 +1266,11 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                     {!proc.isActive && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
                         <PowerOff className="w-2.5 h-2.5" /> Inativo
+                      </span>
+                    )}
+                    {proc.isGlobal && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                        <Globe className="w-2.5 h-2.5" /> Global
                       </span>
                     )}
                   </div>
@@ -1114,6 +1298,20 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                       {proc.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
                     </button>
                   )}
+                  {isAdmin && onConfigCosts && (
+                    <button
+                      onClick={() => onConfigCosts(proc)}
+                      title="Configurar custos da clínica"
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        proc.clinicCost
+                          ? "hover:bg-emerald-50 text-emerald-500 hover:text-emerald-600"
+                          : "hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                      )}
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => onEdit(proc)}
                     className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
@@ -1135,8 +1333,15 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1 border-t border-slate-100">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Preço padrão / sessão</p>
-                  <p className="text-sm font-bold text-slate-800">{formatCurrency(proc.price)}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                    {hasClinicOverride ? "Preço desta clínica" : "Preço padrão / sessão"}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-bold text-slate-800">{formatCurrency(effectivePrice)}</p>
+                    {hasClinicOverride && (
+                      <span className="text-[9px] text-slate-400 line-through">{formatCurrency(proc.price)}</span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide">Margem</p>
@@ -1166,8 +1371,11 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo direto / sessão</p>
-                  <p className="text-xs text-slate-500">{formatCurrency(proc.cost ?? 0)}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo / sessão</p>
+                  <p className={cn("text-xs", proc.clinicCost ? "text-emerald-700 font-medium" : "text-slate-500")}>
+                    {formatCurrency(effectiveCost)}
+                    {proc.clinicCost && <Wrench className="inline w-2.5 h-2.5 ml-1 text-emerald-400" />}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1180,18 +1388,19 @@ function CardView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
-function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
+function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onConfigCosts }: {
   procedures: Procedure[];
   onEdit: (p: Procedure) => void;
   onDelete: (p: Procedure) => void;
   isAdmin?: boolean;
   onToggleActive?: (p: Procedure) => void;
+  onConfigCosts?: (p: Procedure) => void;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       {/* Header row */}
       <div className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"
-        style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 80px" }}
+        style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 96px" }}
       >
         <span>Procedimento</span>
         <span>Categoria</span>
@@ -1204,7 +1413,10 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
 
       {/* Rows */}
       {procedures.map((proc, idx) => {
-        const margin = getMargin(proc.price, proc.cost ?? 0);
+        const effectivePrice = proc.effectivePrice ?? proc.price;
+        const effectiveCost = proc.effectiveTotalCost ?? proc.cost ?? 0;
+        const margin = getMargin(effectivePrice, effectiveCost);
+        const hasClinicOverride = !!proc.clinicCost?.priceOverride;
         return (
           <div
             key={proc.id}
@@ -1213,7 +1425,7 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
               idx !== procedures.length - 1 && "border-b border-slate-100",
               !proc.isActive && "opacity-60"
             )}
-            style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 80px" }}
+            style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 96px" }}
           >
             <div className="min-w-0 pr-3">
               <div className="flex items-center gap-1.5">
@@ -1221,6 +1433,11 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                 {!proc.isActive && (
                   <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
                     <PowerOff className="w-2.5 h-2.5" /> Inativo
+                  </span>
+                )}
+                {proc.isGlobal && (
+                  <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                    <Globe className="w-2.5 h-2.5" /> Global
                   </span>
                 )}
               </div>
@@ -1232,11 +1449,18 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
             <div><CategoryBadge category={proc.category} /></div>
 
             <div className="text-right">
-              <p className="text-sm font-semibold text-slate-800">{formatCurrency(proc.price)}</p>
+              <p className={cn("text-sm font-semibold", hasClinicOverride ? "text-emerald-700" : "text-slate-800")}>
+                {formatCurrency(effectivePrice)}
+              </p>
+              {hasClinicOverride && (
+                <p className="text-[10px] text-slate-400 line-through">{formatCurrency(proc.price)}</p>
+              )}
             </div>
 
             <div className="text-right">
-              <p className="text-xs text-slate-500">{formatCurrency(proc.cost ?? 0)}</p>
+              <p className={cn("text-xs", proc.clinicCost ? "text-emerald-700 font-medium" : "text-slate-500")}>
+                {formatCurrency(effectiveCost)}
+              </p>
             </div>
 
             <div className="text-right">
@@ -1262,6 +1486,20 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive }: {
                   )}
                 >
                   {proc.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                </button>
+              )}
+              {isAdmin && onConfigCosts && (
+                <button
+                  onClick={() => onConfigCosts(proc)}
+                  title="Configurar custos da clínica"
+                  className={cn(
+                    "p-1.5 rounded-lg transition-colors",
+                    proc.clinicCost
+                      ? "hover:bg-emerald-50 text-emerald-500 hover:text-emerald-600"
+                      : "hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
                 </button>
               )}
               <button
