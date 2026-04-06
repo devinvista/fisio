@@ -319,6 +319,16 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 - `applyBillingRules` em `appointments.ts` usa `effectivePrice` ao criar `creditoAReceber`
 - Procedimentos globais (`clinicId = null`) podem ter override de preço e custo por clínica
 
+**Custo fixo automático (modelo hora):**
+- `GET /api/procedures/overhead-analysis?month=&year=&procedureId=` calcula automaticamente:
+  - `totalOverhead` = soma de despesas (`type="despesa"`) do mês na clínica
+  - `totalAvailableHours` = soma de horas disponíveis dos schedules ativos (`type="clinic"`) no mês
+  - `costPerHour` = `totalOverhead / totalAvailableHours`
+  - `fixedCostPerSession` = `costPerHour × (durationMinutes / 60)`
+  - `fixedCostAllocatedMonthly` = `costPerHour × totalHoursUsed` (baseado em sessões confirmadas do mês)
+- O `fixedCost` em `procedure_costs` é persistido como snapshot do valor calculado no momento do salvamento (usado pelo billing)
+- O `variableCost` (materiais, insumos) continua manual
+
 ### Financeiro
 | Método | Caminho | Descrição |
 |---|---|---|

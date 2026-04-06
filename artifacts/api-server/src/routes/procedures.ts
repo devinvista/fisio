@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { proceduresTable, procedureCostsTable, appointmentsTable } from "@workspace/db";
-import { eq, and, count, ilike, isNull, or, sql } from "drizzle-orm";
+import { proceduresTable, procedureCostsTable, appointmentsTable, financialRecordsTable, schedulesTable } from "@workspace/db";
+import { eq, and, count, ilike, isNull, or, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import type { Role } from "@workspace/db";
@@ -187,6 +187,162 @@ router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest
       .returning();
 
     res.status(201).json({ ...procedure, isGlobal: procedure.clinicId === null, clinicCost: null, effectivePrice: procedure.price, effectiveTotalCost: procedure.cost ?? "0" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET /overhead-analysis ───────────────────────────────────────────────────
+// Computes: totalOverhead (expenses) / totalAvailableHours → costPerHour
+// Optionally enriched with per-procedure usage stats when ?procedureId= is given
+// MUST be registered before any /:id route to avoid "overhead-analysis" being
+// matched as an id parameter.
+
+router.get("/overhead-analysis", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId) {
+      res.status(400).json({ error: "Bad Request", message: "Clínica não selecionada" });
+      return;
+    }
+
+    const now = new Date();
+    const month = parseInt(req.query.month as string) || (now.getMonth() + 1);
+    const year  = parseInt(req.query.year  as string) || now.getFullYear();
+    const procedureId = req.query.procedureId ? parseInt(req.query.procedureId as string) : null;
+
+    // ── 1. Total overhead expenses for the month ──────────────────────────────
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate   = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    const [expenseRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${financialRecordsTable.amount}), 0)` })
+      .from(financialRecordsTable)
+      .where(
+        and(
+          eq(financialRecordsTable.clinicId, clinicId),
+          eq(financialRecordsTable.type, "despesa"),
+          gte(financialRecordsTable.dueDate, startDate),
+          lte(financialRecordsTable.dueDate, endDate)
+        )
+      );
+
+    const totalOverhead = Number(expenseRow?.total ?? 0);
+
+    // ── 2. Available clinic hours from active schedules ────────────────────────
+    // workingDays uses JS getDay() convention: 0=Sun, 1=Mon … 6=Sat
+    const activeSchedules = await db
+      .select()
+      .from(schedulesTable)
+      .where(
+        and(
+          eq(schedulesTable.clinicId, clinicId),
+          eq(schedulesTable.isActive, true),
+          eq(schedulesTable.type, "clinic")
+        )
+      );
+
+    let totalAvailableHours = 0;
+    const scheduleBreakdown: Array<{
+      name: string;
+      startTime: string;
+      endTime: string;
+      workingDays: string;
+      hoursPerDay: number;
+      workingDaysInMonth: number;
+      hoursInMonth: number;
+    }> = [];
+
+    for (const sch of activeSchedules) {
+      const workingDayNums = sch.workingDays.split(",").map(Number);
+      const [sh, sm] = sch.startTime.split(":").map(Number);
+      const [eh, em] = sch.endTime.split(":").map(Number);
+      const hoursPerDay = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+
+      let workingDaysInMonth = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(year, month - 1, d).getDay();
+        if (workingDayNums.includes(dow)) workingDaysInMonth++;
+      }
+
+      const hoursInMonth = hoursPerDay * workingDaysInMonth;
+      totalAvailableHours += hoursInMonth;
+
+      scheduleBreakdown.push({
+        name: sch.name,
+        startTime: sch.startTime,
+        endTime: sch.endTime,
+        workingDays: sch.workingDays,
+        hoursPerDay: Math.round(hoursPerDay * 10) / 10,
+        workingDaysInMonth,
+        hoursInMonth: Math.round(hoursInMonth * 10) / 10,
+      });
+    }
+
+    const costPerHour = totalAvailableHours > 0
+      ? totalOverhead / totalAvailableHours
+      : 0;
+
+    // ── 3. Per-procedure usage stats (optional) ────────────────────────────────
+    let procedureStats: {
+      procedureId: number;
+      durationMinutes: number;
+      fixedCostPerSession: number;
+      confirmedAppointments: number;
+      totalHoursUsed: number;
+      fixedCostAllocatedMonthly: number;
+    } | null = null;
+
+    if (procedureId) {
+      const [proc] = await db
+        .select({ durationMinutes: proceduresTable.durationMinutes })
+        .from(proceduresTable)
+        .where(eq(proceduresTable.id, procedureId))
+        .limit(1);
+
+      if (proc) {
+        const durationHours = proc.durationMinutes / 60;
+        const fixedCostPerSession = costPerHour * durationHours;
+
+        const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
+        const [usageRow] = await db
+          .select({ apptCount: count() })
+          .from(appointmentsTable)
+          .where(
+            and(
+              eq(appointmentsTable.clinicId, clinicId),
+              eq(appointmentsTable.procedureId, procedureId),
+              gte(appointmentsTable.date, startDate),
+              lte(appointmentsTable.date, endDate),
+              sql`${appointmentsTable.status} = ANY(ARRAY[${sql.join(confirmedStatuses.map(s => sql`${s}`), sql`, `)}])`
+            )
+          );
+
+        const confirmedAppointments = Number(usageRow?.apptCount ?? 0);
+        const totalHoursUsed = confirmedAppointments * durationHours;
+
+        procedureStats = {
+          procedureId,
+          durationMinutes: proc.durationMinutes,
+          fixedCostPerSession: Math.round(fixedCostPerSession * 100) / 100,
+          confirmedAppointments,
+          totalHoursUsed: Math.round(totalHoursUsed * 100) / 100,
+          fixedCostAllocatedMonthly: Math.round(confirmedAppointments * fixedCostPerSession * 100) / 100,
+        };
+      }
+    }
+
+    res.json({
+      month,
+      year,
+      totalOverhead,
+      schedules: scheduleBreakdown,
+      totalAvailableHours: Math.round(totalAvailableHours * 10) / 10,
+      costPerHour: Math.round(costPerHour * 100) / 100,
+      procedureStats,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

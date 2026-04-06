@@ -60,6 +60,33 @@ interface ProcedureCost {
   notes: string | null;
 }
 
+interface OverheadSchedule {
+  name: string;
+  startTime: string;
+  endTime: string;
+  workingDays: string;
+  hoursPerDay: number;
+  workingDaysInMonth: number;
+  hoursInMonth: number;
+}
+
+interface OverheadAnalysis {
+  month: number;
+  year: number;
+  totalOverhead: number;
+  schedules: OverheadSchedule[];
+  totalAvailableHours: number;
+  costPerHour: number;
+  procedureStats: {
+    procedureId: number;
+    durationMinutes: number;
+    fixedCostPerSession: number;
+    confirmedAppointments: number;
+    totalHoursUsed: number;
+    fixedCostAllocatedMonthly: number;
+  } | null;
+}
+
 interface Procedure {
   id: number;
   name: string;
@@ -134,12 +161,9 @@ export default function Procedimentos() {
   const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null);
   const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null);
   const [costingProcedure, setCostingProcedure] = useState<Procedure | null>(null);
-  const [costForm, setCostForm] = useState({
-    priceOverride: "",
-    fixedCost: "",
-    variableCost: "",
-    notes: "",
-  });
+  const [costForm, setCostForm] = useState({ priceOverride: "", variableCost: "", notes: "" });
+  const [analysisMonth, setAnalysisMonth] = useState(new Date().getMonth() + 1);
+  const [analysisYear, setAnalysisYear]   = useState(new Date().getFullYear());
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [catalogOptions, setCatalogOptions] = useState({
     clinicName: "FisioGest Pro",
@@ -290,14 +314,29 @@ export default function Procedimentos() {
     },
   });
 
+  // ── Overhead analysis query (fires when cost dialog is open) ──────────────
+  const { data: overheadData, isLoading: overheadLoading } = useQuery<OverheadAnalysis>({
+    queryKey: ["overhead-analysis", analysisMonth, analysisYear, costingProcedure?.id],
+    queryFn: () => apiFetch(
+      `/api/procedures/overhead-analysis?month=${analysisMonth}&year=${analysisYear}` +
+      (costingProcedure ? `&procedureId=${costingProcedure.id}` : "")
+    ),
+    enabled: !!costingProcedure,
+    staleTime: 30_000,
+  });
+
+  const computedFixedCostPerSession = overheadData && costingProcedure
+    ? overheadData.costPerHour * (costingProcedure.durationMinutes / 60)
+    : null;
+
   const updateCostsMutation = useMutation({
-    mutationFn: async (data: { id: number; priceOverride: string; fixedCost: string; variableCost: string; notes: string }) => {
+    mutationFn: async (data: { id: number; priceOverride: string; variableCost: string; notes: string; fixedCost: number }) => {
       return apiFetch(`/api/procedures/${data.id}/costs`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           priceOverride: data.priceOverride !== "" ? Number(data.priceOverride) : null,
-          fixedCost: data.fixedCost !== "" ? Number(data.fixedCost) : 0,
+          fixedCost: data.fixedCost,
           variableCost: data.variableCost !== "" ? Number(data.variableCost) : 0,
           notes: data.notes || null,
         }),
@@ -317,7 +356,6 @@ export default function Procedimentos() {
     setCostingProcedure(proc);
     setCostForm({
       priceOverride: proc.clinicCost?.priceOverride ? String(proc.clinicCost.priceOverride) : "",
-      fixedCost: proc.clinicCost?.fixedCost && proc.clinicCost.fixedCost !== "0" ? String(proc.clinicCost.fixedCost) : "",
       variableCost: proc.clinicCost?.variableCost && proc.clinicCost.variableCost !== "0" ? String(proc.clinicCost.variableCost) : "",
       notes: proc.clinicCost?.notes ?? "",
     });
@@ -1085,92 +1123,170 @@ export default function Procedimentos() {
 
       {/* ── Clinic Cost Configuration Dialog ────────────────────────────── */}
       <Dialog open={!!costingProcedure} onOpenChange={open => { if (!open) setCostingProcedure(null); }}>
-        <DialogContent className="max-w-md rounded-3xl border-none shadow-2xl">
+        <DialogContent className="max-w-lg rounded-3xl border-none shadow-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-emerald-600" />
-              Custos da Clínica
+              Análise de Custos — {costingProcedure?.name}
             </DialogTitle>
-            <p className="text-sm text-slate-500 mt-1">
-              Configure preço e custos específicos para{" "}
-              <strong className="text-slate-700">{costingProcedure?.name}</strong> nesta clínica.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Custo fixo calculado automaticamente com base nos custos da clínica e horas disponíveis na agenda.
               {costingProcedure?.isGlobal && (
                 <span className="ml-1 text-blue-600 font-medium">Procedimento global.</span>
               )}
             </p>
           </DialogHeader>
 
-          <div className="space-y-4 py-1">
-            {/* Base price reference */}
-            <div className="bg-slate-50 rounded-xl p-3 text-xs">
-              <div className="flex justify-between text-slate-500">
-                <span>Preço base do procedimento</span>
-                <span className="font-semibold text-slate-700">{formatCurrency(costingProcedure?.price ?? 0)}</span>
+          {/* ── Period selector ─────────────────────────────────── */}
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs text-slate-500 shrink-0">Período de referência:</span>
+            <select
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700"
+              value={analysisMonth}
+              onChange={e => setAnalysisMonth(Number(e.target.value))}
+            >
+              {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <select
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700"
+              value={analysisYear}
+              onChange={e => setAnalysisYear(Number(e.target.value))}
+            >
+              {[analysisYear - 1, analysisYear, analysisYear + 1].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-3">
+
+            {/* ── Overhead breakdown panel ─────────────────────── */}
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Wrench className="w-3 h-3" /> Custos Fixos da Clínica (calculado automaticamente)
               </div>
-              {costingProcedure?.clinicCost?.priceOverride && (
-                <div className="flex justify-between mt-1.5 text-emerald-700 font-semibold border-t border-slate-100 pt-1.5">
-                  <span>Preço atual desta clínica</span>
-                  <span>{formatCurrency(costingProcedure.clinicCost.priceOverride)}</span>
+              {overheadLoading ? (
+                <div className="px-3 py-4 text-center text-xs text-slate-400">Calculando…</div>
+              ) : overheadData ? (
+                <div className="divide-y divide-slate-100">
+                  <div className="grid grid-cols-3 px-3 py-2.5 text-xs">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">Total de despesas</p>
+                      <p className="font-semibold text-slate-800">{formatCurrency(overheadData.totalOverhead)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">Horas disponíveis</p>
+                      <p className="font-semibold text-slate-800">{overheadData.totalAvailableHours}h</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo por hora</p>
+                      <p className="font-bold text-emerald-700">{formatCurrency(overheadData.costPerHour)}/h</p>
+                    </div>
+                  </div>
+
+                  {/* Per-procedure fixed cost */}
+                  <div className="grid grid-cols-2 gap-x-4 px-3 py-2.5 bg-emerald-50/60">
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                        Custo fixo / sessão <span className="normal-case">({costingProcedure?.durationMinutes} min)</span>
+                      </p>
+                      <p className="text-base font-bold text-emerald-700">
+                        {computedFixedCostPerSession !== null ? formatCurrency(computedFixedCostPerSession) : "—"}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {formatCurrency(overheadData.costPerHour)}/h × {((costingProcedure?.durationMinutes ?? 0) / 60).toFixed(2)}h
+                      </p>
+                    </div>
+                    {overheadData.procedureStats && (
+                      <div className="text-right">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                          Custo fixo real / mês
+                        </p>
+                        <p className="text-base font-bold text-slate-700">
+                          {formatCurrency(overheadData.procedureStats.fixedCostAllocatedMonthly)}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {overheadData.procedureStats.confirmedAppointments} sessões confirmadas
+                          · {overheadData.procedureStats.totalHoursUsed}h usadas
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Schedule details */}
+                  {overheadData.schedules.length > 0 && (
+                    <div className="px-3 py-2 text-[10px] text-slate-400 flex flex-wrap gap-3">
+                      {overheadData.schedules.map((s, i) => (
+                        <span key={i}>{s.name}: {s.startTime}–{s.endTime} · {s.workingDaysInMonth} dias · {s.hoursInMonth}h</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {overheadData.totalAvailableHours === 0 && (
+                    <div className="px-3 py-2 text-[10px] text-amber-600 bg-amber-50">
+                      Nenhuma agenda ativa encontrada. Cadastre a agenda da clínica para calcular automaticamente.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="px-3 py-4 text-center text-xs text-slate-400">
+                  Sem dados de agenda/despesas para o período selecionado.
                 </div>
               )}
             </div>
 
-            <div className="space-y-1">
-              <Label>Preço cobrado por esta clínica (R$)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={costForm.priceOverride}
-                onChange={e => setCostForm(f => ({ ...f, priceOverride: e.target.value }))}
-                placeholder={`Padrão: ${formatCurrency(costingProcedure?.price ?? 0)}`}
-                className="rounded-xl"
-              />
-              <p className="text-[10px] text-slate-400">Deixe em branco para usar o preço padrão do procedimento.</p>
-            </div>
-
+            {/* ── Manual inputs ─────────────────────────────────── */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Custo fixo / sessão (R$)</Label>
+                <Label>Preço cobrado pela clínica (R$)</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={costForm.fixedCost}
-                  onChange={e => setCostForm(f => ({ ...f, fixedCost: e.target.value }))}
-                  placeholder="0,00"
+                  type="number" step="0.01" min="0"
+                  value={costForm.priceOverride}
+                  onChange={e => setCostForm(f => ({ ...f, priceOverride: e.target.value }))}
+                  placeholder={`Padrão: ${formatCurrency(costingProcedure?.price ?? 0)}`}
                   className="rounded-xl"
                 />
-                <p className="text-[10px] text-slate-400">Aluguel, equipamentos…</p>
+                <p className="text-[10px] text-slate-400">Deixe em branco para usar o preço base.</p>
               </div>
               <div className="space-y-1">
                 <Label>Custo variável / sessão (R$)</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="number" step="0.01" min="0"
                   value={costForm.variableCost}
                   onChange={e => setCostForm(f => ({ ...f, variableCost: e.target.value }))}
                   placeholder="0,00"
                   className="rounded-xl"
                 />
-                <p className="text-[10px] text-slate-400">Materiais, insumos…</p>
+                <p className="text-[10px] text-slate-400">Materiais, insumos por sessão.</p>
               </div>
             </div>
 
-            {/* Real-time margin preview */}
+            {/* ── Real-time margin summary ───────────────────────── */}
             {(() => {
-              const p = Number(costForm.priceOverride !== "" ? costForm.priceOverride : (costingProcedure?.price ?? 0));
-              const c = Number(costForm.fixedCost || 0) + Number(costForm.variableCost || 0);
-              if (!p) return null;
-              const m = ((p - c) / p) * 100;
+              const price  = Number(costForm.priceOverride || costingProcedure?.effectivePrice || costingProcedure?.price || 0);
+              const fixed  = computedFixedCostPerSession ?? 0;
+              const variable = Number(costForm.variableCost || 0);
+              const total  = fixed + variable;
+              if (!price) return null;
+              const m = ((price - total) / price) * 100;
               return (
                 <div className={cn(
-                  "flex items-center justify-between rounded-xl px-4 py-2.5 text-sm",
-                  m >= 60 ? "bg-emerald-50 text-emerald-700" : m >= 35 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"
+                  "rounded-xl border px-4 py-3",
+                  m >= 60 ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+                           : m >= 35 ? "bg-amber-50 border-amber-100 text-amber-800"
+                           : "bg-red-50 border-red-100 text-red-800"
                 )}>
-                  <span className="font-medium">Margem projetada</span>
-                  <span className="font-bold">{m.toFixed(1)}%</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold">Margem por sessão</span>
+                    <span className="text-xl font-bold">{m.toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-3 text-[11px] opacity-80 gap-x-2">
+                    <span>Preço: {formatCurrency(price)}</span>
+                    <span>Fixo: {formatCurrency(fixed)}</span>
+                    <span>Variável: {formatCurrency(variable)}</span>
+                  </div>
                 </div>
               );
             })()}
@@ -1193,11 +1309,15 @@ export default function Procedimentos() {
             </Button>
             <Button
               className="rounded-xl"
-              onClick={() => costingProcedure && updateCostsMutation.mutate({ ...costForm, id: costingProcedure.id })}
+              onClick={() => costingProcedure && updateCostsMutation.mutate({
+                ...costForm,
+                id: costingProcedure.id,
+                fixedCost: computedFixedCostPerSession ?? 0,
+              })}
               disabled={updateCostsMutation.isPending}
             >
               <DollarSign className="mr-1.5 h-4 w-4" />
-              {updateCostsMutation.isPending ? "Salvando..." : "Salvar Custos"}
+              {updateCostsMutation.isPending ? "Salvando…" : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
