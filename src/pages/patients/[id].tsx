@@ -81,11 +81,29 @@ export default function PatientDetail() {
             </TabsContent>
             
             <TabsContent value="evaluations">
-              <Card className="border-none shadow-md"><CardContent className="p-10 text-center text-muted-foreground">Módulo de avaliações em construção</CardContent></Card>
+              <Card className="border-none shadow-md">
+                <CardContent className="p-10 text-center text-muted-foreground">
+                  <Activity className="w-10 h-10 mx-auto mb-4 opacity-30" />
+                  <p className="font-medium text-slate-600 mb-1">Avaliações implementadas</p>
+                  <p className="text-sm text-slate-400">
+                    Este arquivo é uma cópia desatualizada para hospedagem externa.<br/>
+                    A implementação completa está em <code>artifacts/fisiogest/src/pages/patients/[id].tsx</code>.
+                  </p>
+                </CardContent>
+              </Card>
             </TabsContent>
             
             <TabsContent value="evolutions">
-              <Card className="border-none shadow-md"><CardContent className="p-10 text-center text-muted-foreground">Módulo de evoluções em construção</CardContent></Card>
+              <Card className="border-none shadow-md">
+                <CardContent className="p-10 text-center text-muted-foreground">
+                  <TrendingUp className="w-10 h-10 mx-auto mb-4 opacity-30" />
+                  <p className="font-medium text-slate-600 mb-1">Evoluções implementadas</p>
+                  <p className="text-sm text-slate-400">
+                    Este arquivo é uma cópia desatualizada para hospedagem externa.<br/>
+                    A implementação completa está em <code>artifacts/fisiogest/src/pages/patients/[id].tsx</code>.
+                  </p>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>

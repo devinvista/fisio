@@ -478,6 +478,9 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Prontuário — Plano de Tratamento | ✅ Completo |
 | Prontuário — Evoluções de sessão (CRUD) | ✅ Completo |
 | Prontuário — Alta Fisioterapêutica (COFFITO) | ✅ Completo |
+| Prontuário — Jornada do Paciente (timeline) | ✅ Completo |
+| Prontuário — Histórico de consultas | ✅ Completo |
+| Prontuário — Extrato financeiro por paciente | ✅ Completo |
 | Agenda semanal/diária/mensal + criação por clique | ✅ Completo |
 | Agenda — detalhe, edição, cancelamento | ✅ Completo |
 | Agendas independentes por clínica (geral e por profissional) | ✅ Completo |
@@ -491,7 +494,11 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Gestão de clínicas (multi-tenant) | ✅ Completo |
 | Gestão de usuários e roles (RBAC) | ✅ Completo |
 | Configurações da clínica | ✅ Completo |
-| Financeiro global (receitas, despesas, dashboard) | ✅ Completo |
+| Financeiro global — Lançamentos | ✅ Completo |
+| Financeiro — DRE Mensal | ✅ Completo |
+| Financeiro — Custo por Procedimento (rateio overhead) | ✅ Completo |
+| Financeiro — Orçado vs Realizado | ✅ Completo |
+| Financeiro — Despesas Fixas Recorrentes (CRUD) | ✅ Completo |
 | Relatórios (mensal, por procedimento, ocupação) | ✅ Completo |
 | Dashboard com KPIs | ✅ Completo |
 | Autenticação JWT | ✅ Completo |
@@ -500,9 +507,51 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 | Padronização pt-BR (datas, moeda, idioma HTML) | ✅ Completo |
 | Identidade visual fisioterapêutica | ✅ Completo |
 | Audit log de ações | ✅ Completo |
-| Jornada do Cliente (timeline clínica no prontuário) | ✅ Completo |
 | Notificações (WhatsApp/e-mail) | 🔲 Pendente |
 | Agendamento self-service pelo paciente | 🔲 Pendente |
+| Atestados médicos | 🔲 Pendente (schema existe) |
+| Upload de anexos de exames | 🔲 Pendente (schema existe) |
+| Fluxo de caixa projetado | 🔲 Pendente |
+| Exportação PDF/CSV de relatórios | 🔲 Pendente |
+
+---
+
+## Defasagem: `src/` vs `artifacts/fisiogest/src/`
+
+> ⚠️ **ATENÇÃO**: A pasta `src/` (destinada apenas à hospedagem externa — Hostinger/Railway) está **severamente desatualizada** em relação à versão Replit (`artifacts/fisiogest/src/`). Nunca use `src/` como referência do estado atual do sistema.
+
+### Páginas presentes em `artifacts/fisiogest/src/pages/` mas **ausentes** em `src/pages/`
+
+| Página | Arquivo | Funcionalidade |
+|---|---|---|
+| Landing Page pública | `landing.tsx` | Hero, features, pricing, FAQ, testimonials |
+| Configurações da Clínica | `configuracoes.tsx` | Dados da clínica, horários, RBAC, integrações |
+| Gestão de Usuários | `usuarios.tsx` | CRUD de profissionais, secretarias, roles |
+| Gestão de Agendas | `agendas.tsx` | Criação e configuração de agendas por profissional |
+| Agendamento | `agendar.tsx` | Fluxo completo de criação de agendamentos |
+| Pacotes de Sessões | `pacotes.tsx` | Criação e gestão de pacotes/planos de tratamento |
+| Gestão de Clínicas | `clinicas.tsx` | Administração multi-tenant (superadmin) |
+
+### Páginas com implementação desatualizada em `src/pages/`
+
+| Arquivo | Estado em `src/` | Estado em `artifacts/` |
+|---|---|---|
+| `patients/[id].tsx` | 200 linhas — só Anamnese. Abas Avaliações e Evoluções eram stubs (corrigido em 2026-04-07) | 5.631 linhas — 8 abas completas: Anamnese, Avaliações (CRUD), Plano de Tratamento, Evoluções (CRUD), Histórico, Financeiro, Alta Fisioterapêutica, Jornada |
+| `agenda.tsx` | Visão semanal básica, sem bloqueios, sem recorrência | Completo com bloqueios, recorrência, múltiplos profissionais, código de cor |
+| `procedimentos.tsx` | CRUD básico | CRUD + custos por clínica, override de preço, catálogo PDF, toggle ativo/inativo |
+| `financial/index.tsx` | Apenas lançamentos básicos | 5 abas: Lançamentos, DRE, Custo por Procedimento, Orçado vs Realizado, Despesas Fixas |
+| `relatorios.tsx` | Relatórios básicos | Relatórios com gráficos aprimorados, análise de ocupação, análise por dia da semana |
+
+### O que foi historicamente marcado como "em construção" e já está implementado
+
+Estas funcionalidades apareciam como stubs com a mensagem "em construção" em arquivos antigos. Todas estão **plenamente implementadas** em `artifacts/fisiogest/src/`:
+
+| Funcionalidade | Onde estava marcado | Status atual |
+|---|---|---|
+| Avaliações físicas | `src/pages/patients/[id].tsx` linha 84 | ✅ CRUD completo em `artifacts/.../patients/[id].tsx` |
+| Evoluções de sessão | `src/pages/patients/[id].tsx` linha 88 | ✅ CRUD completo com vínculo a consulta e EVA em `artifacts/.../patients/[id].tsx` |
+
+> As mensagens "em construção" em `src/` foram atualizadas em 2026-04-07 para refletir que os módulos estão implementados mas este arquivo é um stub desatualizado.
 
 ---
 
