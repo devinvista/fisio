@@ -20,6 +20,7 @@ import packagesRouter from "./packages.js";
 import patientPackagesRouter from "./patient-packages.js";
 import treatmentPlanProceduresRouter from "./treatment-plan-procedures.js";
 import patientJourneyRouter from "./patient-journey.js";
+import recurringExpensesRouter from "./recurring-expenses.js";
 
 const router: IRouter = Router();
 
@@ -45,5 +46,6 @@ router.use("/reports", reportsRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/storage", storageRouter);
 router.use("/audit-log", auditLogRouter);
+router.use("/recurring-expenses", recurringExpensesRouter);
 
 export default router;

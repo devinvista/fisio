@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable, procedureCostsTable, schedulesTable, recurringExpensesTable } from "@workspace/db";
+import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or, count } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -578,6 +578,333 @@ router.patch("/records/:id/estorno", requirePermission("financial.write"), async
     });
 
     res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET /cost-per-procedure ───────────────────────────────────────────────────
+// Returns all active procedures with estimated cost, real (overhead-rateado) cost per session,
+// revenue generated in the month, and margin analysis.
+router.get("/cost-per-procedure", requirePermission("financial.read"), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId && !req.isSuperAdmin) {
+      res.status(400).json({ error: "Bad Request", message: "Clínica não identificada" });
+      return;
+    }
+
+    const brt = nowBRT();
+    const month = parseInt(req.query.month as string) || brt.month;
+    const year  = parseInt(req.query.year  as string) || brt.year;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startDate   = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate     = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    // ── 1. Total real overhead expenses (paid) ─────────────────────────────────
+    const expCond = clinicId
+      ? and(eq(financialRecordsTable.clinicId, clinicId), eq(financialRecordsTable.type, "despesa"), eq(financialRecordsTable.status, "pago"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+      : and(eq(financialRecordsTable.type, "despesa"), eq(financialRecordsTable.status, "pago"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate));
+
+    const [expRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
+      .from(financialRecordsTable)
+      .where(expCond);
+    const totalRealOverhead = Number(expRow?.total ?? 0);
+
+    // ── 2. Estimated overhead from recurring expenses ─────────────────────────
+    const recCond = clinicId
+      ? and(eq(recurringExpensesTable.clinicId, clinicId), eq(recurringExpensesTable.isActive, true))
+      : eq(recurringExpensesTable.isActive, true);
+
+    const recurringRows = await db.select().from(recurringExpensesTable).where(recCond);
+    const totalEstimatedOverhead = recurringRows.reduce((sum, r) => {
+      const amt = Number(r.amount);
+      if (r.frequency === "anual") return sum + amt / 12;
+      if (r.frequency === "semanal") return sum + amt * 4.33;
+      return sum + amt; // mensal
+    }, 0);
+
+    // ── 3. Available clinic hours ──────────────────────────────────────────────
+    const schCond = clinicId
+      ? and(eq(schedulesTable.clinicId, clinicId), eq(schedulesTable.isActive, true), eq(schedulesTable.type, "clinic"))
+      : and(eq(schedulesTable.isActive, true), eq(schedulesTable.type, "clinic"));
+
+    const schedules = await db.select().from(schedulesTable).where(schCond);
+    let totalAvailableHours = 0;
+    for (const sch of schedules) {
+      const days = sch.workingDays.split(",").map(Number);
+      const [sh, sm] = sch.startTime.split(":").map(Number);
+      const [eh, em] = sch.endTime.split(":").map(Number);
+      const hpd = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+      let wd = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (days.includes(new Date(year, month - 1, d).getDay())) wd++;
+      }
+      totalAvailableHours += hpd * wd;
+    }
+
+    const realCostPerHour  = totalAvailableHours > 0 ? totalRealOverhead  / totalAvailableHours : 0;
+    const estCostPerHour   = totalAvailableHours > 0 ? totalEstimatedOverhead / totalAvailableHours : 0;
+
+    // ── 4. Procedures with costs and appointment stats ─────────────────────────
+    const procCond = clinicId
+      ? and(or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, clinicId)), eq(proceduresTable.isActive, true))
+      : eq(proceduresTable.isActive, true);
+
+    const procs = await db
+      .select({
+        id: proceduresTable.id,
+        name: proceduresTable.name,
+        category: proceduresTable.category,
+        durationMinutes: proceduresTable.durationMinutes,
+        price: proceduresTable.price,
+        baseCost: proceduresTable.cost,
+        fixedCost: procedureCostsTable.fixedCost,
+        variableCost: procedureCostsTable.variableCost,
+      })
+      .from(proceduresTable)
+      .leftJoin(
+        procedureCostsTable,
+        and(
+          eq(procedureCostsTable.procedureId, proceduresTable.id),
+          clinicId ? eq(procedureCostsTable.clinicId, clinicId) : sql`false`
+        )
+      )
+      .where(procCond)
+      .orderBy(proceduresTable.name);
+
+    // Appointment counts + revenue per procedure for the month
+    const apptStatsCond = clinicId
+      ? and(eq(appointmentsTable.clinicId, clinicId), gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate))
+      : and(gte(appointmentsTable.date, startDate), lte(appointmentsTable.date, endDate));
+
+    const apptStats = await db
+      .select({
+        procedureId: appointmentsTable.procedureId,
+        completedCount: sql<number>`COUNT(*) FILTER (WHERE ${appointmentsTable.status} IN ('concluido','compareceu'))`,
+        scheduledCount: sql<number>`COUNT(*)`,
+      })
+      .from(appointmentsTable)
+      .where(apptStatsCond)
+      .groupBy(appointmentsTable.procedureId);
+
+    const apptMap = new Map(apptStats.map(a => [a.procedureId, a]));
+
+    // Revenue per procedure
+    const revStatsCond = clinicId
+      ? and(eq(financialRecordsTable.clinicId, clinicId), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+      : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate));
+
+    const revByProcedure = await db
+      .select({
+        procedureId: appointmentsTable.procedureId,
+        totalRevenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
+      })
+      .from(financialRecordsTable)
+      .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
+      .where(revStatsCond)
+      .groupBy(appointmentsTable.procedureId);
+
+    const revMap = new Map(revByProcedure.map(r => [r.procedureId, r.totalRevenue]));
+
+    const results = procs.map((p) => {
+      const durationHours = p.durationMinutes / 60;
+      const hasClinicCost = p.fixedCost !== null;
+      const estimatedDirectCost = hasClinicCost
+        ? Number(p.fixedCost ?? 0) + Number(p.variableCost ?? 0)
+        : Number(p.baseCost ?? 0);
+
+      const realOverheadCostPerSession    = realCostPerHour  * durationHours;
+      const estimatedOverheadCostPerSession = estCostPerHour * durationHours;
+
+      const estimatedTotalCostPerSession = estimatedDirectCost + estimatedOverheadCostPerSession;
+      const realTotalCostPerSession      = estimatedDirectCost + realOverheadCostPerSession;
+
+      const price = Number(p.price);
+      const stats = apptMap.get(p.id);
+      const completedSessions = Number(stats?.completedCount ?? 0);
+      const scheduledSessions = Number(stats?.scheduledCount ?? 0);
+      const revenueGenerated  = Number(revMap.get(p.id) ?? 0);
+
+      return {
+        procedureId: p.id,
+        name: p.name,
+        category: p.category,
+        durationMinutes: p.durationMinutes,
+        price,
+        estimatedDirectCost: Math.round(estimatedDirectCost * 100) / 100,
+        estimatedOverheadPerSession: Math.round(estimatedOverheadCostPerSession * 100) / 100,
+        estimatedTotalCostPerSession: Math.round(estimatedTotalCostPerSession * 100) / 100,
+        realOverheadPerSession: Math.round(realOverheadCostPerSession * 100) / 100,
+        realTotalCostPerSession: Math.round(realTotalCostPerSession * 100) / 100,
+        estimatedMarginPerSession: Math.round((price - estimatedTotalCostPerSession) * 100) / 100,
+        realMarginPerSession: Math.round((price - realTotalCostPerSession) * 100) / 100,
+        estimatedMarginPct: price > 0 ? Math.round(((price - estimatedTotalCostPerSession) / price) * 10000) / 100 : 0,
+        realMarginPct: price > 0 ? Math.round(((price - realTotalCostPerSession) / price) * 10000) / 100 : 0,
+        completedSessions,
+        scheduledSessions,
+        revenueGenerated: Math.round(revenueGenerated * 100) / 100,
+        realCostAllocated: Math.round(completedSessions * realTotalCostPerSession * 100) / 100,
+        estimatedCostAllocated: Math.round(completedSessions * estimatedTotalCostPerSession * 100) / 100,
+      };
+    });
+
+    res.json({
+      month, year,
+      totalRealOverhead: Math.round(totalRealOverhead * 100) / 100,
+      totalEstimatedOverhead: Math.round(totalEstimatedOverhead * 100) / 100,
+      totalAvailableHours: Math.round(totalAvailableHours * 10) / 10,
+      realCostPerHour:  Math.round(realCostPerHour * 100) / 100,
+      estCostPerHour:   Math.round(estCostPerHour * 100) / 100,
+      procedures: results,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── GET /dre ─────────────────────────────────────────────────────────────────
+// Mini Demonstrativo de Resultado do Exercício (DRE) mensal
+router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    const brt = nowBRT();
+    const month = parseInt(req.query.month as string) || brt.month;
+    const year  = parseInt(req.query.year  as string) || brt.year;
+
+    function dateRange(y: number, m: number) {
+      const last = new Date(y, m, 0).getDate();
+      const mm = String(m).padStart(2, "0");
+      return { start: `${y}-${mm}-01`, end: `${y}-${mm}-${String(last).padStart(2, "0")}` };
+    }
+
+    const { start, end } = dateRange(year, month);
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear  = month === 1 ? year - 1 : year;
+    const { start: ps, end: pe } = dateRange(prevYear, prevMonth);
+
+    const cc = clinicId ? eq(financialRecordsTable.clinicId, clinicId) : null;
+
+    async function getMonthlyFinancials(s: string, e: string) {
+      const records = await db
+        .select()
+        .from(financialRecordsTable)
+        .where(
+          cc
+            ? and(cc, gte(financialRecordsTable.paymentDate, s), lte(financialRecordsTable.paymentDate, e))
+            : and(gte(financialRecordsTable.paymentDate, s), lte(financialRecordsTable.paymentDate, e))
+        );
+
+      const revenue = records
+        .filter(r => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
+        .reduce((sum, r) => sum + Number(r.amount), 0);
+
+      const expensesByCategory: Record<string, number> = {};
+      const expenses = records.filter(r => r.type === "despesa");
+      expenses.forEach(r => {
+        const cat = r.category ?? "Outros";
+        expensesByCategory[cat] = (expensesByCategory[cat] ?? 0) + Number(r.amount);
+      });
+      const totalExpenses = expenses.reduce((sum, r) => sum + Number(r.amount), 0);
+
+      return { revenue, totalExpenses, expensesByCategory };
+    }
+
+    const [current, previous] = await Promise.all([
+      getMonthlyFinancials(start, end),
+      getMonthlyFinancials(ps, pe),
+    ]);
+
+    // Estimated revenue = MRR + pending from scheduled appointments
+    const subCond = clinicId
+      ? and(eq(patientSubscriptionsTable.clinicId, clinicId), eq(patientSubscriptionsTable.status, "ativa"))
+      : eq(patientSubscriptionsTable.status, "ativa");
+
+    const [mrrRow] = await db
+      .select({ mrr: sql<number>`COALESCE(SUM(${patientSubscriptionsTable.monthlyAmount}::numeric), 0)` })
+      .from(patientSubscriptionsTable)
+      .where(subCond);
+
+    const mrr = Number(mrrRow?.mrr ?? 0);
+
+    // Estimated expenses from recurring expenses
+    const recCond = clinicId
+      ? and(eq(recurringExpensesTable.clinicId, clinicId), eq(recurringExpensesTable.isActive, true))
+      : eq(recurringExpensesTable.isActive, true);
+
+    const recurringRows = await db.select().from(recurringExpensesTable).where(recCond);
+    const estimatedExpenses = recurringRows.reduce((sum, r) => {
+      const amt = Number(r.amount);
+      if (r.frequency === "anual") return sum + amt / 12;
+      if (r.frequency === "semanal") return sum + amt * 4.33;
+      return sum + amt;
+    }, 0);
+
+    // Pending receivables for the month
+    const pendCond = cc
+      ? and(cc, eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end))
+      : and(eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end));
+
+    const [pendRow] = await db
+      .select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`, cnt: count() })
+      .from(financialRecordsTable)
+      .where(pendCond);
+
+    const pendingReceivable = Number(pendRow?.total ?? 0);
+    const estimatedRevenue  = mrr > 0 ? mrr + pendingReceivable : current.revenue + pendingReceivable;
+
+    const netProfit   = current.revenue - current.totalExpenses;
+    const prevNetProfit = previous.revenue - previous.totalExpenses;
+    const netProfitChange = prevNetProfit !== 0 ? ((netProfit - prevNetProfit) / Math.abs(prevNetProfit)) * 100 : 0;
+
+    const expenseItems = Object.entries(current.expensesByCategory).map(([cat, val]) => ({
+      category: cat,
+      amount: Math.round(val * 100) / 100,
+      pct: current.totalExpenses > 0 ? Math.round((val / current.totalExpenses) * 10000) / 100 : 0,
+    })).sort((a, b) => b.amount - a.amount);
+
+    res.json({
+      month, year,
+      current: {
+        grossRevenue: Math.round(current.revenue * 100) / 100,
+        totalExpenses: Math.round(current.totalExpenses * 100) / 100,
+        netProfit: Math.round(netProfit * 100) / 100,
+        netMarginPct: current.revenue > 0 ? Math.round((netProfit / current.revenue) * 10000) / 100 : 0,
+        expensesByCategory: expenseItems,
+      },
+      previous: {
+        grossRevenue: Math.round(previous.revenue * 100) / 100,
+        totalExpenses: Math.round(previous.totalExpenses * 100) / 100,
+        netProfit: Math.round(prevNetProfit * 100) / 100,
+        netMarginPct: previous.revenue > 0 ? Math.round((prevNetProfit / previous.revenue) * 10000) / 100 : 0,
+      },
+      estimated: {
+        revenue: Math.round(estimatedRevenue * 100) / 100,
+        expenses: Math.round(estimatedExpenses * 100) / 100,
+        netProfit: Math.round((estimatedRevenue - estimatedExpenses) * 100) / 100,
+        mrr: Math.round(mrr * 100) / 100,
+        pendingReceivable: Math.round(pendingReceivable * 100) / 100,
+      },
+      variance: {
+        revenue: Math.round((current.revenue - estimatedRevenue) * 100) / 100,
+        revenuePct: estimatedRevenue > 0 ? Math.round(((current.revenue - estimatedRevenue) / estimatedRevenue) * 10000) / 100 : 0,
+        expenses: Math.round((current.totalExpenses - estimatedExpenses) * 100) / 100,
+        expensesPct: estimatedExpenses > 0 ? Math.round(((current.totalExpenses - estimatedExpenses) / estimatedExpenses) * 10000) / 100 : 0,
+        netProfitChangeVsPrevMonth: Math.round(netProfitChange * 100) / 100,
+      },
+      recurringExpenses: recurringRows.map(r => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        amount: Number(r.amount),
+        frequency: r.frequency,
+        monthlyEquivalent: r.frequency === "anual" ? Number(r.amount) / 12 : r.frequency === "semanal" ? Number(r.amount) * 4.33 : Number(r.amount),
+      })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
