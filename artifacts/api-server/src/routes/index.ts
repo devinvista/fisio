@@ -35,7 +35,6 @@ router.use("/patients/:patientId", patientJourneyRouter);
 router.use("/patients/:patientId/packages", patientPackagesRouter);
 router.use("/procedures", proceduresRouter);
 router.use("/packages", packagesRouter);
-router.use("/patient-packages", patientPackagesRouter);
 router.use("/treatment-plans/:planId/procedures", treatmentPlanProceduresRouter);
 router.use("/appointments", appointmentsRouter);
 router.use("/schedules", schedulesRouter);
