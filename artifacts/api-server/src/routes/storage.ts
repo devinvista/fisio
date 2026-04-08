@@ -49,7 +49,8 @@ router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Re
 
 router.get("/public-objects/{*filePath}", async (req: Request, res: Response) => {
   try {
-    const filePath = (req.params as Record<string, string>).filePath ?? "";
+    const raw = (req.params as Record<string, string | string[]>).filePath ?? "";
+    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
 
     if (!filePath || filePath.includes("..") || filePath.startsWith("/")) {
       res.status(400).json({ error: "Caminho de arquivo inválido" });
@@ -80,7 +81,8 @@ router.get("/public-objects/{*filePath}", async (req: Request, res: Response) =>
 
 router.get("/objects/{*objPath}", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const wildcardParam = (req.params as Record<string, string>).objPath ?? "";
+    const rawObj = (req.params as Record<string, string | string[]>).objPath ?? "";
+    const wildcardParam = Array.isArray(rawObj) ? rawObj.join("/") : rawObj;
     const objectPath = `/objects/${wildcardParam}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
