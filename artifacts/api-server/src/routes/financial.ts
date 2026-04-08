@@ -379,6 +379,7 @@ router.post("/patients/:patientId/payment", requirePermission("financial.write")
     const body = validateBody(createPaymentSchema, req.body, res);
     if (!body) return;
     const { amount, paymentMethod, description, procedureId } = body;
+    const numAmount = Number(amount);
 
     const today = todayBRT();
 

@@ -599,7 +599,7 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
         }
       }
 
-      if (date && endTime) {
+      if (date && endTime && effectiveProcedureId != null) {
         const { conflict, currentCount, reason } = await checkConflict(
           date, startTime, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId
         );

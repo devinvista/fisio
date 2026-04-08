@@ -84,6 +84,9 @@ interface OverheadAnalysis {
     confirmedAppointments: number;
     totalHoursUsed: number;
     fixedCostAllocatedMonthly: number;
+    avgActualParticipants: number | null;
+    fixedCostPerSessionReal: number;
+    uniqueCompletedSessions: number;
   } | null;
 }
 

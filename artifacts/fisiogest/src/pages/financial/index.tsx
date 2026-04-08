@@ -1614,7 +1614,7 @@ function DespesasFixasTab() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {Object.entries(categoryGroups).map(([cat, items]) => {
+          {Object.entries(categoryGroups).map(([cat, items]: [string, any[]]) => {
             const catMonthly = items.filter((r: any) => r.isActive).reduce((s: number, r: any) => {
               const a = Number(r.amount);
               return s + (r.frequency === "anual" ? a / 12 : r.frequency === "semanal" ? a * 4.33 : a);

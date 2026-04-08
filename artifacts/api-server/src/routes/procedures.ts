@@ -422,15 +422,15 @@ router.put("/:id", requirePermission("procedures.manage"), async (req: AuthReque
         name,
         category,
         modalidade: modalidade || undefined,
-        durationMinutes: durationMinutes ? parseInt(durationMinutes) : undefined,
+        durationMinutes: durationMinutes ?? undefined,
         price: price ? String(price) : undefined,
         cost: cost !== undefined ? String(cost) : undefined,
         description,
-        maxCapacity: maxCapacity !== undefined ? parseInt(maxCapacity) : undefined,
+        maxCapacity: maxCapacity ?? undefined,
         onlineBookingEnabled: onlineBookingEnabled !== undefined ? Boolean(onlineBookingEnabled) : undefined,
         billingType: billingType || undefined,
         monthlyPrice: monthlyPrice !== undefined ? (monthlyPrice ? String(monthlyPrice) : null) : undefined,
-        billingDay: billingDay !== undefined ? (billingDay ? parseInt(billingDay) : null) : undefined,
+        billingDay: billingDay !== undefined ? (billingDay ?? null) : undefined,
       })
       .where(condition)
       .returning();
