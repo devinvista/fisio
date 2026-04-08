@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import type { Role } from "@workspace/db";
@@ -9,12 +10,12 @@ if (!JWT_SECRET) {
     throw new Error("JWT_SECRET environment variable must be set in production.");
   } else {
     console.warn(
-      "[auth] WARNING: JWT_SECRET is not set. Using insecure default. Set JWT_SECRET in production."
+      "[auth] WARNING: JWT_SECRET não definido. Um segredo aleatório será usado — todos os tokens serão invalidados ao reiniciar. Defina JWT_SECRET no ambiente."
     );
   }
 }
 
-const secret = JWT_SECRET || "fisiogest-dev-secret-key-do-not-use-in-production";
+const secret = JWT_SECRET ?? randomBytes(64).toString("hex");
 
 export interface AuthRequest extends Request {
   userId?: number;

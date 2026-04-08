@@ -15,6 +15,7 @@ export const patientsTable = pgTable("patients", {
   notes: text("notes"),
   clinicId: integer("clinic_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at"),
 }, (table) => [
   index("idx_patients_clinic_id").on(table.clinicId),
   index("idx_patients_name").on(table.name),

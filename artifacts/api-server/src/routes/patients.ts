@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "@workspace/db";
-import { eq, ilike, or, and, sql, desc } from "drizzle-orm";
+import { eq, ilike, or, and, sql, desc, isNull } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -39,8 +39,8 @@ const router = Router();
 router.use(authMiddleware);
 
 function clinicFilter(req: AuthRequest) {
-  if (req.isSuperAdmin || !req.clinicId) return null;
-  return eq(patientsTable.clinicId, req.clinicId);
+  if (req.isSuperAdmin || !req.clinicId) return isNull(patientsTable.deletedAt);
+  return and(eq(patientsTable.clinicId, req.clinicId), isNull(patientsTable.deletedAt));
 }
 
 router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res) => {
@@ -148,8 +148,8 @@ router.get("/:id", requirePermission("patients.read"), async (req: AuthRequest, 
     const id = parseIntParam(req.params.id, res, "ID do paciente");
     if (id === null) return;
     const condition = req.isSuperAdmin || !req.clinicId
-      ? eq(patientsTable.id, id)
-      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
+      ? and(eq(patientsTable.id, id), isNull(patientsTable.deletedAt))
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!), isNull(patientsTable.deletedAt));
 
     const [patient] = await db
       .select()
@@ -215,8 +215,8 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
     }
 
     const condition = req.isSuperAdmin || !req.clinicId
-      ? eq(patientsTable.id, id)
-      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
+      ? and(eq(patientsTable.id, id), isNull(patientsTable.deletedAt))
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!), isNull(patientsTable.deletedAt));
 
     const [patient] = await db
       .update(patientsTable)
@@ -259,8 +259,8 @@ router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequ
     if (id === null) return;
 
     const condition = req.isSuperAdmin || !req.clinicId
-      ? eq(patientsTable.id, id)
-      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!));
+      ? and(eq(patientsTable.id, id), isNull(patientsTable.deletedAt))
+      : and(eq(patientsTable.id, id), eq(patientsTable.clinicId, req.clinicId!), isNull(patientsTable.deletedAt));
 
     const [existing] = await db
       .select({ name: patientsTable.name })
@@ -272,7 +272,10 @@ router.delete("/:id", requirePermission("patients.delete"), async (req: AuthRequ
       return;
     }
 
-    await db.delete(patientsTable).where(eq(patientsTable.id, id));
+    await db
+      .update(patientsTable)
+      .set({ deletedAt: new Date() })
+      .where(eq(patientsTable.id, id));
 
     await logAudit({
       userId: req.userId,
