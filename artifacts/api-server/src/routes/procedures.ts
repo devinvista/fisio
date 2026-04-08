@@ -309,6 +309,7 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
     let procedureStats: {
       procedureId: number;
       durationMinutes: number;
+      capacityDivisor: number;
       fixedCostPerSession: number;
       confirmedAppointments: number;
       totalHoursUsed: number;
@@ -317,14 +318,23 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
 
     if (procedureId) {
       const [proc] = await db
-        .select({ durationMinutes: proceduresTable.durationMinutes })
+        .select({
+          durationMinutes: proceduresTable.durationMinutes,
+          modalidade: proceduresTable.modalidade,
+          maxCapacity: proceduresTable.maxCapacity,
+        })
         .from(proceduresTable)
         .where(eq(proceduresTable.id, procedureId))
         .limit(1);
 
       if (proc) {
         const durationHours = proc.durationMinutes / 60;
-        const fixedCostPerSession = costPerHour * durationHours;
+        // For group/dupla sessions the overhead is shared among all participants,
+        // so each participant's allocated cost = costPerHour × duration / capacity.
+        const capacityDivisor = proc.modalidade !== "individual"
+          ? Math.max(proc.maxCapacity ?? 1, 1)
+          : 1;
+        const fixedCostPerSession = (costPerHour * durationHours) / capacityDivisor;
 
         const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
         const [usageRow] = await db
@@ -346,6 +356,7 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
         procedureStats = {
           procedureId,
           durationMinutes: proc.durationMinutes,
+          capacityDivisor,
           fixedCostPerSession: Math.round(fixedCostPerSession * 100) / 100,
           confirmedAppointments,
           totalHoursUsed: Math.round(totalHoursUsed * 100) / 100,

@@ -325,18 +325,24 @@ export default function Procedimentos() {
     staleTime: 30_000,
   });
 
+  // Use the backend-computed value when available (already adjusted for group capacity).
+  // Fall back to local calculation only when procedureStats is not yet loaded.
   const computedFixedCostPerSession = overheadData && costingProcedure
-    ? overheadData.costPerHour * (costingProcedure.durationMinutes / 60)
+    ? (overheadData.procedureStats?.fixedCostPerSession ??
+        overheadData.costPerHour * (costingProcedure.durationMinutes / 60) /
+        Math.max((costingProcedure.modalidade !== "individual" ? (costingProcedure.maxCapacity ?? 1) : 1), 1))
     : null;
 
   const updateCostsMutation = useMutation({
-    mutationFn: async (data: { id: number; priceOverride: string; variableCost: string; notes: string; fixedCost: number }) => {
+    mutationFn: async (data: { id: number; priceOverride: string; variableCost: string; notes: string }) => {
       return apiFetch(`/api/procedures/${data.id}/costs`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           priceOverride: data.priceOverride !== "" ? Number(data.priceOverride) : null,
-          fixedCost: data.fixedCost,
+          // fixedCost is intentionally 0 — overhead is always computed dynamically
+          // from clinic expenses / available hours and never stored as a snapshot.
+          fixedCost: 0,
           variableCost: data.variableCost !== "" ? Number(data.variableCost) : 0,
           notes: data.notes || null,
         }),
@@ -1130,7 +1136,13 @@ export default function Procedimentos() {
               Análise de Custos — {costingProcedure?.name}
             </DialogTitle>
             <p className="text-xs text-slate-500 mt-0.5">
-              Custo fixo calculado automaticamente com base nos custos da clínica e horas disponíveis na agenda.
+              O overhead é calculado automaticamente (despesas da clínica ÷ horas disponíveis).
+              O custo variável é inserido manualmente para materiais e insumos por sessão.
+              {costingProcedure?.modalidade !== "individual" && (
+                <span className="ml-1 text-violet-600 font-medium">
+                  Overhead rateado por {costingProcedure?.maxCapacity ?? 1} participantes.
+                </span>
+              )}
               {costingProcedure?.isGlobal && (
                 <span className="ml-1 text-blue-600 font-medium">Procedimento global.</span>
               )}
@@ -1165,7 +1177,7 @@ export default function Procedimentos() {
             {/* ── Overhead breakdown panel ─────────────────────── */}
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Wrench className="w-3 h-3" /> Custos Fixos da Clínica (calculado automaticamente)
+                <Wrench className="w-3 h-3" /> Overhead da Clínica — calculado automaticamente
               </div>
               {overheadLoading ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-400">Calculando…</div>
@@ -1186,23 +1198,26 @@ export default function Procedimentos() {
                     </div>
                   </div>
 
-                  {/* Per-procedure fixed cost */}
+                  {/* Per-procedure overhead cost */}
                   <div className="grid grid-cols-2 gap-x-4 px-3 py-2.5 bg-emerald-50/60">
                     <div>
                       <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                        Custo fixo / sessão <span className="normal-case">({costingProcedure?.durationMinutes} min)</span>
+                        Overhead / sessão <span className="normal-case">({costingProcedure?.durationMinutes} min)</span>
                       </p>
                       <p className="text-base font-bold text-emerald-700">
                         {computedFixedCostPerSession !== null ? formatCurrency(computedFixedCostPerSession) : "—"}
                       </p>
                       <p className="text-[10px] text-slate-400 mt-0.5">
                         {formatCurrency(overheadData.costPerHour)}/h × {((costingProcedure?.durationMinutes ?? 0) / 60).toFixed(2)}h
+                        {costingProcedure?.modalidade !== "individual" && (
+                          <> ÷ {costingProcedure?.maxCapacity ?? 1} part.</>
+                        )}
                       </p>
                     </div>
                     {overheadData.procedureStats && (
                       <div className="text-right">
                         <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                          Custo fixo real / mês
+                          Overhead total / mês
                         </p>
                         <p className="text-base font-bold text-slate-700">
                           {formatCurrency(overheadData.procedureStats.fixedCostAllocatedMonthly)}
@@ -1284,7 +1299,7 @@ export default function Procedimentos() {
                   </div>
                   <div className="mt-1.5 grid grid-cols-3 text-[11px] opacity-80 gap-x-2">
                     <span>Preço: {formatCurrency(price)}</span>
-                    <span>Fixo: {formatCurrency(fixed)}</span>
+                    <span>Overhead: {formatCurrency(fixed)}</span>
                     <span>Variável: {formatCurrency(variable)}</span>
                   </div>
                 </div>
@@ -1312,7 +1327,6 @@ export default function Procedimentos() {
               onClick={() => costingProcedure && updateCostsMutation.mutate({
                 ...costForm,
                 id: costingProcedure.id,
-                fixedCost: computedFixedCostPerSession ?? 0,
               })}
               disabled={updateCostsMutation.isPending}
             >

@@ -606,10 +606,11 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
     const startDate   = `${year}-${String(month).padStart(2, "0")}-01`;
     const endDate     = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-    // ── 1. Total real overhead expenses (paid) ─────────────────────────────────
+    // ── 1. Total real overhead expenses (accrual: by dueDate) ─────────────────
+    // Using dueDate for consistency with the overhead-analysis endpoint.
     const expCond = clinicId
-      ? and(eq(financialRecordsTable.clinicId, clinicId), eq(financialRecordsTable.type, "despesa"), eq(financialRecordsTable.status, "pago"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-      : and(eq(financialRecordsTable.type, "despesa"), eq(financialRecordsTable.status, "pago"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate));
+      ? and(eq(financialRecordsTable.clinicId, clinicId), eq(financialRecordsTable.type, "despesa"), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate))
+      : and(eq(financialRecordsTable.type, "despesa"), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate));
 
     const [expRow] = await db
       .select({ total: sql<string>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)` })
@@ -618,6 +619,10 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
     const totalRealOverhead = Number(expRow?.total ?? 0);
 
     // ── 2. Estimated overhead from recurring expenses ─────────────────────────
+    // Weekly expenses use actual week count for the month (daysInMonth / 7)
+    // instead of the fixed 4.33 approximation.
+    const weeksInMonth = daysInMonth / 7;
+
     const recCond = clinicId
       ? and(eq(recurringExpensesTable.clinicId, clinicId), eq(recurringExpensesTable.isActive, true))
       : eq(recurringExpensesTable.isActive, true);
@@ -626,7 +631,7 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
     const totalEstimatedOverhead = recurringRows.reduce((sum, r) => {
       const amt = Number(r.amount);
       if (r.frequency === "anual") return sum + amt / 12;
-      if (r.frequency === "semanal") return sum + amt * 4.33;
+      if (r.frequency === "semanal") return sum + amt * weeksInMonth;
       return sum + amt; // mensal
     }, 0);
 
@@ -662,10 +667,13 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         id: proceduresTable.id,
         name: proceduresTable.name,
         category: proceduresTable.category,
+        modalidade: proceduresTable.modalidade,
         durationMinutes: proceduresTable.durationMinutes,
+        maxCapacity: proceduresTable.maxCapacity,
         price: proceduresTable.price,
         baseCost: proceduresTable.cost,
-        fixedCost: procedureCostsTable.fixedCost,
+        // Only variableCost is fetched from procedure_costs.
+        // Overhead is always calculated dynamically to avoid double-counting.
         variableCost: procedureCostsTable.variableCost,
       })
       .from(proceduresTable)
@@ -715,16 +723,26 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
 
     const results = procs.map((p) => {
       const durationHours = p.durationMinutes / 60;
-      const hasClinicCost = p.fixedCost !== null;
-      const estimatedDirectCost = hasClinicCost
-        ? Number(p.fixedCost ?? 0) + Number(p.variableCost ?? 0)
+
+      // For group/dupla sessions the overhead is shared among all participants.
+      const capacityDivisor = p.modalidade !== "individual"
+        ? Math.max(p.maxCapacity ?? 1, 1)
+        : 1;
+
+      // Direct material/variable cost only — overhead is always added dynamically.
+      // When procedure_costs has been configured, use its variableCost.
+      // Otherwise fall back to the base cost stored on the procedure.
+      const hasClinicCost = p.variableCost !== null;
+      const variableDirectCost = hasClinicCost
+        ? Number(p.variableCost ?? 0)
         : Number(p.baseCost ?? 0);
 
-      const realOverheadCostPerSession    = realCostPerHour  * durationHours;
-      const estimatedOverheadCostPerSession = estCostPerHour * durationHours;
+      // Overhead per session divided by capacity for group procedures.
+      const realOverheadCostPerSession      = (realCostPerHour  * durationHours) / capacityDivisor;
+      const estimatedOverheadCostPerSession = (estCostPerHour   * durationHours) / capacityDivisor;
 
-      const estimatedTotalCostPerSession = estimatedDirectCost + estimatedOverheadCostPerSession;
-      const realTotalCostPerSession      = estimatedDirectCost + realOverheadCostPerSession;
+      const estimatedTotalCostPerSession = variableDirectCost + estimatedOverheadCostPerSession;
+      const realTotalCostPerSession      = variableDirectCost + realOverheadCostPerSession;
 
       const price = Number(p.price);
       const stats = apptMap.get(p.id);
@@ -736,9 +754,11 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         procedureId: p.id,
         name: p.name,
         category: p.category,
+        modalidade: p.modalidade,
         durationMinutes: p.durationMinutes,
+        capacityDivisor,
         price,
-        estimatedDirectCost: Math.round(estimatedDirectCost * 100) / 100,
+        variableDirectCost: Math.round(variableDirectCost * 100) / 100,
         estimatedOverheadPerSession: Math.round(estimatedOverheadCostPerSession * 100) / 100,
         estimatedTotalCostPerSession: Math.round(estimatedTotalCostPerSession * 100) / 100,
         realOverheadPerSession: Math.round(realOverheadCostPerSession * 100) / 100,
