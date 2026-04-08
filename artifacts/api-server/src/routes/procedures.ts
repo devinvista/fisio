@@ -5,6 +5,39 @@ import { eq, and, count, ilike, isNull, or, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import type { Role } from "@workspace/db";
+import { validateBody, optionalPositiveNumber } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const procedureCategoryEnum = z.enum(["Fisioterapia", "Estética", "Pilates", "Outro"]);
+const procedureModalidadeEnum = z.enum(["individual", "dupla", "grupo"]);
+const procedureBillingTypeEnum = z.enum(["porSessao", "mensal"]);
+
+const createProcedureSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(200),
+  category: procedureCategoryEnum,
+  modalidade: procedureModalidadeEnum.default("individual"),
+  durationMinutes: z.union([z.number(), z.string()]).transform(Number).refine(v => Number.isInteger(v) && v > 0, "Duração deve ser um inteiro positivo"),
+  price: z.union([z.number(), z.string()]).transform(Number).refine(v => !isNaN(v) && v >= 0, "Preço deve ser não-negativo"),
+  cost: z.union([z.number(), z.string()]).transform(Number).refine(v => !isNaN(v) && v >= 0).optional(),
+  description: z.string().max(1000).optional().nullable(),
+  maxCapacity: z.union([z.number(), z.string()]).transform(Number).refine(v => Number.isInteger(v) && v > 0).optional().nullable(),
+  onlineBookingEnabled: z.boolean().optional().default(false),
+  billingType: procedureBillingTypeEnum.default("porSessao"),
+  monthlyPrice: z.union([z.number(), z.string()]).transform(Number).refine(v => !isNaN(v) && v > 0).optional().nullable(),
+  billingDay: z.union([z.number(), z.string()]).transform(Number).refine(v => Number.isInteger(v) && v >= 1 && v <= 31, "billingDay deve ser entre 1 e 31").optional().nullable(),
+}).refine(d => d.billingType !== "mensal" || (d.monthlyPrice && d.billingDay), {
+  message: "Para cobrança mensal, monthlyPrice e billingDay são obrigatórios",
+});
+
+const updateProcedureSchema = createProcedureSchema.partial();
+
+const updateProcedureCostsSchema = z.object({
+  priceOverride: optionalPositiveNumber,
+  monthlyPriceOverride: optionalPositiveNumber,
+  fixedCost: optionalPositiveNumber,
+  variableCost: optionalPositiveNumber,
+  notes: z.string().max(500).optional().nullable(),
+});
 
 const router = Router();
 router.use(authMiddleware);
@@ -145,42 +178,29 @@ router.get("/", requirePermission("procedures.manage"), async (req: AuthRequest,
 
 router.post("/", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
-    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
-    if (!name || !category || !durationMinutes || !price) {
-      res.status(400).json({
-        error: "Bad Request",
-        message: "name, category, durationMinutes e price são obrigatórios",
-      });
-      return;
-    }
-    const resolvedBillingType = billingType || "porSessao";
-    if (resolvedBillingType === "mensal" && (!monthlyPrice || !billingDay)) {
-      res.status(400).json({
-        error: "Bad Request",
-        message: "Para cobrança mensal, monthlyPrice e billingDay são obrigatórios",
-      });
-      return;
-    }
-    const resolvedModalidade = modalidade || "individual";
-    const resolvedMaxCapacity = maxCapacity
-      ? parseInt(maxCapacity)
-      : resolvedModalidade === "individual" ? 1 : resolvedModalidade === "dupla" ? 2 : 10;
+    const body = validateBody(createProcedureSchema, req.body, res);
+    if (!body) return;
+    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = body;
+
+    const resolvedMaxCapacity = maxCapacity != null
+      ? maxCapacity
+      : modalidade === "individual" ? 1 : modalidade === "dupla" ? 2 : 10;
 
     const [procedure] = await db
       .insert(proceduresTable)
       .values({
         name,
         category,
-        modalidade: resolvedModalidade,
-        durationMinutes: parseInt(durationMinutes),
+        modalidade,
+        durationMinutes,
         price: String(price),
-        cost: cost ? String(cost) : "0",
-        description,
+        cost: cost != null ? String(cost) : "0",
+        description: description ?? null,
         maxCapacity: resolvedMaxCapacity,
-        onlineBookingEnabled: Boolean(onlineBookingEnabled),
-        billingType: resolvedBillingType,
-        monthlyPrice: monthlyPrice ? String(monthlyPrice) : null,
-        billingDay: billingDay ? parseInt(billingDay) : null,
+        onlineBookingEnabled: onlineBookingEnabled ?? false,
+        billingType,
+        monthlyPrice: monthlyPrice != null ? String(monthlyPrice) : null,
+        billingDay: billingDay ?? null,
         isActive: true,
         clinicId: req.clinicId ?? null,
       })
@@ -354,7 +374,9 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
 router.put("/:id", requirePermission("procedures.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = req.body;
+    const body = validateBody(updateProcedureSchema, req.body, res);
+    if (!body) return;
+    const { name, category, modalidade, durationMinutes, price, cost, description, maxCapacity, onlineBookingEnabled, billingType, monthlyPrice, billingDay } = body;
 
     const condition = req.isSuperAdmin || !req.clinicId
       ? eq(proceduresTable.id, id)
@@ -441,12 +463,14 @@ router.put("/:id/costs", requirePermission("procedures.manage"), async (req: Aut
       return;
     }
 
-    const { priceOverride, monthlyPriceOverride, fixedCost, variableCost, notes } = req.body;
+    const costsBody = validateBody(updateProcedureCostsSchema, req.body, res);
+    if (!costsBody) return;
+    const { priceOverride, monthlyPriceOverride, fixedCost, variableCost, notes } = costsBody;
 
-    const fixedCostVal = fixedCost !== undefined && fixedCost !== "" ? String(fixedCost) : "0";
-    const variableCostVal = variableCost !== undefined && variableCost !== "" ? String(variableCost) : "0";
-    const priceOverrideVal = priceOverride !== undefined && priceOverride !== "" ? String(priceOverride) : null;
-    const monthlyPriceOverrideVal = monthlyPriceOverride !== undefined && monthlyPriceOverride !== "" ? String(monthlyPriceOverride) : null;
+    const fixedCostVal = fixedCost != null ? String(fixedCost) : "0";
+    const variableCostVal = variableCost != null ? String(variableCost) : "0";
+    const priceOverrideVal = priceOverride != null ? String(priceOverride) : null;
+    const monthlyPriceOverrideVal = monthlyPriceOverride != null ? String(monthlyPriceOverride) : null;
 
     const existing = await db
       .select({ id: procedureCostsTable.id })

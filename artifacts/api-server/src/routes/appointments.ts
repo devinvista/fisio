@@ -7,7 +7,35 @@ import { requirePermission } from "../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
-import { parseIntParam } from "../lib/validate.js";
+import { parseIntParam, validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const appointmentStatusEnum = z.enum(["agendado", "confirmado", "concluido", "cancelado", "faltou", "remarcado"]);
+
+const createAppointmentSchema = z.object({
+  patientId: z.number({ error: "patientId deve ser um número" }).int().positive(),
+  procedureId: z.number({ error: "procedureId deve ser um número" }).int().positive(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date deve estar no formato YYYY-MM-DD"),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "startTime deve estar no formato HH:MM"),
+  scheduleId: z.number().int().positive().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+const updateAppointmentSchema = z.object({
+  patientId: z.number().int().positive().optional(),
+  procedureId: z.number().int().positive().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date deve estar no formato YYYY-MM-DD").optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "startTime deve estar no formato HH:MM").optional(),
+  status: appointmentStatusEnum.optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+const recurringAppointmentSchema = createAppointmentSchema.extend({
+  recurrence: z.object({
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).min(1, "Informe ao menos um dia da semana"),
+    totalSessions: z.number().int().min(1, "totalSessions deve ser no mínimo 1"),
+  }),
+});
 
 const router = Router();
 router.use(authMiddleware);
@@ -462,15 +490,9 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
 
 router.post("/", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
-    const { patientId, procedureId, date, startTime, notes, scheduleId } = req.body;
-
-    if (!patientId || !procedureId || !date || !startTime) {
-      res.status(400).json({
-        error: "Bad Request",
-        message: "patientId, procedureId, date e startTime são obrigatórios",
-      });
-      return;
-    }
+    const body = validateBody(createAppointmentSchema, req.body, res);
+    if (!body) return;
+    const { patientId, procedureId, date, startTime, notes, scheduleId } = body;
 
     const [procedure] = await db
       .select()
@@ -548,7 +570,9 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
   try {
     const id = parseIntParam(req.params.id, res, "ID do agendamento");
     if (id === null) return;
-    const { patientId, procedureId, date, startTime, status, notes } = req.body;
+    const body = validateBody(updateAppointmentSchema, req.body, res);
+    if (!body) return;
+    const { patientId, procedureId, date, startTime, status, notes } = body;
 
     let endTime: string | undefined;
     let maxCapacity = 1;
@@ -656,19 +680,10 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
 
 router.post("/recurring", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
-    const { patientId, procedureId, date, startTime, notes, recurrence, scheduleId } = req.body;
-
-    if (!patientId || !procedureId || !date || !startTime || !recurrence) {
-      res.status(400).json({ error: "Bad Request", message: "patientId, procedureId, date, startTime e recurrence são obrigatórios" });
-      return;
-    }
-
-    const { daysOfWeek, totalSessions } = recurrence as { daysOfWeek: number[]; totalSessions: number };
-
-    if (!Array.isArray(daysOfWeek) || daysOfWeek.length === 0 || !totalSessions || totalSessions < 1) {
-      res.status(400).json({ error: "Bad Request", message: "recurrence.daysOfWeek e recurrence.totalSessions são obrigatórios" });
-      return;
-    }
+    const body = validateBody(recurringAppointmentSchema, req.body, res);
+    if (!body) return;
+    const { patientId, procedureId, date, startTime, notes, recurrence, scheduleId } = body;
+    const { daysOfWeek, totalSessions } = recurrence;
 
     const [procedure] = await db.select().from(proceduresTable).where(eq(proceduresTable.id, procedureId));
     if (!procedure) {

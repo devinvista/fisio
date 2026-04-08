@@ -6,6 +6,26 @@ import type { Role } from "@workspace/db";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const rolesEnum = z.enum(["admin", "profissional", "secretaria"]);
+
+const createUserSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(200),
+  cpf: z.string().min(1, "CPF é obrigatório"),
+  email: z.email("E-mail inválido").optional().nullable(),
+  password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
+  roles: z.array(rolesEnum).optional(),
+});
+
+const updateUserSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  cpf: z.string().optional(),
+  email: z.email("E-mail inválido").optional().nullable(),
+  password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres").optional(),
+  roles: z.array(rolesEnum).optional(),
+});
 
 const router = Router();
 router.use(authMiddleware);
@@ -124,13 +144,10 @@ router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res)
 
 router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
-    const { name, cpf, email, password, roles } = req.body;
-    const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles : ["profissional"];
-
-    if (!name || !cpf || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e senha são obrigatórios" });
-      return;
-    }
+    const body = validateBody(createUserSchema, req.body, res);
+    if (!body) return;
+    const { name, cpf, email, password, roles } = body;
+    const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles as Role[] : ["profissional"];
 
     const normalizedCpf = cpf.replace(/\D/g, "");
     const existingCpf = await db
@@ -209,7 +226,9 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
 router.put("/:id", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, cpf, email, roles, password } = req.body;
+    const body = validateBody(updateUserSchema, req.body, res);
+    if (!body) return;
+    const { name, cpf, email, roles, password } = body;
 
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;

@@ -5,6 +5,26 @@ import { usersTable, userRolesTable, clinicsTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.js";
+import { validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const registerSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(200),
+  cpf: z.string().min(1, "CPF é obrigatório"),
+  email: z.email("E-mail inválido").optional().nullable(),
+  password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
+  clinicName: z.string().min(1, "Nome da clínica é obrigatório").max(200),
+});
+
+const loginSchema = z.object({
+  email: z.string().min(1, "Identificador é obrigatório"),
+  password: z.string().min(1, "Senha é obrigatória"),
+  clinicId: z.number().int().positive().optional().nullable(),
+});
+
+const switchClinicSchema = z.object({
+  clinicId: z.union([z.number().int().positive(), z.null()]).optional(),
+});
 
 const router = Router();
 
@@ -59,16 +79,9 @@ async function getUserRolesForClinic(userId: number, clinicId: number | null): P
 
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, cpf, password, clinicName } = req.body;
-
-    if (!name || !cpf || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e senha são obrigatórios" });
-      return;
-    }
-    if (!clinicName) {
-      res.status(400).json({ error: "Bad Request", message: "Nome da clínica é obrigatório" });
-      return;
-    }
+    const body = validateBody(registerSchema, req.body, res);
+    if (!body) return;
+    const { name, email, cpf, password, clinicName } = body;
 
     const normalizedCpf = normalizeCpf(cpf);
     if (normalizedCpf.length !== 11) {
@@ -145,11 +158,9 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
-    const { email: identifier, password, clinicId: preferredClinicId } = req.body;
-    if (!identifier || !password) {
-      res.status(400).json({ error: "Bad Request", message: "Identificador e senha são obrigatórios" });
-      return;
-    }
+    const body = validateBody(loginSchema, req.body, res);
+    if (!body) return;
+    const { email: identifier, password, clinicId: preferredClinicId } = body;
 
     let user: typeof usersTable.$inferSelect | undefined;
 
@@ -242,9 +253,11 @@ router.post("/login", async (req, res) => {
 
 router.post("/switch-clinic", authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { clinicId } = req.body;
+    const body = validateBody(switchClinicSchema, req.body, res);
+    if (!body) return;
+    const { clinicId } = body;
 
-    if (req.isSuperAdmin && (clinicId === null || clinicId === 0)) {
+    if (req.isSuperAdmin && (clinicId === null || clinicId === undefined || clinicId === 0)) {
       const token = generateToken(req.userId!, [], null, true, req.userName);
       res.json({ token, clinicId: null });
       return;

@@ -4,6 +4,29 @@ import { schedulesTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const scheduleTypeEnum = z.enum(["clinic", "professional"]);
+
+const createScheduleSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(200),
+  description: z.string().max(500).optional().nullable(),
+  type: scheduleTypeEnum,
+  professionalId: z.number().int().positive().optional().nullable(),
+  workingDays: z.union([
+    z.array(z.number().int().min(0).max(6)),
+    z.string(),
+  ]).optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "startTime deve estar no formato HH:MM").optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "endTime deve estar no formato HH:MM").optional(),
+  slotDurationMinutes: z.number().int().positive().optional(),
+  color: z.string().max(20).optional(),
+});
+
+const updateScheduleSchema = createScheduleSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
 
 const router = Router();
 router.use(authMiddleware);
@@ -70,22 +93,9 @@ router.get("/:id", requirePermission("appointments.read"), async (req, res) => {
 
 router.post("/", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
   try {
-    const {
-      name,
-      description,
-      type,
-      professionalId,
-      workingDays,
-      startTime,
-      endTime,
-      slotDurationMinutes,
-      color,
-    } = req.body;
-
-    if (!name || !type) {
-      res.status(400).json({ error: "Bad Request", message: "name e type são obrigatórios" });
-      return;
-    }
+    const body = validateBody(createScheduleSchema, req.body, res);
+    if (!body) return;
+    const { name, description, type, professionalId, workingDays, startTime, endTime, slotDurationMinutes, color } = body;
 
     if (!req.clinicId && !req.isSuperAdmin) {
       res.status(400).json({ error: "Bad Request", message: "clinicId não encontrado" });
@@ -120,18 +130,9 @@ router.post("/", requirePermission("settings.manage"), async (req: AuthRequest, 
 router.put("/:id", requirePermission("settings.manage"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const {
-      name,
-      description,
-      type,
-      professionalId,
-      workingDays,
-      startTime,
-      endTime,
-      slotDurationMinutes,
-      isActive,
-      color,
-    } = req.body;
+    const body = validateBody(updateScheduleSchema, req.body, res);
+    if (!body) return;
+    const { name, description, type, professionalId, workingDays, startTime, endTime, slotDurationMinutes, isActive, color } = body;
 
     const updateData: Record<string, any> = { updatedAt: new Date() };
     if (name !== undefined) updateData.name = name;

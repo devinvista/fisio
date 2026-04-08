@@ -6,6 +6,30 @@ import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
 import { nowBRT, todayBRT } from "../lib/dateUtils.js";
+import { validateBody, positiveNumber } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const createRecordSchema = z.object({
+  type: z.enum(["receita", "despesa"]).default("despesa"),
+  amount: positiveNumber,
+  description: z.string().min(1, "Descrição é obrigatória").max(500),
+  category: z.string().max(100).optional().nullable(),
+  patientId: z.number().int().positive().optional().nullable(),
+  procedureId: z.number().int().positive().optional().nullable(),
+});
+
+const createPaymentSchema = z.object({
+  amount: positiveNumber,
+  paymentMethod: z.string().max(50).optional().nullable(),
+  description: z.string().max(500).optional().nullable(),
+  procedureId: z.number().int().positive().optional().nullable(),
+});
+
+const updateRecordStatusSchema = z.object({
+  status: z.enum(["pendente", "pago", "cancelado", "estornado"], { error: "Status inválido" }),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  paymentMethod: z.string().max(50).optional().nullable(),
+});
 
 function clinicCond(req: AuthRequest) {
   if (req.isSuperAdmin || !req.clinicId) return null;
@@ -229,28 +253,19 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
 
 router.post("/records", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
-    const { type = "despesa", amount, description, category, patientId, procedureId } = req.body;
-
-    if (!amount || !description) {
-      res.status(400).json({ error: "Bad Request", message: "Valor e descrição são obrigatórios" });
-      return;
-    }
-
-    const numAmount = Number(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      res.status(400).json({ error: "Bad Request", message: "Valor deve ser maior que zero" });
-      return;
-    }
+    const body = validateBody(createRecordSchema, req.body, res);
+    if (!body) return;
+    const { type, amount, description, category, patientId, procedureId } = body;
 
     const [record] = await db
       .insert(financialRecordsTable)
       .values({
         type,
-        amount: String(numAmount),
+        amount: String(amount),
         description,
-        category: category || null,
-        patientId: patientId ? parseInt(String(patientId)) : null,
-        procedureId: procedureId ? parseInt(String(procedureId)) : null,
+        category: category ?? null,
+        patientId: patientId ?? null,
+        procedureId: procedureId ?? null,
         clinicId: req.clinicId ?? null,
       })
       .returning();
@@ -361,18 +376,9 @@ router.post("/patients/:patientId/payment", requirePermission("financial.write")
       res.status(403).json({ error: "Forbidden", message: "Acesso negado a este paciente" });
       return;
     }
-    const { amount, paymentMethod, description, procedureId } = req.body;
-
-    if (!amount) {
-      res.status(400).json({ error: "Bad Request", message: "Valor é obrigatório" });
-      return;
-    }
-
-    const numAmount = Number(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      res.status(400).json({ error: "Bad Request", message: "Valor deve ser maior que zero" });
-      return;
-    }
+    const body = validateBody(createPaymentSchema, req.body, res);
+    if (!body) return;
+    const { amount, paymentMethod, description, procedureId } = body;
 
     const today = todayBRT();
 
@@ -470,12 +476,9 @@ router.get("/patients/:patientId/subscriptions", requirePermission("financial.re
 router.patch("/records/:id/status", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { status, paymentDate, paymentMethod } = req.body;
-
-    if (!status) {
-      res.status(400).json({ error: "Bad Request", message: "status é obrigatório" });
-      return;
-    }
+    const body = validateBody(updateRecordStatusSchema, req.body, res);
+    if (!body) return;
+    const { status, paymentDate, paymentMethod } = body;
 
     // Busca o registro antes de atualizar para checar transição de status
     const cc = clinicCond(req);
