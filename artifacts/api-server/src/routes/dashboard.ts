@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, treatmentPlansTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, sql, gte, gt, lte, isNull } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { todayBRT, nowBRT, monthDateRangeBRT } from "../lib/dateUtils.js";
@@ -58,7 +58,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         and(
-          gte(appointmentsTable.date, today),
+          gt(appointmentsTable.date, today),
           sql`${appointmentsTable.status} NOT IN ('cancelado', 'concluido', 'faltou')`,
           apptFilter ?? undefined
         )
