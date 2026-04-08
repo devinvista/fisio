@@ -1202,7 +1202,7 @@ export default function Procedimentos() {
                   <div className="grid grid-cols-2 gap-x-4 px-3 py-2.5 bg-emerald-50/60">
                     <div>
                       <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                        Overhead / sessão <span className="normal-case">({costingProcedure?.durationMinutes} min)</span>
+                        Overhead estimado / part. <span className="normal-case">({costingProcedure?.durationMinutes} min)</span>
                       </p>
                       <p className="text-base font-bold text-emerald-700">
                         {computedFixedCostPerSession !== null ? formatCurrency(computedFixedCostPerSession) : "—"}
@@ -1210,22 +1210,40 @@ export default function Procedimentos() {
                       <p className="text-[10px] text-slate-400 mt-0.5">
                         {formatCurrency(overheadData.costPerHour)}/h × {((costingProcedure?.durationMinutes ?? 0) / 60).toFixed(2)}h
                         {costingProcedure?.modalidade !== "individual" && (
-                          <> ÷ {costingProcedure?.maxCapacity ?? 1} part.</>
+                          <> ÷ {costingProcedure?.maxCapacity ?? 1} cap.</>
                         )}
                       </p>
                     </div>
                     {overheadData.procedureStats && (
                       <div className="text-right">
-                        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-                          Overhead total / mês
-                        </p>
-                        <p className="text-base font-bold text-slate-700">
-                          {formatCurrency(overheadData.procedureStats.fixedCostAllocatedMonthly)}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          {overheadData.procedureStats.confirmedAppointments} sessões confirmadas
-                          · {overheadData.procedureStats.totalHoursUsed}h usadas
-                        </p>
+                        {/* For group procedures show real overhead using actual avg participants */}
+                        {overheadData.procedureStats.avgActualParticipants !== null ? (
+                          <>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                              Overhead real / part.
+                            </p>
+                            <p className="text-base font-bold text-slate-700">
+                              {formatCurrency(overheadData.procedureStats.fixedCostPerSessionReal)}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Média {overheadData.procedureStats.avgActualParticipants} part.
+                              · {overheadData.procedureStats.uniqueCompletedSessions} sessões
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                              Overhead total / mês
+                            </p>
+                            <p className="text-base font-bold text-slate-700">
+                              {formatCurrency(overheadData.procedureStats.fixedCostAllocatedMonthly)}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {overheadData.procedureStats.confirmedAppointments} atend.
+                              · {overheadData.procedureStats.totalHoursUsed}h
+                            </p>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

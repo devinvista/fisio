@@ -309,9 +309,13 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
     let procedureStats: {
       procedureId: number;
       durationMinutes: number;
-      capacityDivisor: number;
+      estimatedCapacityDivisor: number;
+      realCapacityDivisor: number;
+      avgActualParticipants: number | null;
       fixedCostPerSession: number;
+      fixedCostPerSessionReal: number;
       confirmedAppointments: number;
+      uniqueCompletedSessions: number;
       totalHoursUsed: number;
       fixedCostAllocatedMonthly: number;
     } | null = null;
@@ -329,38 +333,54 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
 
       if (proc) {
         const durationHours = proc.durationMinutes / 60;
-        // For group/dupla sessions the overhead is shared among all participants,
-        // so each participant's allocated cost = costPerHour × duration / capacity.
-        const capacityDivisor = proc.modalidade !== "individual"
-          ? Math.max(proc.maxCapacity ?? 1, 1)
-          : 1;
-        const fixedCostPerSession = (costPerHour * durationHours) / capacityDivisor;
+        const isGroup = proc.modalidade !== "individual";
+        const maxCap = Math.max(proc.maxCapacity ?? 1, 1);
+
+        // Estimated: assume full session capacity (for pricing decisions).
+        const estimatedCapacityDivisor = isGroup ? maxCap : 1;
 
         const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
         const [usageRow] = await db
-          .select({ apptCount: count() })
+          .select({
+            apptCount: count(),
+            uniqueSessions: sql<number>`COUNT(DISTINCT CASE WHEN ${appointmentsTable.status} = ANY(ARRAY[${sql.join(confirmedStatuses.map(s => sql`${s}`), sql`, `)}]) THEN (${appointmentsTable.date}::text || '_' || ${appointmentsTable.startTime}) END)`,
+          })
           .from(appointmentsTable)
           .where(
             and(
               eq(appointmentsTable.clinicId, clinicId),
               eq(appointmentsTable.procedureId, procedureId),
               gte(appointmentsTable.date, startDate),
-              lte(appointmentsTable.date, endDate),
-              sql`${appointmentsTable.status} = ANY(ARRAY[${sql.join(confirmedStatuses.map(s => sql`${s}`), sql`, `)}])`
+              lte(appointmentsTable.date, endDate)
             )
           );
 
         const confirmedAppointments = Number(usageRow?.apptCount ?? 0);
+        const uniqueCompletedSessions = Number(usageRow?.uniqueSessions ?? 0);
+
+        // Real divisor: actual average participants per completed session.
+        // Falls back to maxCapacity when no sessions have been completed yet.
+        const avgActualParticipants = (isGroup && uniqueCompletedSessions > 0)
+          ? confirmedAppointments / uniqueCompletedSessions
+          : estimatedCapacityDivisor;
+        const realCapacityDivisor = Math.max(avgActualParticipants, 1);
+
+        const fixedCostPerSession     = (costPerHour * durationHours) / estimatedCapacityDivisor;
+        const fixedCostPerSessionReal = (costPerHour * durationHours) / realCapacityDivisor;
         const totalHoursUsed = confirmedAppointments * durationHours;
 
         procedureStats = {
           procedureId,
           durationMinutes: proc.durationMinutes,
-          capacityDivisor,
+          estimatedCapacityDivisor,
+          realCapacityDivisor: Math.round(realCapacityDivisor * 100) / 100,
+          avgActualParticipants: isGroup ? Math.round(avgActualParticipants * 10) / 10 : null,
           fixedCostPerSession: Math.round(fixedCostPerSession * 100) / 100,
+          fixedCostPerSessionReal: Math.round(fixedCostPerSessionReal * 100) / 100,
           confirmedAppointments,
+          uniqueCompletedSessions,
           totalHoursUsed: Math.round(totalHoursUsed * 100) / 100,
-          fixedCostAllocatedMonthly: Math.round(confirmedAppointments * fixedCostPerSession * 100) / 100,
+          fixedCostAllocatedMonthly: Math.round(confirmedAppointments * fixedCostPerSessionReal * 100) / 100,
         };
       }
     }

@@ -697,6 +697,9 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         procedureId: appointmentsTable.procedureId,
         completedCount: sql<number>`COUNT(*) FILTER (WHERE ${appointmentsTable.status} IN ('concluido','compareceu'))`,
         scheduledCount: sql<number>`COUNT(*)`,
+        // Unique group sessions: distinct (date, startTime) among completed appointments.
+        // Used to compute the real average participants per session for group procedures.
+        uniqueCompletedSessions: sql<number>`COUNT(DISTINCT CASE WHEN ${appointmentsTable.status} IN ('concluido','compareceu') THEN (${appointmentsTable.date}::text || '_' || ${appointmentsTable.startTime}) END)`,
       })
       .from(appointmentsTable)
       .where(apptStatsCond)
@@ -723,11 +726,23 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
 
     const results = procs.map((p) => {
       const durationHours = p.durationMinutes / 60;
+      const isGroup = p.modalidade !== "individual";
+      const maxCap = Math.max(p.maxCapacity ?? 1, 1);
 
-      // For group/dupla sessions the overhead is shared among all participants.
-      const capacityDivisor = p.modalidade !== "individual"
-        ? Math.max(p.maxCapacity ?? 1, 1)
-        : 1;
+      const stats = apptMap.get(p.id);
+      const completedParticipants  = Number(stats?.completedCount ?? 0);
+      const scheduledSessions      = Number(stats?.scheduledCount ?? 0);
+      const uniqueCompletedSessions = Number(stats?.uniqueCompletedSessions ?? 0);
+
+      // Estimated divisor: assume session runs at full capacity (used for pricing).
+      const estimatedCapacityDivisor = isGroup ? maxCap : 1;
+
+      // Real divisor: actual average participants per session in the period.
+      // Falls back to maxCapacity when there are no completed sessions yet.
+      const avgActualParticipants = (isGroup && uniqueCompletedSessions > 0)
+        ? completedParticipants / uniqueCompletedSessions
+        : estimatedCapacityDivisor;
+      const realCapacityDivisor = Math.max(avgActualParticipants, 1);
 
       // Direct material/variable cost only — overhead is always added dynamically.
       // When procedure_costs has been configured, use its variableCost.
@@ -737,18 +752,17 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         ? Number(p.variableCost ?? 0)
         : Number(p.baseCost ?? 0);
 
-      // Overhead per session divided by capacity for group procedures.
-      const realOverheadCostPerSession      = (realCostPerHour  * durationHours) / capacityDivisor;
-      const estimatedOverheadCostPerSession = (estCostPerHour   * durationHours) / capacityDivisor;
+      // Overhead per participant:
+      //   estimated → maxCapacity (full session assumption)
+      //   real      → actual avg participants (reflects real occupancy)
+      const realOverheadCostPerSession      = (realCostPerHour  * durationHours) / realCapacityDivisor;
+      const estimatedOverheadCostPerSession = (estCostPerHour   * durationHours) / estimatedCapacityDivisor;
 
       const estimatedTotalCostPerSession = variableDirectCost + estimatedOverheadCostPerSession;
       const realTotalCostPerSession      = variableDirectCost + realOverheadCostPerSession;
 
       const price = Number(p.price);
-      const stats = apptMap.get(p.id);
-      const completedSessions = Number(stats?.completedCount ?? 0);
-      const scheduledSessions = Number(stats?.scheduledCount ?? 0);
-      const revenueGenerated  = Number(revMap.get(p.id) ?? 0);
+      const revenueGenerated = Number(revMap.get(p.id) ?? 0);
 
       return {
         procedureId: p.id,
@@ -756,7 +770,10 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         category: p.category,
         modalidade: p.modalidade,
         durationMinutes: p.durationMinutes,
-        capacityDivisor,
+        maxCapacity: maxCap,
+        estimatedCapacityDivisor,
+        realCapacityDivisor: Math.round(realCapacityDivisor * 100) / 100,
+        avgActualParticipants: isGroup ? Math.round(avgActualParticipants * 10) / 10 : null,
         price,
         variableDirectCost: Math.round(variableDirectCost * 100) / 100,
         estimatedOverheadPerSession: Math.round(estimatedOverheadCostPerSession * 100) / 100,
@@ -767,11 +784,12 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
         realMarginPerSession: Math.round((price - realTotalCostPerSession) * 100) / 100,
         estimatedMarginPct: price > 0 ? Math.round(((price - estimatedTotalCostPerSession) / price) * 10000) / 100 : 0,
         realMarginPct: price > 0 ? Math.round(((price - realTotalCostPerSession) / price) * 10000) / 100 : 0,
-        completedSessions,
+        completedParticipants,
+        uniqueCompletedSessions,
         scheduledSessions,
         revenueGenerated: Math.round(revenueGenerated * 100) / 100,
-        realCostAllocated: Math.round(completedSessions * realTotalCostPerSession * 100) / 100,
-        estimatedCostAllocated: Math.round(completedSessions * estimatedTotalCostPerSession * 100) / 100,
+        realCostAllocated: Math.round(completedParticipants * realTotalCostPerSession * 100) / 100,
+        estimatedCostAllocated: Math.round(completedParticipants * estimatedTotalCostPerSession * 100) / 100,
       };
     });
 
