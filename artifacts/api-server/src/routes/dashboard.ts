@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTable, treatmentPlansTable } from "@workspace/db";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sql, gte, lte, isNull } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { todayBRT, nowBRT, monthDateRangeBRT } from "../lib/dateUtils.js";
@@ -119,6 +119,26 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
     const completedMonth = Number(completedMonthAppts[0]?.count ?? 0);
     const noShowMonth = Number(noShowMonthAppts[0]?.count ?? 0);
 
+    const { month: todayMonth, day: todayDay } = nowBRT();
+    const birthdayFilters = [
+      sql`EXTRACT(MONTH FROM ${patientsTable.birthDate}) = ${todayMonth}`,
+      sql`EXTRACT(DAY FROM ${patientsTable.birthDate}) = ${todayDay}`,
+      isNull(patientsTable.deletedAt),
+    ];
+    if (patFilter) birthdayFilters.push(patFilter);
+
+    const birthdayPatients = await db
+      .select({
+        id: patientsTable.id,
+        name: patientsTable.name,
+        birthDate: patientsTable.birthDate,
+        phone: patientsTable.phone,
+        email: patientsTable.email,
+      })
+      .from(patientsTable)
+      .where(and(...birthdayFilters))
+      .orderBy(patientsTable.name);
+
     res.json({
       todayAppointments: todayAppts.map(({ appointment, patient, procedure }) => ({ ...appointment, patient, procedure })),
       upcomingAppointments: upcomingAppts.map(({ appointment, patient, procedure }) => ({ ...appointment, patient, procedure })),
@@ -128,6 +148,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       occupationRate: totalMonth > 0 ? (completedMonth / totalMonth) * 100 : 0,
       noShowCount: noShowMonth,
       noShowRate: totalMonth > 0 ? (noShowMonth / totalMonth) * 100 : 0,
+      birthdayPatients,
     });
   } catch (err) {
     console.error(err);

@@ -3,8 +3,8 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { useGetDashboard } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink, Cake, Phone, Mail } from "lucide-react";
+import { format, parseISO, differenceInYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -179,6 +179,77 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Birthday Widget */}
+      {data?.birthdayPatients && data.birthdayPatients.length > 0 && (
+        <Card className="border-none shadow-md bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 mb-8">
+          <div className="p-5 flex items-center gap-3 border-b border-pink-100">
+            <div className="p-2 bg-pink-100 text-pink-600 rounded-xl">
+              <Cake className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-display text-base font-bold text-foreground">
+                Aniversariantes de Hoje 🎂
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {data.birthdayPatients.length === 1
+                  ? "1 paciente faz aniversário hoje"
+                  : `${data.birthdayPatients.length} pacientes fazem aniversário hoje`}
+              </p>
+            </div>
+          </div>
+          <CardContent className="p-0">
+            <div className="divide-y divide-pink-100">
+              {data.birthdayPatients.map((patient) => {
+                const age = patient.birthDate
+                  ? differenceInYears(new Date(), parseISO(patient.birthDate))
+                  : null;
+                return (
+                  <div key={patient.id} className="px-5 py-4 flex items-center justify-between hover:bg-pink-50/60 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                        {patient.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-foreground text-sm">{patient.name}</p>
+                        {age !== null && (
+                          <p className="text-xs text-muted-foreground">
+                            {age} anos hoje ✨
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {patient.phone && (
+                        <a
+                          href={`https://wa.me/55${patient.phone.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`WhatsApp: ${patient.phone}`}
+                        >
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 hover:text-pink-700">
+                            <Phone className="w-3.5 h-3.5" />
+                          </Button>
+                        </a>
+                      )}
+                      {patient.email && (
+                        <a
+                          href={`mailto:${patient.email}?subject=Feliz Aniversário!`}
+                          title={`E-mail: ${patient.email}`}
+                        >
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 hover:text-pink-700">
+                            <Mail className="w-3.5 h-3.5" />
+                          </Button>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card className="border-none shadow-lg">

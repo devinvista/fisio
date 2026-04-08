@@ -391,6 +391,14 @@ export interface FinancialDashboard {
   revenueByCategory?: FinancialDashboardRevenueByCategoryItem[];
 }
 
+export interface BirthdayPatient {
+  id: number;
+  name: string;
+  birthDate: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
 export interface DashboardData {
   todayAppointments: AppointmentWithDetails[];
   upcomingAppointments: AppointmentWithDetails[];
@@ -398,6 +406,9 @@ export interface DashboardData {
   totalPatients: number;
   todayTotal: number;
   occupationRate: number;
+  noShowCount?: number;
+  noShowRate?: number;
+  birthdayPatients: BirthdayPatient[];
 }
 
 export interface MonthlyRevenue {
