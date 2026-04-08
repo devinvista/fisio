@@ -186,18 +186,54 @@ export default function Financial() {
 // TAB 1: LANÇAMENTOS (existing functionality preserved)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+interface BillingStatusData {
+  lastRun: {
+    id: number;
+    ranAt: string;
+    triggeredBy: string;
+    generated: number;
+    skipped: number;
+    errors: number;
+    processed: number;
+    dryRun: boolean;
+  } | null;
+  upcoming: {
+    id: number;
+    patientName: string;
+    procedureName: string;
+    amount: number;
+    nextBillingDate: string;
+  }[];
+  upcomingTotal: number;
+  upcomingCount: number;
+}
+
 function LancamentosTab({ month, year }: { month: number; year: number }) {
   const [typeFilter, setTypeFilter] = useState<"all" | "receita" | "despesa">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; description: string; amount: number } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [billingRunning, setBillingRunning] = useState(false);
-  const [billingResult, setBillingResult] = useState<{ generated: number; recordIds: number[] } | null>(null);
+  const [billingResult, setBillingResult] = useState<{ generated: number; skipped: number; recordIds: number[] } | null>(null);
   const [showBillingConfirm, setShowBillingConfirm] = useState(false);
+  const [billingStatus, setBillingStatus] = useState<BillingStatusData | null>(null);
+  const [billingStatusLoading, setBillingStatusLoading] = useState(true);
+  const [showUpcoming, setShowUpcoming] = useState(false);
   const { toast } = useToast();
 
   const { data: dashboard, isLoading: dashLoading, refetch: refetchDash } = useGetFinancialDashboard({ month, year });
   const { data: rawRecords, isLoading: recLoading, refetch: refetchRec } = useListFinancialRecords({ month, year });
+
+  const fetchBillingStatus = useCallback(async () => {
+    setBillingStatusLoading(true);
+    try {
+      const res = await fetch("/api/subscriptions/billing-status", { headers: authHeaders() });
+      if (res.ok) setBillingStatus(await res.json());
+    } catch {}
+    finally { setBillingStatusLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchBillingStatus(); }, [fetchBillingStatus]);
 
   const records = useMemo(() => {
     if (!rawRecords) return [];
@@ -245,33 +281,157 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
         toast({ variant: "destructive", title: "Erro na cobrança mensal", description: data.message });
       } else {
         setBillingResult(data);
-        if (data.generated > 0) { toast({ title: `${data.generated} lançamento(s) gerado(s).` }); refetchDash(); refetchRec(); }
-        else toast({ title: "Nenhuma assinatura com vencimento hoje." });
+        if (data.generated > 0) {
+          toast({ title: `${data.generated} lançamento(s) gerado(s).` });
+          refetchDash(); refetchRec();
+        } else {
+          toast({ title: data.skipped > 0 ? `Nenhuma cobrança nova — ${data.skipped} já registrada(s) ou fora da janela.` : "Nenhuma assinatura com vencimento na janela atual." });
+        }
+        await fetchBillingStatus();
       }
-    } catch { toast({ variant: "destructive", title: "Erro ao executar cobrança mensal." }); }
+    } catch { toast({ variant: "destructive", title: "Erro ao executar cobrança." }); }
     finally { setBillingRunning(false); setShowBillingConfirm(false); }
+  };
+
+  const formatLastRunDate = (ranAt: string) => {
+    const d = new Date(ranAt);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffH = Math.floor(diffMs / 3600000);
+    const diffM = Math.floor(diffMs / 60000);
+    if (diffM < 1) return "agora mesmo";
+    if (diffM < 60) return `há ${diffM} min`;
+    if (diffH < 24) return `hoje às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const formatUpcomingDate = (dateStr: string) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr + "T00:00:00");
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+    if (diffDays === 0) return "hoje";
+    if (diffDays === 1) return "amanhã";
+    return `em ${diffDays} dias`;
   };
 
   return (
     <div>
-      {/* Billing trigger */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
-        <div className="flex items-center gap-3 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5">
-          <div className="p-1.5 rounded-lg bg-violet-100"><CalendarCheck2 className="w-4 h-4 text-violet-600" /></div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-violet-800">Cobrança Mensal</p>
-            <p className="text-[11px] text-violet-600 leading-tight">Gera lançamentos das assinaturas com vencimento hoje</p>
+      {/* Billing Panel */}
+      <div className="mb-6 bg-violet-50 border border-violet-200 rounded-2xl p-4">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-violet-100 shrink-0">
+              <CalendarCheck2 className="w-4 h-4 text-violet-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-violet-900">Cobrança de Assinaturas</p>
+              <p className="text-[11px] text-violet-500 leading-tight mt-0.5">
+                Gera lançamentos para assinaturas com vencimento em aberto (janela de 3 dias) · <span className="font-semibold">Automático: diariamente às 06:00</span>
+              </p>
+            </div>
           </div>
-          {billingResult !== null && (
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${billingResult.generated > 0 ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
-              {billingResult.generated > 0 ? `${billingResult.generated} gerado(s)` : "Nenhum hoje"}
-            </span>
-          )}
-          <Button size="sm" variant="outline" className="rounded-xl border-violet-300 text-violet-700 hover:bg-violet-100 shrink-0 h-8 text-xs font-semibold"
-            onClick={() => setShowBillingConfirm(true)} disabled={billingRunning}>
-            {billingRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />} Executar
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-xl border-violet-300 text-violet-700 hover:bg-violet-100 shrink-0 h-8 text-xs font-semibold"
+            onClick={() => setShowBillingConfirm(true)}
+            disabled={billingRunning}
+          >
+            {billingRunning
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+            Executar agora
           </Button>
         </div>
+
+        {/* Status + Upcoming rows */}
+        <div className="mt-3 pt-3 border-t border-violet-200 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Last Run */}
+          <div className="flex items-center gap-2">
+            {billingStatusLoading ? (
+              <div className="h-4 w-48 bg-violet-200 animate-pulse rounded" />
+            ) : billingStatus?.lastRun ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                <span className="text-[11px] text-violet-700 leading-tight">
+                  <span className="font-semibold">Última execução:</span>{" "}
+                  {formatLastRunDate(billingStatus.lastRun.ranAt)}
+                  {" · "}
+                  {billingStatus.lastRun.triggeredBy === "scheduler" ? "automática" : "manual"}
+                  {" · "}
+                  <span className={billingStatus.lastRun.generated > 0 ? "text-green-600 font-semibold" : "text-slate-500"}>
+                    {billingStatus.lastRun.generated > 0
+                      ? `${billingStatus.lastRun.generated} gerada(s)`
+                      : "nenhuma gerada"}
+                  </span>
+                  {billingStatus.lastRun.errors > 0 && (
+                    <span className="text-red-500 font-semibold"> · {billingStatus.lastRun.errors} erro(s)</span>
+                  )}
+                </span>
+              </>
+            ) : (
+              <>
+                <Clock className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                <span className="text-[11px] text-violet-500">Nenhuma execução registrada ainda</span>
+              </>
+            )}
+          </div>
+
+          {/* Upcoming Billings */}
+          <div className="flex items-center gap-2">
+            {billingStatusLoading ? (
+              <div className="h-4 w-40 bg-violet-200 animate-pulse rounded" />
+            ) : (billingStatus?.upcomingCount ?? 0) > 0 ? (
+              <button
+                className="flex items-center gap-2 text-left group"
+                onClick={() => setShowUpcoming(v => !v)}
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="text-[11px] text-violet-700 leading-tight group-hover:text-violet-900">
+                  <span className="font-semibold text-amber-600">{billingStatus!.upcomingCount} assinatura(s)</span>
+                  {" "}vencem nos próximos 7 dias ·{" "}
+                  <span className="font-semibold">{formatCurrency(billingStatus!.upcomingTotal)}</span>
+                  <span className="text-violet-400 ml-1">{showUpcoming ? "▲" : "▼"}</span>
+                </span>
+              </button>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                <span className="text-[11px] text-violet-500">Nenhuma assinatura vence nos próximos 7 dias</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Expanded upcoming list */}
+        {showUpcoming && (billingStatus?.upcoming?.length ?? 0) > 0 && (
+          <div className="mt-3 pt-3 border-t border-violet-200 space-y-1.5">
+            {billingStatus!.upcoming.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-violet-700 truncate flex-1">
+                  <span className="font-medium">{s.patientName}</span>
+                  <span className="text-violet-400 mx-1">·</span>
+                  <span className="text-violet-500">{s.procedureName}</span>
+                </span>
+                <span className="text-amber-600 font-semibold shrink-0">{formatUpcomingDate(s.nextBillingDate)}</span>
+                <span className="text-violet-800 font-bold shrink-0">{formatCurrency(s.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Last manual run result */}
+        {billingResult !== null && (
+          <div className={`mt-3 pt-3 border-t border-violet-200 flex items-center gap-2 text-[11px] font-semibold ${billingResult.generated > 0 ? "text-green-600" : "text-slate-500"}`}>
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            {billingResult.generated > 0
+              ? `${billingResult.generated} lançamento(s) gerado(s) agora`
+              : `Nenhum lançamento gerado — assinaturas já cobradas ou fora da janela`}
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -458,7 +618,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
         <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle>Executar Cobrança Mensal</DialogTitle>
-            <DialogDescription>Gera lançamentos financeiros para todas as assinaturas ativas com vencimento hoje. Esta ação é segura e idempotente.</DialogDescription>
+            <DialogDescription>Gera lançamentos financeiros para todas as assinaturas ativas com vencimento em aberto (janela de 3 dias). Esta ação é segura e idempotente — assinaturas já cobradas no mês não serão duplicadas.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBillingConfirm(false)}>Cancelar</Button>

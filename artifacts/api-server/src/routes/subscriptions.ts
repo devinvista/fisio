@@ -5,8 +5,9 @@ import {
   patientsTable,
   proceduresTable,
   sessionCreditsTable,
+  billingRunLogsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { runBilling } from "../services/billingService.js";
@@ -187,6 +188,81 @@ router.get("/:id/credits", requirePermission("financial.read"), async (req, res)
   }
 });
 
+/**
+ * GET /api/subscriptions/billing-status
+ * Retorna:
+ *  - lastRun: última execução registrada (scheduler ou manual)
+ *  - upcoming: assinaturas ativas cujo próximo vencimento cai nos próximos 7 dias
+ */
+router.get("/billing-status", requirePermission("financial.read"), async (req: AuthRequest, res) => {
+  try {
+    const clinicConditions = !req.isSuperAdmin && req.clinicId
+      ? [eq(billingRunLogsTable.clinicId, req.clinicId)]
+      : [];
+
+    // Último log de execução
+    const [lastRun] = await db
+      .select()
+      .from(billingRunLogsTable)
+      .where(clinicConditions.length > 0 ? and(...clinicConditions) : undefined)
+      .orderBy(desc(billingRunLogsTable.ranAt))
+      .limit(1);
+
+    // Próximas cobranças nos próximos 7 dias usando nextBillingDate
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + 7);
+    const futureDateStr = futureDate.toISOString().slice(0, 10);
+
+    const subConditions: any[] = [eq(patientSubscriptionsTable.status, "ativa")];
+    if (!req.isSuperAdmin && req.clinicId) {
+      subConditions.push(eq(patientSubscriptionsTable.clinicId, req.clinicId));
+    }
+
+    const allActive = await db
+      .select({
+        id: patientSubscriptionsTable.id,
+        billingDay: patientSubscriptionsTable.billingDay,
+        monthlyAmount: patientSubscriptionsTable.monthlyAmount,
+        nextBillingDate: patientSubscriptionsTable.nextBillingDate,
+        patientName: patientsTable.name,
+        procedureName: proceduresTable.name,
+      })
+      .from(patientSubscriptionsTable)
+      .leftJoin(patientsTable, eq(patientSubscriptionsTable.patientId, patientsTable.id))
+      .leftJoin(proceduresTable, eq(patientSubscriptionsTable.procedureId, proceduresTable.id))
+      .where(and(...subConditions));
+
+    // Filtra as que têm nextBillingDate nos próximos 7 dias
+    const upcoming = allActive
+      .filter(s => {
+        if (!s.nextBillingDate) return false;
+        return s.nextBillingDate >= todayStr && s.nextBillingDate <= futureDateStr;
+      })
+      .map(s => ({
+        id: s.id,
+        patientName: s.patientName ?? `Paciente #${s.id}`,
+        procedureName: s.procedureName ?? `Procedimento`,
+        amount: Number(s.monthlyAmount),
+        nextBillingDate: s.nextBillingDate,
+      }))
+      .sort((a, b) => (a.nextBillingDate ?? "").localeCompare(b.nextBillingDate ?? ""));
+
+    const upcomingTotal = upcoming.reduce((sum, s) => sum + s.amount, 0);
+
+    res.json({
+      lastRun: lastRun ?? null,
+      upcoming,
+      upcomingTotal,
+      upcomingCount: upcoming.length,
+    });
+  } catch (err) {
+    console.error("[billing-status]", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.post("/run-billing", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const dryRun = req.query.dryRun === "true" || req.body?.dryRun === true;
@@ -197,7 +273,7 @@ router.post("/run-billing", requirePermission("financial.write"), async (req: Au
     // Clínicas isoladas: superadmin pode omitir clinicId para rodar em todas
     const clinicId = req.isSuperAdmin ? (req.body?.clinicId ?? undefined) : (req.clinicId ?? undefined);
 
-    const result = await runBilling({ clinicId, toleranceDays, dryRun });
+    const result = await runBilling({ clinicId, toleranceDays, dryRun, triggeredBy: "manual" });
 
     res.json(result);
   } catch (err) {

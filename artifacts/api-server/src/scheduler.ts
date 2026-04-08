@@ -23,7 +23,7 @@ export function startScheduler(): void {
   cron.schedule(CRON_EXPRESSION, async () => {
     console.log(`[scheduler] Executando billing automático — ${new Date().toISOString()}`);
     try {
-      const result = await runBilling({ toleranceDays: 3 });
+      const result = await runBilling({ toleranceDays: 3, triggeredBy: "scheduler" });
       console.log(
         `[scheduler] Billing concluído: ${result.generated} geradas, ` +
         `${result.skipped} puladas, ${result.errors} erros`

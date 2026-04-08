@@ -10,6 +10,7 @@
  *    created_at), nunca por dueDate (nullable).
  * 4. Isolamento por clínica: filtra por clinicId quando fornecido.
  * 5. Logging completo em cada etapa para auditoria.
+ * 6. Grava log de cada execução em billing_run_logs para exibição na UI.
  */
 
 import { db } from "@workspace/db";
@@ -18,6 +19,7 @@ import {
   financialRecordsTable,
   patientsTable,
   proceduresTable,
+  billingRunLogsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { todayBRT, nowBRT, lastDayOfMonth } from "../lib/dateUtils.js";
@@ -59,8 +61,8 @@ interface BillingDetail {
  * billingDay 31 em fevereiro → último dia de fevereiro.
  */
 function effectiveBillingDay(billingDay: number, year: number, month: number): number {
-  const lastDayOfMonth = new Date(year, month, 0).getDate();
-  return Math.min(billingDay, lastDayOfMonth);
+  const lastDay = new Date(year, month, 0).getDate();
+  return Math.min(billingDay, lastDay);
 }
 
 /**
@@ -80,8 +82,9 @@ export async function runBilling(options: {
   clinicId?: number;
   toleranceDays?: number;
   dryRun?: boolean;
+  triggeredBy?: "scheduler" | "manual";
 } = {}): Promise<BillingResult> {
-  const { clinicId, toleranceDays = 3, dryRun = false } = options;
+  const { clinicId, toleranceDays = 3, dryRun = false, triggeredBy = "scheduler" } = options;
 
   const todayStr = todayBRT();
   const brtToday = nowBRT();
@@ -91,7 +94,7 @@ export async function runBilling(options: {
   const lastDay = lastDayOfMonth(year, month);
   const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, "0")}`;
 
-  console.log(`[billing] Iniciando ${dryRun ? "(DRY RUN) " : ""}em ${todayStr} — janela: ${toleranceDays} dias${clinicId ? ` — clínica ${clinicId}` : " — todas as clínicas"}`);
+  console.log(`[billing] Iniciando ${dryRun ? "(DRY RUN) " : ""}em ${todayStr} — janela: ${toleranceDays} dias${clinicId ? ` — clínica ${clinicId}` : " — todas as clínicas"} — origem: ${triggeredBy}`);
 
   const result: BillingResult = {
     processed: 0,
@@ -102,7 +105,6 @@ export async function runBilling(options: {
     details: [],
   };
 
-  // Busca assinaturas ativas com join em paciente e procedimento
   const whereClause = clinicId
     ? and(
         eq(patientSubscriptionsTable.status, "ativa"),
@@ -132,7 +134,6 @@ export async function runBilling(options: {
     const procedureName = row.procedureName ?? `Procedimento #${sub.procedureId}`;
 
     try {
-      // Verifica se está dentro da janela de cobrança (usando data BRT)
       if (!isWithinBillingWindow(sub.billingDay, brtToday, toleranceDays)) {
         const effective = effectiveBillingDay(sub.billingDay, year, month);
         result.skipped++;
@@ -147,8 +148,6 @@ export async function runBilling(options: {
         continue;
       }
 
-      // Idempotência: verifica se já existe registro para esta assinatura neste mês
-      // Usa created_at (sempre preenchido) em vez de due_date (nullable)
       const existing = await db
         .select({ id: financialRecordsTable.id })
         .from(financialRecordsTable)
@@ -189,7 +188,6 @@ export async function runBilling(options: {
         continue;
       }
 
-      // Gera o registro financeiro
       const [record] = await db
         .insert(financialRecordsTable)
         .values({
@@ -207,7 +205,6 @@ export async function runBilling(options: {
         })
         .returning();
 
-      // Atualiza next_billing_date para o próximo mês
       const nextBillingDate = calcNextBillingDate(sub.billingDay, year, month);
       await db
         .update(patientSubscriptionsTable)
@@ -244,6 +241,23 @@ export async function runBilling(options: {
   console.log(
     `[billing] Concluído: ${result.generated} geradas, ${result.skipped} puladas, ${result.errors} erros`
   );
+
+  // Grava log da execução (exceto dry-runs não geram log permanente)
+  if (!dryRun) {
+    try {
+      await db.insert(billingRunLogsTable).values({
+        triggeredBy,
+        clinicId: clinicId ?? null,
+        processed: result.processed,
+        generated: result.generated,
+        skipped: result.skipped,
+        errors: result.errors,
+        dryRun: false,
+      });
+    } catch (logErr) {
+      console.error("[billing] Falha ao gravar log de execução:", logErr);
+    }
+  }
 
   return result;
 }
