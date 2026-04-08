@@ -3,12 +3,101 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { useGetDashboard } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock, AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink, Cake, Phone, Mail } from "lucide-react";
+import {
+  Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock,
+  AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink,
+  Cake, Phone, Mail, ArrowUpRight, Target, Plus, CalendarPlus, Stethoscope,
+} from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Link } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+// ─── Status badge config (Tailwind-only, no custom CSS) ──────────────────────
+const STATUS_CONFIG: Record<string, { dot: string; text: string; bg: string; label: string }> = {
+  agendado:  { dot: "bg-blue-400",   text: "text-blue-700",   bg: "bg-blue-50",   label: "Agendado"  },
+  confirmado:{ dot: "bg-green-500",  text: "text-green-700",  bg: "bg-green-50",  label: "Confirmado"},
+  concluido: { dot: "bg-slate-400",  text: "text-slate-600",  bg: "bg-slate-100", label: "Concluído" },
+  cancelado: { dot: "bg-red-400",    text: "text-red-700",    bg: "bg-red-50",    label: "Cancelado" },
+  faltou:    { dot: "bg-orange-400", text: "text-orange-700", bg: "bg-orange-50", label: "Faltou"    },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? { dot: "bg-slate-300", text: "text-slate-500", bg: "bg-slate-50", label: status };
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+function KpiCard({
+  label, value, icon, accentColor = "#6366f1", sub, loading,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  accentColor?: string;
+  sub?: React.ReactNode;
+  loading?: boolean;
+}) {
+  return (
+    <div className="relative bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition-shadow duration-200">
+      <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: accentColor }} />
+      <div className="pl-5 pr-4 py-4">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-tight">{label}</p>
+          <div className="p-2 rounded-xl shrink-0 opacity-80" style={{ backgroundColor: `${accentColor}18`, color: accentColor }}>
+            {icon}
+          </div>
+        </div>
+        <div className="mt-2">
+          {loading ? (
+            <div className="space-y-1.5">
+              <div className="h-7 w-28 bg-slate-100 animate-pulse rounded-lg" />
+              <div className="h-3 w-20 bg-slate-100 animate-pulse rounded" />
+            </div>
+          ) : (
+            <>
+              <p className="text-2xl font-extrabold text-slate-900 tabular-nums">{value}</p>
+              {sub && <div className="mt-1">{sub}</div>}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Skeleton for appointment cards ──────────────────────────────────────────
+function AppointmentSkeleton() {
+  return (
+    <div className="divide-y divide-slate-50">
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="px-5 py-4 flex items-center gap-4">
+          <div className="w-12 h-12 bg-slate-100 animate-pulse rounded-xl shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-32 bg-slate-100 animate-pulse rounded" />
+            <div className="h-3 w-24 bg-slate-100 animate-pulse rounded" />
+          </div>
+          <div className="h-6 w-20 bg-slate-100 animate-pulse rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { data, isLoading } = useGetDashboard();
   const [copied, setCopied] = useState(false);
@@ -21,332 +110,327 @@ export default function Dashboard() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (isLoading) {
-    return (
-      <AppLayout title="Dashboard">
-        <div className="flex items-center justify-center h-[60vh]">
-          <div className="animate-pulse flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-muted-foreground font-medium">Carregando seus dados...</p>
-          </div>
-        </div>
-      </AppLayout>
-    );
-  }
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
-  const STATUS_LABELS: Record<string, string> = {
-    agendado: "Agendado",
-    confirmado: "Confirmado",
-    concluido: "Concluído",
-    cancelado: "Cancelado",
-    faltou: "Faltou",
-  };
-  const statusLabel = (s: string) => STATUS_LABELS[s] ?? s;
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
   const d = data as any;
+  const occupationRate = data?.occupationRate || 0;
 
   return (
-    <AppLayout title="Dashboard Geral">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
-        <Card className="border-none shadow-md bg-gradient-to-br from-primary to-primary/80 text-white hover:-translate-y-1 transition-transform duration-300">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-white/80 font-medium mb-1">Receita do Mês</p>
-                <h3 className="font-display text-3xl font-bold">{formatCurrency(data?.monthlyRevenue || 0)}</h3>
-              </div>
-              <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                <DollarSign className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm text-white/90 gap-1">
-              <TrendingUp className="w-4 h-4" />
-              <span>Em dia com as metas</span>
-            </div>
-          </CardContent>
-        </Card>
+    <AppLayout title="Dashboard">
+      <div className="space-y-6">
 
-        <Card className="border-none shadow-md bg-white hover:-translate-y-1 transition-transform duration-300">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-muted-foreground font-medium mb-1">Pacientes Ativos</p>
-                <h3 className="font-display text-3xl font-bold text-foreground">{data?.totalPatients || 0}</h3>
-              </div>
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                <Users className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm text-muted-foreground gap-1">
-              <span>Com plano de tratamento ativo</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* ── Greeting + Quick Actions ── */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {getGreeting()}{d?.user?.name ? `, ${d.user.name.split(" ")[0]}` : ""}!
+            </h1>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {format(new Date(), "EEEE, dd 'de' MMMM", { locale: ptBR })} · Aqui está o resumo da sua clínica
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/agenda">
+              <Button className="h-9 px-4 rounded-xl shadow-sm gap-1.5 text-sm" size="sm">
+                <CalendarPlus className="w-4 h-4" />
+                Novo Agendamento
+              </Button>
+            </Link>
+            <Link href="/pacientes">
+              <Button variant="outline" className="h-9 px-4 rounded-xl text-sm gap-1.5" size="sm">
+                <Plus className="w-4 h-4" />
+                Novo Paciente
+              </Button>
+            </Link>
+          </div>
+        </div>
 
-        <Card className="border-none shadow-md bg-white hover:-translate-y-1 transition-transform duration-300">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-muted-foreground font-medium mb-1">Atendimentos Hoje</p>
-                <h3 className="font-display text-3xl font-bold text-foreground">{data?.todayTotal || 0}</h3>
-              </div>
-              <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
-                <CalendarIcon className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm text-muted-foreground gap-1">
-              <span>Agendados para hoje</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* ── KPI Cards ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <KpiCard
+            label="Receita do Mês"
+            value={formatCurrency(data?.monthlyRevenue || 0)}
+            icon={<DollarSign className="w-4 h-4" />}
+            accentColor="#10b981"
+            loading={isLoading}
+            sub={
+              <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                Em dia com as metas
+              </span>
+            }
+          />
+          <KpiCard
+            label="Pacientes Ativos"
+            value={String(data?.totalPatients || 0)}
+            icon={<Users className="w-4 h-4" />}
+            accentColor="#6366f1"
+            loading={isLoading}
+            sub={<span className="text-xs text-slate-400">Com plano de tratamento</span>}
+          />
+          <KpiCard
+            label="Atendimentos Hoje"
+            value={String(data?.todayTotal || 0)}
+            icon={<CalendarIcon className="w-4 h-4" />}
+            accentColor="#0ea5e9"
+            loading={isLoading}
+            sub={<span className="text-xs text-slate-400">Agendados para hoje</span>}
+          />
+          <KpiCard
+            label="Taxa de Ocupação"
+            value={`${occupationRate.toFixed(1)}%`}
+            icon={<Target className="w-4 h-4" />}
+            accentColor={occupationRate >= 80 ? "#10b981" : occupationRate >= 60 ? "#f59e0b" : "#ef4444"}
+            loading={isLoading}
+            sub={
+              !isLoading && (
+                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5">
+                  <div
+                    className="h-1.5 rounded-full transition-all duration-700"
+                    style={{
+                      width: `${Math.min(occupationRate, 100)}%`,
+                      backgroundColor: occupationRate >= 80 ? "#10b981" : occupationRate >= 60 ? "#f59e0b" : "#ef4444",
+                    }}
+                  />
+                </div>
+              )
+            }
+          />
+          <KpiCard
+            label="Taxa de Faltas"
+            value={`${(d?.noShowRate || 0).toFixed(1)}%`}
+            icon={<UserX className="w-4 h-4" />}
+            accentColor="#f59e0b"
+            loading={isLoading}
+            sub={
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                <AlertCircle className="w-3 h-3 text-orange-400" />
+                {d?.noShowCount || 0} falta{(d?.noShowCount || 0) !== 1 ? "s" : ""} no mês
+              </span>
+            }
+          />
+        </div>
 
-        <Card className="border-none shadow-md bg-white hover:-translate-y-1 transition-transform duration-300">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-muted-foreground font-medium mb-1">Taxa de Ocupação</p>
-                <h3 className="font-display text-3xl font-bold text-foreground">{(data?.occupationRate || 0).toFixed(1)}%</h3>
-              </div>
-              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Activity className="w-6 h-6" />
-              </div>
+        {/* ── Online Booking Portal (compact banner) ── */}
+        <div className="bg-gradient-to-r from-teal-600 to-teal-500 rounded-2xl px-5 py-3.5 flex flex-wrap items-center gap-4 shadow-sm">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="p-2 bg-white/20 rounded-xl shrink-0">
+              <Globe className="w-4 h-4 text-white" />
             </div>
-            <div className="mt-4 w-full bg-slate-100 rounded-full h-2">
-              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(data?.occupationRate || 0, 100)}%` }}></div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">Portal de Agendamento Online</p>
+              <p className="text-xs text-teal-100 truncate hidden sm:block">{bookingUrl}</p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-md bg-white hover:-translate-y-1 transition-transform duration-300">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-muted-foreground font-medium mb-1">Taxa de Faltas</p>
-                <h3 className="font-display text-3xl font-bold text-foreground">{(d?.noShowRate || 0).toFixed(1)}%</h3>
-              </div>
-              <div className="p-3 bg-orange-50 text-orange-500 rounded-xl">
-                <UserX className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-sm text-muted-foreground gap-1">
-              <AlertCircle className="w-3.5 h-3.5 text-orange-400" />
-              <span>{d?.noShowCount || 0} falta{(d?.noShowCount || 0) !== 1 ? "s" : ""} no mês</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Online Booking Portal Card */}
-      <Card className="border-none shadow-md bg-gradient-to-br from-teal-600 to-teal-500 text-white mb-8">
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              <div className="p-3 bg-white/20 rounded-xl shrink-0">
-                <Globe className="w-6 h-6 text-white" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-white text-base leading-tight">Portal de Agendamento Online</p>
-                <p className="text-teal-100 text-xs mt-0.5 truncate">{bookingUrl}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="bg-white/20 hover:bg-white/30 text-white border-0 h-8 rounded-lg gap-1.5 text-xs"
+              onClick={copyBookingUrl}
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? "Copiado!" : "Copiar"}
+            </Button>
+            <a href={bookingUrl} target="_blank" rel="noopener noreferrer">
               <Button
                 size="sm"
                 variant="secondary"
-                className="bg-white/20 hover:bg-white/30 text-white border-0 h-9 rounded-xl gap-1.5"
-                onClick={copyBookingUrl}
+                className="bg-white/20 hover:bg-white/30 text-white border-0 h-8 rounded-lg gap-1.5 text-xs"
               >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? "Copiado!" : "Copiar Link"}
+                <ExternalLink className="w-3.5 h-3.5" />
+                Abrir
               </Button>
-              <a
-                href={bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="bg-white/20 hover:bg-white/30 text-white border-0 h-9 rounded-xl gap-1.5"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Abrir
-                </Button>
-              </a>
-            </div>
+            </a>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Birthday Widget */}
-      {data?.birthdayPatients && data.birthdayPatients.length > 0 && (
-        <Card className="border-none shadow-md bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 mb-8">
-          <div className="p-5 flex items-center gap-3 border-b border-pink-100">
-            <div className="p-2 bg-pink-100 text-pink-600 rounded-xl">
-              <Cake className="w-5 h-5" />
+        {/* ── Birthday Widget ── */}
+        {data?.birthdayPatients && data.birthdayPatients.length > 0 && (
+          <Card className="border border-pink-100 bg-gradient-to-br from-pink-50 to-rose-50 shadow-sm rounded-2xl overflow-hidden">
+            <div className="px-5 py-3.5 flex items-center gap-3 border-b border-pink-100">
+              <div className="p-2 bg-pink-100 text-pink-600 rounded-xl">
+                <Cake className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Aniversariantes de Hoje</h3>
+                <p className="text-xs text-slate-500">
+                  {data.birthdayPatients.length === 1
+                    ? "1 paciente faz aniversário hoje"
+                    : `${data.birthdayPatients.length} pacientes fazem aniversário hoje`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-display text-base font-bold text-foreground">
-                Aniversariantes de Hoje 🎂
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {data.birthdayPatients.length === 1
-                  ? "1 paciente faz aniversário hoje"
-                  : `${data.birthdayPatients.length} pacientes fazem aniversário hoje`}
-              </p>
-            </div>
-          </div>
-          <CardContent className="p-0">
-            <div className="divide-y divide-pink-100">
-              {data.birthdayPatients.map((patient) => {
-                const age = patient.birthDate
-                  ? differenceInYears(new Date(), parseISO(patient.birthDate))
-                  : null;
-                return (
-                  <div key={patient.id} className="px-5 py-4 flex items-center justify-between hover:bg-pink-50/60 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                        {patient.name.charAt(0).toUpperCase()}
+            <CardContent className="p-0">
+              <div className="divide-y divide-pink-100">
+                {data.birthdayPatients.map((patient) => {
+                  const age = patient.birthDate
+                    ? differenceInYears(new Date(), parseISO(patient.birthDate))
+                    : null;
+                  return (
+                    <div key={patient.id} className="px-5 py-3 flex items-center justify-between hover:bg-pink-50/60 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                          {patient.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800 text-sm">{patient.name}</p>
+                          {age !== null && (
+                            <p className="text-xs text-slate-500">{age} anos hoje ✨</p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{patient.name}</p>
-                        {age !== null && (
-                          <p className="text-xs text-muted-foreground">
-                            {age} anos hoje ✨
-                          </p>
+                      <div className="flex items-center gap-1.5">
+                        {patient.phone && (
+                          <a
+                            href={`https://wa.me/55${patient.phone.replace(/\D/g, "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 rounded-lg">
+                              <Phone className="w-3 h-3" />
+                            </Button>
+                          </a>
+                        )}
+                        {patient.email && (
+                          <a href={`mailto:${patient.email}?subject=Feliz Aniversário!`}>
+                            <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 rounded-lg">
+                              <Mail className="w-3 h-3" />
+                            </Button>
+                          </a>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {patient.phone && (
-                        <a
-                          href={`https://wa.me/55${patient.phone.replace(/\D/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={`WhatsApp: ${patient.phone}`}
-                        >
-                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 hover:text-pink-700">
-                            <Phone className="w-3.5 h-3.5" />
-                          </Button>
-                        </a>
-                      )}
-                      {patient.email && (
-                        <a
-                          href={`mailto:${patient.email}?subject=Feliz Aniversário!`}
-                          title={`E-mail: ${patient.email}`}
-                        >
-                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-pink-200 text-pink-600 hover:bg-pink-100 hover:text-pink-700">
-                            <Mail className="w-3.5 h-3.5" />
-                          </Button>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card className="border-none shadow-lg">
-          <div className="p-6 border-b border-border flex justify-between items-center">
-            <div>
-              <h3 className="font-display text-xl font-bold text-foreground">Agendamentos de Hoje</h3>
-              <p className="text-sm text-muted-foreground">Seus próximos pacientes de hoje</p>
+        {/* ── Appointment Lists ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Today's Appointments */}
+          <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden bg-white">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Agendamentos de Hoje</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Seus próximos pacientes de hoje</p>
+              </div>
+              <div className="p-2 bg-sky-50 rounded-xl">
+                <Clock className="w-4 h-4 text-sky-500" />
+              </div>
             </div>
-            <Clock className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <CardContent className="p-0">
-            {data?.todayAppointments && data.todayAppointments.length > 0 ? (
-              <div className="divide-y divide-border">
-                {data.todayAppointments.map((apt) => (
-                  <div key={apt.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="flex flex-col items-center justify-center bg-slate-100 rounded-xl w-16 h-16 shrink-0">
-                        <span className="text-lg font-bold text-slate-700">{apt.startTime}</span>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <AppointmentSkeleton />
+              ) : data?.todayAppointments && data.todayAppointments.length > 0 ? (
+                <div className="divide-y divide-slate-50">
+                  {data.todayAppointments.map((apt) => (
+                    <div key={apt.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/60 transition-colors">
+                      {/* Time block */}
+                      <div className="flex flex-col items-center justify-center bg-indigo-50 rounded-xl w-12 h-12 shrink-0">
+                        <span className="text-sm font-extrabold text-indigo-700 leading-tight">{apt.startTime}</span>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-foreground text-lg">{apt.patient?.name}</p>
+
+                      {/* Patient + procedure */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{apt.patient?.name}</p>
                           {(apt as any).source === "online" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full shrink-0">
                               <Globe className="w-2.5 h-2.5" /> Online
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-primary inline-block"></span>
-                          {apt.procedure?.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <Stethoscope className="w-3 h-3 text-slate-300 shrink-0" />
+                          <p className="text-xs text-slate-400 truncate">{apt.procedure?.name}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-xs font-semibold border status-${apt.status}`}>
-                      {statusLabel(apt.status)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-12 flex flex-col items-center justify-center text-center">
-                <div className="bg-slate-50 p-4 rounded-full mb-4">
-                  <CalendarIcon className="w-8 h-8 text-slate-400" />
-                </div>
-                <h4 className="text-lg font-medium text-slate-700">Nenhum agendamento</h4>
-                <p className="text-sm text-slate-500">Você não tem consultas para hoje.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="border-none shadow-lg">
-          <div className="p-6 border-b border-border flex justify-between items-center">
-            <div>
-              <h3 className="font-display text-xl font-bold text-foreground">Próximos Agendamentos</h3>
-              <p className="text-sm text-muted-foreground">Visão geral dos próximos dias</p>
-            </div>
-            <AlertCircle className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <CardContent className="p-0">
-            {data?.upcomingAppointments && data.upcomingAppointments.length > 0 ? (
-              <div className="divide-y divide-border">
-                {data.upcomingAppointments.map((apt) => (
-                  <div key={apt.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                          {format(parseISO(apt.date), "dd/MM (EEE)", { locale: ptBR })}
-                        </span>
-                        <span className="text-sm font-bold text-slate-700">{apt.startTime}</span>
-                        {(apt as any).source === "online" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
-                            <Globe className="w-2.5 h-2.5" /> Online
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-semibold text-foreground">{apt.patient?.name}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{apt.procedure?.name}</p>
+                      <StatusBadge status={apt.status} />
                     </div>
-                    <div className={`px-3 py-1 rounded-full text-xs font-semibold border status-${apt.status}`}>
-                      {statusLabel(apt.status)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-12 flex flex-col items-center justify-center text-center">
-                <div className="bg-slate-50 p-4 rounded-full mb-4">
-                  <CalendarIcon className="w-8 h-8 text-slate-400" />
+                  ))}
                 </div>
-                <h4 className="text-lg font-medium text-slate-700">Agenda livre</h4>
-                <p className="text-sm text-slate-500">Nenhum agendamento futuro encontrado.</p>
+              ) : (
+                <div className="py-12 flex flex-col items-center justify-center text-center">
+                  <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+                    <CalendarIcon className="w-6 h-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">Nenhum agendamento hoje</p>
+                  <p className="text-xs text-slate-400 mt-1">Sua agenda está livre por enquanto</p>
+                  <Link href="/agenda">
+                    <Button size="sm" variant="outline" className="mt-3 h-8 rounded-xl text-xs gap-1.5">
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      Criar Agendamento
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Upcoming Appointments */}
+          <Card className="border border-slate-100 shadow-sm rounded-2xl overflow-hidden bg-white">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Próximos Agendamentos</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Visão geral dos próximos dias</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="p-2 bg-violet-50 rounded-xl">
+                <Activity className="w-4 h-4 text-violet-500" />
+              </div>
+            </div>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <AppointmentSkeleton />
+              ) : data?.upcomingAppointments && data.upcomingAppointments.length > 0 ? (
+                <div className="divide-y divide-slate-50">
+                  {data.upcomingAppointments.map((apt) => (
+                    <div key={apt.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/60 transition-colors">
+                      {/* Date block */}
+                      <div className="flex flex-col items-center justify-center bg-violet-50 rounded-xl w-12 h-12 shrink-0">
+                        <span className="text-[10px] font-bold text-violet-500 uppercase leading-tight">
+                          {format(parseISO(apt.date), "EEE", { locale: ptBR })}
+                        </span>
+                        <span className="text-lg font-extrabold text-violet-700 leading-tight">
+                          {format(parseISO(apt.date), "dd")}
+                        </span>
+                      </div>
+
+                      {/* Patient + time + procedure */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-500">{apt.startTime}</span>
+                          {(apt as any).source === "online" && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full">
+                              <Globe className="w-2.5 h-2.5" /> Online
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-semibold text-slate-800 truncate">{apt.patient?.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{apt.procedure?.name}</p>
+                      </div>
+
+                      <StatusBadge status={apt.status} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12 flex flex-col items-center justify-center text-center">
+                  <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+                    <TrendingUp className="w-6 h-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">Agenda livre</p>
+                  <p className="text-xs text-slate-400 mt-1">Nenhum agendamento futuro encontrado</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
       </div>
     </AppLayout>
   );

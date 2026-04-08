@@ -126,30 +126,23 @@ export default function PatientsList() {
         {/* ── Stats strip ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            {
-              label: "Total de pacientes",
-              value: total,
-              icon: <Users className="w-4 h-4" />,
-              color: "text-primary",
-            },
-            {
-              label: "Exibidos agora",
-              value: patients.length,
-              icon: <Search className="w-4 h-4" />,
-              color: "text-sky-600",
-            },
-            {
-              label: "Com e-mail cadastrado",
-              value: patients.filter(p => p.email).length,
-              icon: <Mail className="w-4 h-4" />,
-              color: "text-emerald-600",
-            },
+            { label: "Total de Pacientes", value: total, icon: <Users className="w-4 h-4" />, accent: "#6366f1" },
+            { label: "Exibidos Agora", value: patients.length, icon: <Search className="w-4 h-4" />, accent: "#0ea5e9" },
+            { label: "Com E-mail", value: patients.filter(p => p.email).length, icon: <Mail className="w-4 h-4" />, accent: "#10b981" },
           ].map((s, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-3">
-              <div className={cn("shrink-0", s.color)}>{s.icon}</div>
-              <div>
-                <p className="text-xs text-slate-500">{s.label}</p>
-                <p className={cn("text-lg font-bold", s.color)}>{s.value}</p>
+            <div key={i} className="relative bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: s.accent }} />
+              <div className="pl-4 pr-4 py-3.5 flex items-center gap-3">
+                <div className="p-2 rounded-xl shrink-0" style={{ backgroundColor: `${s.accent}18`, color: s.accent }}>
+                  {s.icon}
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{s.label}</p>
+                  {isLoading
+                    ? <div className="h-6 w-10 bg-slate-100 animate-pulse rounded mt-1" />
+                    : <p className="text-xl font-extrabold text-slate-900 tabular-nums">{s.value}</p>
+                  }
+                </div>
               </div>
             </div>
           ))}
@@ -195,8 +188,19 @@ export default function PatientsList() {
 
         {/* ── Content ─────────────────────────────────────────────────────── */}
         {isLoading ? (
-          <div className="flex justify-center p-16">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-50">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="px-4 py-3.5 flex items-center gap-4 animate-pulse">
+                <div className="w-8 h-8 rounded-full bg-slate-100 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3.5 w-40 bg-slate-100 rounded" />
+                  <div className="h-2.5 w-24 bg-slate-100 rounded" />
+                </div>
+                <div className="h-3 w-28 bg-slate-100 rounded hidden md:block" />
+                <div className="h-3 w-20 bg-slate-100 rounded hidden lg:block" />
+                <div className="w-4 h-4 bg-slate-100 rounded shrink-0" />
+              </div>
+            ))}
           </div>
         ) : patients.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-16 text-center shadow-sm">
