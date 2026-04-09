@@ -19,6 +19,7 @@ const createAppointmentSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "startTime deve estar no formato HH:MM"),
   scheduleId: z.number().int().positive().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  professionalId: z.number().int().positive().optional().nullable(),
 });
 
 const updateAppointmentSchema = z.object({
@@ -533,6 +534,16 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       return;
     }
 
+    // Determine which professional to assign:
+    // - admin/secretary can pass an explicit professionalId
+    // - professionals always get assigned to themselves
+    const roles2 = (req.userRoles ?? []) as Role[];
+    const perms2 = resolvePermissions(roles2, req.isSuperAdmin);
+    const isAdminOrSecretary2 = perms2.has("users.manage") || roles2.includes("secretaria");
+    const resolvedProfessionalId = isAdminOrSecretary2
+      ? (body.professionalId ?? req.userId)
+      : req.userId;
+
     const [appointment] = await db
       .insert(appointmentsTable)
       .values({
@@ -543,7 +554,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
         endTime,
         status: "agendado",
         notes,
-        professionalId: req.userId,
+        professionalId: resolvedProfessionalId,
         clinicId: req.clinicId ?? null,
         scheduleId: resolvedScheduleId,
       })
@@ -700,6 +711,13 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
 
     const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
 
+    const rolesR = (req.userRoles ?? []) as Role[];
+    const permsR = resolvePermissions(rolesR, req.isSuperAdmin);
+    const isAdminOrSecretaryR = permsR.has("users.manage") || rolesR.includes("secretaria");
+    const resolvedProfessionalId = isAdminOrSecretaryR
+      ? ((body as any).professionalId ?? req.userId)
+      : req.userId;
+
     const endTimeFn = (st: string) => addMinutes(st, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
     const recurrenceGroupId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -729,7 +747,7 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
             endTime: et,
             status: "agendado",
             notes: notes || undefined,
-            professionalId: req.userId,
+            professionalId: resolvedProfessionalId,
             clinicId: req.clinicId ?? null,
             scheduleId: resolvedScheduleId,
             recurrenceGroupId,

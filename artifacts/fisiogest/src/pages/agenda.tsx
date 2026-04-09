@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
+import { useAuth } from "@/lib/auth-context";
 import {
   useListAppointments,
   useListPatients,
@@ -1501,13 +1502,35 @@ function CreateAppointmentForm({
   const [step, setStep] = useState<1 | 2>(1);
   const [patientSearch, setPatientSearch] = useState("");
 
-  const [formData, setFormData] = useState({
-    patientId: "",
-    procedureId: initialProcedureId ? String(initialProcedureId) : "",
-    date: initialDate || format(new Date(), "yyyy-MM-dd"),
-    startTime: initialTime || "",
-    notes: "",
+  const { hasRole, hasPermission, user } = useAuth();
+  const isProfissional = hasRole("profissional") && !hasPermission("users.manage") && !hasRole("secretaria");
+  const canSelectProfessional = hasPermission("users.manage") || hasRole("secretaria");
+
+  const { data: professionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
+    queryKey: ["professionals"],
+    queryFn: () => fetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
+    staleTime: 60_000,
+    enabled: canSelectProfessional,
+    select: (data) => data.filter((u) => u.roles.includes("profissional")),
   });
+
+  const [formData, setFormData] = useState(() => {
+    const defaultProfessionalId = isProfissional && user ? String((user as any).id ?? "") : "";
+    return {
+      patientId: "",
+      procedureId: initialProcedureId ? String(initialProcedureId) : "",
+      date: initialDate || format(new Date(), "yyyy-MM-dd"),
+      startTime: initialTime || "",
+      notes: "",
+      professionalId: defaultProfessionalId,
+    };
+  });
+
+  useEffect(() => {
+    if (canSelectProfessional && professionals.length === 1) {
+      setFormData((prev) => ({ ...prev, professionalId: String(professionals[0].id) }));
+    }
+  }, [professionals, canSelectProfessional]);
 
   // Recurring
   const [isRecurring, setIsRecurring] = useState(false);
@@ -1643,6 +1666,14 @@ function CreateAppointmentForm({
       toast({ variant: "destructive", title: "Selecione um horário." });
       return;
     }
+    if (canSelectProfessional && professionals.length > 1 && !formData.professionalId) {
+      toast({ variant: "destructive", title: "Selecione o profissional atendente." });
+      return;
+    }
+
+    const professionalIdPayload = canSelectProfessional && formData.professionalId
+      ? { professionalId: Number(formData.professionalId) }
+      : {};
 
     if (isRecurring) {
       if (recurDays.length === 0) {
@@ -1667,6 +1698,7 @@ function CreateAppointmentForm({
             notes: formData.notes || undefined,
             recurrence: { daysOfWeek: recurDays, totalSessions: recurSessions },
             ...(scheduleId ? { scheduleId } : {}),
+            ...professionalIdPayload,
           }),
         });
         const data = await res.json();
@@ -1697,7 +1729,8 @@ function CreateAppointmentForm({
           startTime: formData.startTime,
           notes: formData.notes || undefined,
           ...(scheduleId ? { scheduleId } : {}),
-        },
+          ...professionalIdPayload,
+        } as any,
       },
       {
         onSuccess: () => {
@@ -2056,6 +2089,34 @@ function CreateAppointmentForm({
               )}
             </div>
           )}
+
+      {/* Profissional — only for admin/secretary when clinic has multiple professionals */}
+      {canSelectProfessional && professionals.length > 1 && (
+        <div className="space-y-1.5">
+          <Label>Profissional *</Label>
+          <Select
+            value={formData.professionalId}
+            onValueChange={(v) => setFormData({ ...formData, professionalId: v })}
+          >
+            <SelectTrigger className="h-11 rounded-xl">
+              <SelectValue placeholder="Selecione o profissional..." />
+            </SelectTrigger>
+            <SelectContent>
+              {professionals.map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {canSelectProfessional && professionals.length === 1 && (
+        <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5 text-sm text-slate-600">
+          <User className="w-4 h-4 text-slate-400 shrink-0" />
+          <span>Profissional: <span className="font-semibold">{professionals[0].name}</span></span>
+        </div>
+      )}
 
       {/* Observações */}
       <div className="space-y-1.5">
