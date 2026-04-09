@@ -67,6 +67,10 @@ interface ClinicInfo {
   address?: string | null;
   website?: string | null;
   logoUrl?: string | null;
+  cancellationPolicyHours?: number | null;
+  autoConfirmHours?: number | null;
+  noShowFeeEnabled?: boolean;
+  noShowFeeAmount?: string | null;
 }
 
 async function fetchClinicForPrint(): Promise<ClinicInfo | null> {
@@ -404,6 +408,21 @@ function generateContractHTML(
   const contratada = plan.responsibleProfessional || clinicRT || clinicName;
   const contratadaCouncil = clinicCrefito;
 
+  const cancellationHours = clinic?.cancellationPolicyHours;
+  const noShowFeeEnabled = clinic?.noShowFeeEnabled;
+  const noShowFeeAmount = clinic?.noShowFeeAmount ? Number(clinic.noShowFeeAmount) : null;
+  const fmtNoShowFee = noShowFeeAmount
+    ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(noShowFeeAmount)
+    : null;
+
+  const clauseCancellation = cancellationHours && cancellationHours > 0
+    ? `Os atendimentos serão realizados conforme agenda acordada. Cancelamentos ou reagendamentos devem ser comunicados com antecedência mínima de <strong>${cancellationHours} horas</strong>; solicitações fora desse prazo poderão ser tratadas como falta injustificada.`
+    : `Os atendimentos serão realizados conforme agenda acordada, podendo ser reagendados mediante comunicação prévia de 24 horas.`;
+
+  const clauseNoShow = noShowFeeEnabled && fmtNoShowFee
+    ? `Faltas não justificadas dentro do prazo estabelecido serão cobradas mediante taxa de não comparecimento no valor de <strong>${fmtNoShowFee}</strong>, lançada automaticamente no sistema, exceto nos casos de crédito de falta previstos no pacote contratado.`
+    : `Faltas não justificadas com antecedência mínima de 2 horas serão cobradas integralmente, exceto nos casos de crédito de falta previstos no pacote contratado.`;
+
   return `
     ${buildClinicHeaderHTML(clinic)}
     <div class="header" style="margin-bottom:12px">
@@ -463,8 +482,8 @@ function generateContractHTML(
       <div class="section-title">Cláusulas Gerais</div>
       <ol style="font-size:9pt;line-height:1.7;color:#374151">
         <li>O presente contrato tem por objeto a prestação de serviços de fisioterapia descritos no plano de tratamento acima, com os valores expressamente acordados entre as partes.</li>
-        <li>Os atendimentos serão realizados conforme agenda acordada, podendo ser reagendados mediante comunicação prévia de 24 horas.</li>
-        <li>Faltas não justificadas com antecedência mínima de 2 horas serão cobradas integralmente, exceto nos casos de crédito de falta previstos no pacote contratado.</li>
+        <li>${clauseCancellation}</li>
+        <li>${clauseNoShow}</li>
         <li>Os valores fixados neste contrato vigorarão pelo período do plano, podendo ser reajustados por renovação ou aditivo com acordo de ambas as partes.</li>
         <li>O contratante autoriza o uso de dados pessoais e clínicos exclusivamente para fins de acompanhamento terapêutico, em conformidade com a LGPD (Lei 13.709/2018).</li>
         <li>As informações clínicas são sigilosas e regidas pelo Código de Ética do COFFITO.</li>

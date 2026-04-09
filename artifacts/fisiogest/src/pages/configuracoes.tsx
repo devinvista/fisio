@@ -78,6 +78,10 @@ import {
   Award,
   UserCheck,
   X,
+  ShieldAlert,
+  Timer,
+  BadgeDollarSign,
+  CheckCircle2,
 } from "lucide-react";
 import { ROLES, ROLE_LABELS } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
@@ -110,6 +114,10 @@ interface Clinic {
   logoUrl?: string | null;
   isActive: boolean;
   createdAt: string;
+  cancellationPolicyHours?: number | null;
+  autoConfirmHours?: number | null;
+  noShowFeeEnabled?: boolean;
+  noShowFeeAmount?: string | null;
 }
 
 interface SystemUser {
@@ -267,6 +275,10 @@ function ClinicaSection() {
     address: "",
     website: "",
     logoUrl: "",
+    cancellationPolicyHours: "" as string | number,
+    autoConfirmHours: "" as string | number,
+    noShowFeeEnabled: false,
+    noShowFeeAmount: "",
   });
   const [logoPreview, setLogoPreview] = useState<string>("");
 
@@ -277,7 +289,6 @@ function ClinicaSection() {
 
   useEffect(() => {
     if (clinic) {
-      const isAutonomo = clinic.type === "autonomo";
       setFormData({
         name: clinic.name ?? "",
         type: clinic.type ?? "clinica",
@@ -290,6 +301,10 @@ function ClinicaSection() {
         address: clinic.address ?? "",
         website: clinic.website ?? "",
         logoUrl: clinic.logoUrl ?? "",
+        cancellationPolicyHours: clinic.cancellationPolicyHours ?? "",
+        autoConfirmHours: clinic.autoConfirmHours ?? "",
+        noShowFeeEnabled: clinic.noShowFeeEnabled ?? false,
+        noShowFeeAmount: clinic.noShowFeeAmount ?? "",
       });
       setLogoPreview(clinic.logoUrl ?? "");
     }
@@ -587,6 +602,136 @@ function ClinicaSection() {
               placeholder="www.clinica.com.br"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Políticas de Agendamento ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldAlert className="h-4 w-4" />
+            Políticas de Agendamento
+          </CardTitle>
+          <CardDescription>
+            Regras automáticas de confirmação, cancelamento e taxa de ausência. Aplicadas pelo sistema a cada hora.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+
+          {/* Cancelamento / Reagendamento */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Timer className="h-3.5 w-3.5 text-muted-foreground" />
+                  Antecedência mínima para cancelamento
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Número de horas de aviso prévio exigidas para cancelar ou reagendar sem penalidade.
+                  Deixe em branco para desativar.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min="1"
+                max="168"
+                value={formData.cancellationPolicyHours}
+                onChange={(e) => setFormData((p) => ({ ...p, cancellationPolicyHours: e.target.value }))}
+                placeholder="Ex: 24"
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">horas de antecedência</span>
+            </div>
+            {formData.cancellationPolicyHours && Number(formData.cancellationPolicyHours) > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                Pacientes devem cancelar/reagendar com pelo menos <strong className="mx-1">{formData.cancellationPolicyHours}h</strong> de antecedência.
+                Essa cláusula aparecerá automaticamente nos contratos gerados.
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Confirmação Automática */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Confirmação automática
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Agendamentos pendentes serão confirmados automaticamente quando faltarem menos de X horas.
+                  Deixe em branco para desativar.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min="1"
+                max="72"
+                value={formData.autoConfirmHours}
+                onChange={(e) => setFormData((p) => ({ ...p, autoConfirmHours: e.target.value }))}
+                placeholder="Ex: 2"
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">horas antes do atendimento</span>
+            </div>
+            {formData.autoConfirmHours && Number(formData.autoConfirmHours) > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-700">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                Agendamentos serão confirmados automaticamente <strong className="mx-1">{formData.autoConfirmHours}h</strong> antes do horário marcado.
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Taxa de Não Comparecimento */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <BadgeDollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                  Taxa de não comparecimento (no-show)
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Valor cobrado automaticamente quando um agendamento é marcado como "Faltou" sem justificativa.
+                </p>
+              </div>
+              <Switch
+                checked={formData.noShowFeeEnabled}
+                onCheckedChange={(v) => setFormData((p) => ({ ...p, noShowFeeEnabled: v }))}
+              />
+            </div>
+            {formData.noShowFeeEnabled && (
+              <div className="flex items-center gap-3 pl-1">
+                <span className="text-sm font-medium text-muted-foreground">R$</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.noShowFeeAmount}
+                  onChange={(e) => setFormData((p) => ({ ...p, noShowFeeAmount: e.target.value }))}
+                  placeholder="0,00"
+                  className="w-36"
+                />
+                <span className="text-sm text-muted-foreground">por falta não justificada</span>
+              </div>
+            )}
+            {formData.noShowFeeEnabled && formData.noShowFeeAmount && Number(formData.noShowFeeAmount) > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                <BadgeDollarSign className="h-3.5 w-3.5 shrink-0" />
+                Uma cobrança de <strong className="mx-1">R$ {Number(formData.noShowFeeAmount).toFixed(2).replace(".", ",")}</strong>
+                será gerada automaticamente para cada falta não justificada.
+              </div>
+            )}
+          </div>
+
         </CardContent>
       </Card>
 

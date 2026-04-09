@@ -84,7 +84,8 @@ router.put("/current", requirePermission("settings.manage"), async (req: AuthReq
       res.status(400).json({ error: "Bad Request", message: "Nenhuma clínica ativa no contexto" });
       return;
     }
-    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl } = req.body;
+    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl,
+            cancellationPolicyHours, autoConfirmHours, noShowFeeEnabled, noShowFeeAmount } = req.body;
     const [clinic] = await db
       .update(clinicsTable)
       .set({
@@ -99,6 +100,10 @@ router.put("/current", requirePermission("settings.manage"), async (req: AuthReq
         ...(address !== undefined && { address }),
         ...(website !== undefined && { website }),
         ...(logoUrl !== undefined && { logoUrl }),
+        ...(cancellationPolicyHours !== undefined && { cancellationPolicyHours: cancellationPolicyHours === null || cancellationPolicyHours === "" ? null : Number(cancellationPolicyHours) }),
+        ...(autoConfirmHours !== undefined && { autoConfirmHours: autoConfirmHours === null || autoConfirmHours === "" ? null : Number(autoConfirmHours) }),
+        ...(noShowFeeEnabled !== undefined && { noShowFeeEnabled: Boolean(noShowFeeEnabled) }),
+        ...(noShowFeeAmount !== undefined && { noShowFeeAmount: noShowFeeAmount || null }),
       })
       .where(eq(clinicsTable.id, clinicId))
       .returning();

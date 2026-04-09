@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,11 @@ export const clinicsTable = pgTable("clinics", {
   logoUrl: text("logo_url"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Políticas de agendamento
+  cancellationPolicyHours: integer("cancellation_policy_hours"),
+  autoConfirmHours: integer("auto_confirm_hours"),
+  noShowFeeEnabled: boolean("no_show_fee_enabled").notNull().default(false),
+  noShowFeeAmount: text("no_show_fee_amount"),
 });
 
 export const insertClinicSchema = createInsertSchema(clinicsTable).omit({ id: true, createdAt: true });
