@@ -18,6 +18,69 @@ import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logAudit } from "../lib/auditLog.js";
+import { validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const anamnesisSchema = z.object({
+  mainComplaint: z.string().max(2000).optional().nullable(),
+  diseaseHistory: z.string().max(5000).optional().nullable(),
+  medicalHistory: z.string().max(5000).optional().nullable(),
+  medications: z.string().max(2000).optional().nullable(),
+  allergies: z.string().max(2000).optional().nullable(),
+  familyHistory: z.string().max(2000).optional().nullable(),
+  lifestyle: z.string().max(2000).optional().nullable(),
+  painScale: z.number().int().min(0).max(10).optional().nullable(),
+});
+
+const evaluationSchema = z.object({
+  inspection: z.string().max(5000).optional().nullable(),
+  posture: z.string().max(5000).optional().nullable(),
+  rangeOfMotion: z.string().max(5000).optional().nullable(),
+  muscleStrength: z.string().max(5000).optional().nullable(),
+  orthopedicTests: z.string().max(5000).optional().nullable(),
+  functionalDiagnosis: z.string().max(5000).optional().nullable(),
+});
+
+const treatmentPlanStatusEnum = z.enum(["ativo", "concluido", "cancelado"]);
+
+const createTreatmentPlanSchema = z.object({
+  objectives: z.string().max(5000).optional().nullable(),
+  techniques: z.string().max(5000).optional().nullable(),
+  frequency: z.string().max(500).optional().nullable(),
+  estimatedSessions: z.number().int().positive().optional().nullable(),
+  status: treatmentPlanStatusEnum.default("ativo"),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  responsibleProfessional: z.string().max(200).optional().nullable(),
+});
+
+const updateTreatmentPlanSchema = createTreatmentPlanSchema.partial();
+
+const createEvolutionSchema = z.object({
+  appointmentId: z.number().int().positive().optional().nullable(),
+  description: z.string().min(1, "Descrição é obrigatória").max(10000),
+  patientResponse: z.string().max(5000).optional().nullable(),
+  clinicalNotes: z.string().max(5000).optional().nullable(),
+  complications: z.string().max(5000).optional().nullable(),
+  painScale: z.number().int().min(0).max(10).optional().nullable(),
+});
+
+const updateEvolutionSchema = createEvolutionSchema.partial().extend({
+  description: z.string().min(1, "Descrição é obrigatória").max(10000).optional(),
+});
+
+const dischargeSummarySchema = z.object({
+  dischargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dischargeDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  dischargeReason: z.string().max(2000).optional().nullable(),
+  achievedResults: z.string().max(5000).optional().nullable(),
+  recommendations: z.string().max(5000).optional().nullable(),
+});
+
+const patientFinancialSchema = z.object({
+  type: z.enum(["receita", "despesa"], { error: "type deve ser 'receita' ou 'despesa'" }),
+  amount: z.union([z.number(), z.string()]).transform(Number).refine(v => !isNaN(v) && v > 0, { message: "amount deve ser um número maior que zero" }),
+  description: z.string().min(1, "description é obrigatória").max(500),
+  category: z.string().max(100).optional().nullable(),
+});
 
 type P = { patientId: string };
 type PEval = { patientId: string; evaluationId: string };
@@ -65,7 +128,9 @@ router.get("/anamnesis", requirePermission("medical.read"), async (req: Request<
 router.post("/anamnesis", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = req.body;
+    const body = validateBody(anamnesisSchema, req.body, res);
+    if (!body) return;
+    const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = body;
 
     const existing = await db
       .select()
@@ -119,7 +184,9 @@ router.get("/evaluations", requirePermission("medical.read"), async (req: Reques
 router.post("/evaluations", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
+    const body = validateBody(evaluationSchema, req.body, res);
+    if (!body) return;
+    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = body;
     const [evaluation] = await db
       .insert(evaluationsTable)
       .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis })
@@ -136,7 +203,9 @@ router.put("/evaluations/:evaluationId", requirePermission("medical.write"), asy
   try {
     const patientId = parseInt(req.params.patientId);
     const evaluationId = parseInt(req.params.evaluationId);
-    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = req.body;
+    const body = validateBody(evaluationSchema.partial(), req.body, res);
+    if (!body) return;
+    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = body;
 
     const [existing] = await db
       .select()
@@ -204,7 +273,9 @@ router.post("/treatment-plans", requirePermission("medical.write"), async (req: 
   try {
     const patientId = parseInt(req.params.patientId);
     const authReq = req as AuthRequest;
-    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
+    const body = validateBody(createTreatmentPlanSchema, req.body, res);
+    if (!body) return;
+    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = body;
 
     const [patient] = await db.select({ clinicId: patientsTable.clinicId }).from(patientsTable).where(eq(patientsTable.id, patientId)).limit(1);
     const clinicId = patient?.clinicId ?? authReq.clinicId ?? null;
@@ -251,7 +322,9 @@ router.put("/treatment-plans/:planId", requirePermission("medical.write"), async
   try {
     const patientId = parseInt(req.params.patientId);
     const planId = parseInt(req.params.planId);
-    const { objectives, techniques, frequency, estimatedSessions, status, startDate, responsibleProfessional } = req.body;
+    const body = validateBody(updateTreatmentPlanSchema, req.body, res);
+    if (!body) return;
+    const { objectives, techniques, frequency, estimatedSessions, status, startDate, responsibleProfessional } = body;
 
     const [existing] = await db.select({ id: treatmentPlansTable.id }).from(treatmentPlansTable)
       .where(and(eq(treatmentPlansTable.id, planId), eq(treatmentPlansTable.patientId, patientId)));
@@ -334,7 +407,9 @@ router.post("/treatment-plan", requirePermission("medical.write"), async (req: R
   try {
     const patientId = parseInt(req.params.patientId);
     const authReq = req as AuthRequest;
-    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = req.body;
+    const body = validateBody(createTreatmentPlanSchema, req.body, res);
+    if (!body) return;
+    const { objectives, techniques, frequency, estimatedSessions, status = "ativo", startDate, responsibleProfessional } = body;
 
     const plans = await db.select().from(treatmentPlansTable).where(eq(treatmentPlansTable.patientId, patientId)).orderBy(desc(treatmentPlansTable.createdAt));
     const existing = plans.find(p => p.status === "ativo") ?? plans[0];
@@ -388,7 +463,9 @@ router.get("/evolutions", requirePermission("medical.read"), async (req: Request
 router.post("/evolutions", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = req.body;
+    const body = validateBody(createEvolutionSchema, req.body, res);
+    if (!body) return;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = body;
     const [evolution] = await db
       .insert(evolutionsTable)
       .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
@@ -405,7 +482,9 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
   try {
     const patientId = parseInt(req.params.patientId);
     const evolutionId = parseInt(req.params.evolutionId);
-    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = req.body;
+    const body = validateBody(updateEvolutionSchema, req.body, res);
+    if (!body) return;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = body;
 
     const [existing] = await db
       .select()
@@ -490,7 +569,9 @@ router.get("/discharge-summary", requirePermission("medical.read"), async (req: 
 router.post("/discharge-summary", requirePermission("medical.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { dischargeDate, dischargeReason, achievedResults, recommendations } = req.body;
+    const body = validateBody(dischargeSummarySchema, req.body, res);
+    if (!body) return;
+    const { dischargeDate, dischargeReason, achievedResults, recommendations } = body;
 
     const existing = await db
       .select()
@@ -556,16 +637,13 @@ router.get("/financial", requirePermission("financial.read"), async (req: Reques
 router.post("/financial", requirePermission("financial.write"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
-    const { type, amount, description, category } = req.body;
-
-    if (!type || !amount || !description) {
-      res.status(400).json({ error: "Bad Request", message: "type, amount e description são obrigatórios" });
-      return;
-    }
+    const body = validateBody(patientFinancialSchema, req.body, res);
+    if (!body) return;
+    const { type, amount, description, category } = body;
 
     const [record] = await db
       .insert(financialRecordsTable)
-      .values({ type, amount: String(amount), description, category, patientId })
+      .values({ type, amount: String(amount), description, category: category ?? null, patientId })
       .returning();
 
     await logAudit({

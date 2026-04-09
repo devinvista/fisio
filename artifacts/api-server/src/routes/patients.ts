@@ -5,7 +5,22 @@ import { eq, ilike, or, and, sql, desc, isNull } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
-import { parseIntParam } from "../lib/validate.js";
+import { parseIntParam, validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const createPatientSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(200),
+  cpf: z.string().min(1, "CPF é obrigatório"),
+  phone: z.string().min(1, "Telefone é obrigatório").max(30),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birthDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  email: z.email("E-mail inválido").optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  profession: z.string().max(200).optional().nullable(),
+  emergencyContact: z.string().max(500).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+const updatePatientSchema = createPatientSchema.partial();
 
 function normalizeCpf(value: string): string {
   return value.replace(/\D/g, "");
@@ -96,11 +111,9 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
 
 router.post("/", requirePermission("patients.create"), async (req: AuthRequest, res) => {
   try {
-    const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
-    if (!name || !cpf || !phone) {
-      res.status(400).json({ error: "Bad Request", message: "Nome, CPF e telefone são obrigatórios" });
-      return;
-    }
+    const parsed = validateBody(createPatientSchema, req.body, res);
+    if (!parsed) return;
+    const { name, cpf, birthDate, phone, email, address, profession, emergencyContact, notes } = parsed;
 
     const normalizedCpf = normalizeCpf(cpf);
     if (!validateCpf(normalizedCpf)) {
@@ -198,11 +211,13 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
   try {
     const id = parseIntParam(req.params.id, res, "ID do paciente");
     if (id === null) return;
-    const { name, birthDate, phone, email, address, profession, emergencyContact, notes } = req.body;
-    let { cpf } = req.body;
+    const parsed = validateBody(updatePatientSchema, req.body, res);
+    if (!parsed) return;
+    const { name, birthDate, phone, email, address, profession, emergencyContact, notes } = parsed;
+    let cpf = parsed.cpf;
 
     if (cpf !== undefined) {
-      if (!cpf || typeof cpf !== "string" || !cpf.trim()) {
+      if (!cpf || !cpf.trim()) {
         res.status(400).json({ error: "Bad Request", message: "CPF não pode estar em branco" });
         return;
       }

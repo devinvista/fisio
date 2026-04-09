@@ -4,6 +4,34 @@ import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, pa
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { validateBody } from "../lib/validate.js";
+import { z } from "zod/v4";
+
+const paymentStatusEnum = z.enum(["pendente", "pago", "cancelado"]);
+
+const createPatientPackageSchema = z.object({
+  patientId: z.union([z.number().int().positive(), z.string().transform(Number)]).optional(),
+  packageId: z.union([z.number().int().positive(), z.string().transform(Number)]).optional().nullable(),
+  procedureId: z.union([z.number().int().positive(), z.string().transform(Number)], { error: "procedureId é obrigatório e deve ser um número positivo" }),
+  name: z.string().min(1, "name é obrigatório").max(200),
+  totalSessions: z.union([z.number().int().positive(), z.string().transform(Number)]).refine(v => Number.isInteger(v) && v > 0, "totalSessions deve ser um inteiro positivo"),
+  sessionsPerWeek: z.union([z.number().int().positive(), z.string().transform(Number)]).optional().default(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate deve estar no formato YYYY-MM-DD"),
+  expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expiryDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  price: z.union([z.number(), z.string().transform(Number)]).refine(v => !isNaN(v) && v >= 0, "price deve ser um número não-negativo"),
+  paymentStatus: paymentStatusEnum.default("pendente"),
+  notes: z.string().max(2000).optional().nullable(),
+  unitMonthlyPrice: z.union([z.number(), z.string().transform(Number)]).optional().nullable(),
+  billingDay: z.union([z.number().int().min(1).max(31), z.string().transform(Number)]).optional().nullable(),
+});
+
+const updatePatientPackageSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  sessionsPerWeek: z.union([z.number().int().positive(), z.string().transform(Number)]).optional(),
+  expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expiryDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  paymentStatus: paymentStatusEnum.optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -60,43 +88,33 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
   try {
     const patientId = req.params.patientId
       ? parseInt(req.params.patientId as string)
-      : req.body.patientId
-        ? parseInt(req.body.patientId)
-        : undefined;
+      : undefined;
 
-    if (!patientId) {
+    const body = validateBody(createPatientPackageSchema, req.body, res);
+    if (!body) return;
+
+    const resolvedPatientId = patientId ?? (body.patientId ? Number(body.patientId) : undefined);
+    if (!resolvedPatientId) {
       res.status(400).json({ error: "Bad Request", message: "patientId é obrigatório" });
       return;
     }
 
-    const {
-      packageId, procedureId, name, totalSessions, sessionsPerWeek,
-      startDate, expiryDate, price, paymentStatus, notes,
-      unitMonthlyPrice, billingDay,
-    } = req.body;
-
-    if (!procedureId || !name || !totalSessions || !startDate || !price) {
-      res.status(400).json({
-        error: "Bad Request",
-        message: "procedureId, name, totalSessions, startDate e price são obrigatórios",
-      });
-      return;
-    }
+    const { packageId, procedureId, name, totalSessions, sessionsPerWeek, startDate, expiryDate, price, paymentStatus, notes, unitMonthlyPrice, billingDay } = body;
 
     const [pp] = await db
       .insert(patientPackagesTable)
       .values({
-        patientId,
-        packageId: packageId ? parseInt(packageId) : null,
-        procedureId: parseInt(procedureId),
+        patientId: resolvedPatientId,
+        packageId: packageId ? Number(packageId) : null,
+        procedureId: Number(procedureId),
         name,
-        totalSessions: parseInt(totalSessions),
+        totalSessions: Number(totalSessions),
         usedSessions: 0,
-        sessionsPerWeek: sessionsPerWeek ? parseInt(sessionsPerWeek) : 1,
+        sessionsPerWeek: Number(sessionsPerWeek ?? 1),
         startDate,
         expiryDate: expiryDate || null,
         price: String(price),
-        paymentStatus: paymentStatus || "pendente",
+        paymentStatus: paymentStatus ?? "pendente",
         notes: notes || null,
         clinicId: req.clinicId ?? null,
       })
@@ -191,11 +209,13 @@ router.put("/:id", requirePermission("patients.update"), async (req: AuthRequest
       ? eq(patientPackagesTable.id, id)
       : and(eq(patientPackagesTable.id, id), eq(patientPackagesTable.clinicId, req.clinicId!));
 
-    const { name, sessionsPerWeek, expiryDate, paymentStatus, notes } = req.body;
+    const body = validateBody(updatePatientPackageSchema, req.body, res);
+    if (!body) return;
+    const { name, sessionsPerWeek, expiryDate, paymentStatus, notes } = body;
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
-    if (sessionsPerWeek !== undefined) updateData.sessionsPerWeek = parseInt(sessionsPerWeek);
+    if (sessionsPerWeek !== undefined) updateData.sessionsPerWeek = Number(sessionsPerWeek);
     if (expiryDate !== undefined) updateData.expiryDate = expiryDate;
     if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
     if (notes !== undefined) updateData.notes = notes;
