@@ -180,10 +180,10 @@ export default function Agenda() {
   const toTop = (minutes: number) => minutesToTop(minutes, activeHourStart);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const daysCount = view === "day" ? 1 : 6;
+  const daysCount = view === "day" ? 1 : 7;
   const weekDays = view === "day"
     ? [currentDate]
-    : Array.from({ length: 6 }).map((_, i) => addDays(weekStart, i));
+    : Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);

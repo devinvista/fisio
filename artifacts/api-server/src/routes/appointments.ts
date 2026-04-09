@@ -227,17 +227,19 @@ async function checkConflict(
   procedureId: number,
   maxCapacity: number,
   excludeId?: number,
-  scheduleId?: number | null
+  scheduleId?: number | null,
+  clinicId?: number | null
 ): Promise<{ conflict: boolean; currentCount: number; reason?: string }> {
   if (maxCapacity > 1) {
     // Rule: all patients in a group session must share the exact same startTime (and endTime).
-    // 1. Count bookings already in this exact group session (scoped to the same schedule when provided).
+    // 1. Count bookings already in this exact group session (scoped to the same schedule/clinic when provided).
     const sameSessionConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
       eq(appointmentsTable.startTime, startTime),
       sql`status NOT IN ('cancelado', 'faltou')`,
     ];
+    if (clinicId) sameSessionConds.push(eq(appointmentsTable.clinicId, clinicId));
     if (scheduleId) sameSessionConds.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) sameSessionConds.push(ne(appointmentsTable.id, excludeId));
 
@@ -250,7 +252,7 @@ async function checkConflict(
       return { conflict: true, currentCount: sameSession.length, reason: "full" };
     }
 
-    // 2. Ensure no other group session of this procedure overlaps this time slot within the same schedule.
+    // 2. Ensure no other group session of this procedure overlaps this time slot within the same clinic/schedule.
     const overlapConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
@@ -258,6 +260,7 @@ async function checkConflict(
       sql`start_time != ${startTime}`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
+    if (clinicId) overlapConds.push(eq(appointmentsTable.clinicId, clinicId));
     if (scheduleId) overlapConds.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) overlapConds.push(ne(appointmentsTable.id, excludeId));
 
@@ -273,12 +276,13 @@ async function checkConflict(
     return { conflict: false, currentCount: sameSession.length };
   } else {
     // Rule: next slot is only free after the previous one ends.
-    // When a scheduleId is provided, only check conflicts within the same schedule.
+    // When a clinicId/scheduleId is provided, only check conflicts within the same clinic/schedule.
     const conditions: any[] = [
       eq(appointmentsTable.date, date),
       sql`status NOT IN ('cancelado', 'faltou')`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
+    if (clinicId) conditions.push(eq(appointmentsTable.clinicId, clinicId));
     if (scheduleId) conditions.push(eq(appointmentsTable.scheduleId, scheduleId));
     if (excludeId) conditions.push(ne(appointmentsTable.id, excludeId));
 
@@ -520,7 +524,7 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
     const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
 
     const { conflict, currentCount, reason } = await checkConflict(
-      date, startTime, endTime, procedure.id, maxCapacity, undefined, resolvedScheduleId
+      date, startTime, endTime, procedure.id, maxCapacity, undefined, resolvedScheduleId, req.clinicId
     );
 
     if (conflict) {
@@ -620,8 +624,9 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
       }
 
       if (date && endTime && effectiveProcedureId != null) {
+        const authReqForConflict = req as AuthRequest;
         const { conflict, currentCount, reason } = await checkConflict(
-          date, startTime, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId
+          date, startTime, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId, authReqForConflict.clinicId
         );
 
         if (conflict) {
@@ -737,7 +742,7 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
       if (daysOfWeek.includes(dow)) {
         const sessionDate = cursor.toISOString().slice(0, 10);
         const et = endTimeFn(startTime);
-        const { conflict, reason, currentCount } = await checkConflict(sessionDate, startTime, et, procedure.id, maxCapacity, undefined, resolvedScheduleId);
+        const { conflict, reason, currentCount } = await checkConflict(sessionDate, startTime, et, procedure.id, maxCapacity, undefined, resolvedScheduleId, req.clinicId);
         if (conflict) {
           skipped.push({ date: sessionDate, reason: reason || "conflict", currentCount });
         } else {
