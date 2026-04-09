@@ -137,12 +137,24 @@ export default function Agenda() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+  const [selectedProfessionalId, setSelectedProfessionalId] = useState<number | null>(null);
   const [editingBlock, setEditingBlock] = useState<BlockedSlot | null>(null);
+
+  const { hasPermission, hasRole } = useAuth();
+  const canFilterByProfessional = hasPermission("users.manage") || hasRole("secretaria");
 
   const { data: schedules = [] } = useQuery<ScheduleOption[]>({
     queryKey: ["schedules"],
     queryFn: () => fetch("/api/schedules").then((r) => r.json()),
     staleTime: 60_000,
+  });
+
+  const { data: calendarProfessionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
+    queryKey: ["professionals"],
+    queryFn: () => fetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
+    staleTime: 60_000,
+    enabled: canFilterByProfessional,
+    select: (data) => data.filter((u) => u.roles.includes("profissional")),
   });
 
   const activeSchedules = schedules.filter((s) => s.isActive);
@@ -197,9 +209,9 @@ export default function Agenda() {
 
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
-  const filteredAppointments = selectedScheduleId
-    ? appointments.filter((a) => a.scheduleId === selectedScheduleId)
-    : appointments;
+  const filteredAppointments = appointments
+    .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId)
+    .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId);
 
   const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
     queryKey: ["blocked-slots", startDateStr, endDateStr, selectedScheduleId],
@@ -318,6 +330,21 @@ export default function Agenda() {
                   style={{ backgroundColor: selectedSchedule.color }}
                 />
               )}
+            </div>
+          )}
+          {canFilterByProfessional && calendarProfessionals.length >= 2 && (
+            <div className="flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <select
+                value={selectedProfessionalId ?? ""}
+                onChange={(e) => setSelectedProfessionalId(e.target.value ? Number(e.target.value) : null)}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
+              >
+                <option value="">Todos os profissionais</option>
+                {calendarProfessionals.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
             </div>
           )}
         </div>
@@ -2136,6 +2163,12 @@ function CreateAppointmentForm({
         <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5 text-sm text-slate-600">
           <User className="w-4 h-4 text-slate-400 shrink-0" />
           <span>Profissional: <span className="font-semibold">{professionals[0].name}</span></span>
+        </div>
+      )}
+      {isProfissional && user && (
+        <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5 text-sm text-slate-600">
+          <User className="w-4 h-4 text-primary shrink-0" />
+          <span>Atendente: <span className="font-semibold text-primary">{(user as any).name ?? "Você"}</span></span>
         </div>
       )}
 
