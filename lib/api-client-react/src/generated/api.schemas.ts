@@ -145,9 +145,11 @@ export type AppointmentStatus =
 export const AppointmentStatus = {
   agendado: "agendado",
   confirmado: "confirmado",
+  compareceu: "compareceu",
   concluido: "concluido",
   cancelado: "cancelado",
   faltou: "faltou",
+  remarcado: "remarcado",
 } as const;
 
 export interface Appointment {
@@ -189,9 +191,11 @@ export type UpdateAppointmentRequestStatus =
 export const UpdateAppointmentRequestStatus = {
   agendado: "agendado",
   confirmado: "confirmado",
+  compareceu: "compareceu",
   concluido: "concluido",
   cancelado: "cancelado",
   faltou: "faltou",
+  remarcado: "remarcado",
 } as const;
 
 export interface UpdateAppointmentRequest {

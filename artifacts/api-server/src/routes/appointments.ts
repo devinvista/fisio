@@ -111,7 +111,7 @@ async function applyBillingRules(
       .where(
         and(
           eq(procedureCostsTable.procedureId, procedureId),
-          eq(procedureCostsTable.clinicId, details.clinicId)
+          eq(procedureCostsTable.clinicId, resolvedClinicId)
         )
       )
       .limit(1);

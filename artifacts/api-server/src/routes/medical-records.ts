@@ -583,13 +583,25 @@ router.post("/discharge-summary", requirePermission("medical.write"), async (req
     if (isDischargeUpdate) {
       [summary] = await db
         .update(dischargeSummariesTable)
-        .set({ dischargeDate, dischargeReason, achievedResults, recommendations, updatedAt: new Date() })
+        .set({
+          dischargeDate: dischargeDate ?? undefined,
+          dischargeReason: dischargeReason ?? undefined,
+          achievedResults: achievedResults ?? undefined,
+          recommendations: recommendations ?? undefined,
+          updatedAt: new Date(),
+        })
         .where(eq(dischargeSummariesTable.patientId, patientId))
         .returning();
     } else {
       [summary] = await db
         .insert(dischargeSummariesTable)
-        .values({ patientId, dischargeDate, dischargeReason, achievedResults, recommendations })
+        .values({
+          patientId,
+          dischargeDate: (dischargeDate ?? "") as string,
+          dischargeReason: (dischargeReason ?? "") as string,
+          achievedResults: achievedResults ?? undefined,
+          recommendations: recommendations ?? undefined,
+        })
         .returning();
     }
     await logAudit({

@@ -127,7 +127,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       const [pkg] = await db
         .select()
         .from(packagesTable)
-        .where(eq(packagesTable.id, parseInt(packageId)))
+        .where(eq(packagesTable.id, Number(packageId)))
         .limit(1);
 
       if (pkg?.packageType === "mensal") {
@@ -138,8 +138,8 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
         const [sub] = await db
           .insert(patientSubscriptionsTable)
           .values({
-            patientId,
-            procedureId: parseInt(procedureId),
+            patientId: resolvedPatientId,
+            procedureId: Number(procedureId),
             startDate,
             billingDay: day,
             monthlyAmount: String(monthlyAmount),

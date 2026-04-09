@@ -340,7 +340,12 @@ function ClinicaSection() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMutation.mutate(formData);
+    const payload: Partial<Clinic> = {
+      ...formData,
+      cancellationPolicyHours: formData.cancellationPolicyHours !== "" ? Number(formData.cancellationPolicyHours) : null,
+      autoConfirmHours: formData.autoConfirmHours !== "" ? Number(formData.autoConfirmHours) : null,
+    };
+    updateMutation.mutate(payload);
   };
 
   const isAutonomo = formData.type === "autonomo";
