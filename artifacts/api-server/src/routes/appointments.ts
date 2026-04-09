@@ -10,7 +10,7 @@ import { todayBRT } from "../lib/dateUtils.js";
 import { parseIntParam, validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
-const appointmentStatusEnum = z.enum(["agendado", "confirmado", "concluido", "cancelado", "faltou", "remarcado"]);
+const appointmentStatusEnum = z.enum(["agendado", "confirmado", "compareceu", "concluido", "cancelado", "faltou", "remarcado"]);
 
 const createAppointmentSchema = z.object({
   patientId: z.number({ error: "patientId deve ser um número" }).int().positive(),
@@ -95,7 +95,9 @@ async function applyBillingRules(
   const patientName = details.patient?.name ?? "Paciente";
   const today = todayBRT();
 
-  const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
+  // Billing triggers only when patient actually attends (compareceu/concluido).
+  // "confirmado" is just an administrative pre-confirmation and must NOT generate a receivable.
+  const confirmedStatuses = ["compareceu", "concluido"];
   const canceledStatuses = ["cancelado"];
 
   const resolvedClinicId = clinicId ?? details.clinicId ?? null;

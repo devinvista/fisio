@@ -339,7 +339,7 @@ router.get("/overhead-analysis", requirePermission("procedures.manage"), async (
         // Estimated: assume full session capacity (for pricing decisions).
         const estimatedCapacityDivisor = isGroup ? maxCap : 1;
 
-        const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
+        const confirmedStatuses = ["compareceu", "concluido"];
         const [usageRow] = await db
           .select({
             apptCount: count(),

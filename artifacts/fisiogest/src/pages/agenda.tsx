@@ -75,11 +75,12 @@ const SLOT_HEIGHT = 64; // px per hour
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; border: string; badge: string; cardBg: string; cardSub: string }> = {
-  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",    cardBg: "bg-blue-500",    cardSub: "text-white/70" },
+  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",       cardBg: "bg-blue-500",    cardSub: "text-white/70" },
   confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", cardBg: "bg-emerald-500", cardSub: "text-white/70" },
-  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",   cardBg: "bg-slate-400",   cardSub: "text-white/70" },
-  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",      cardBg: "bg-red-400",     cardSub: "text-white/70" },
-  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700", cardBg: "bg-orange-400",  cardSub: "text-white/70" },
+  compareceu: { label: "Compareceu", bg: "bg-teal-500",    text: "text-white", dot: "bg-teal-500",    border: "border-teal-600",    badge: "bg-teal-100 text-teal-700",       cardBg: "bg-teal-500",    cardSub: "text-white/70" },
+  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",     cardBg: "bg-slate-400",   cardSub: "text-white/70" },
+  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",         cardBg: "bg-red-400",     cardSub: "text-white/70" },
+  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700",   cardBg: "bg-orange-400",  cardSub: "text-white/70" },
 };
 
 type Appointment = AppointmentWithDetails;
@@ -413,7 +414,11 @@ export default function Agenda() {
             {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
               <div key={key} className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
-                <span className="text-xs text-slate-600">{cfg.label}</span>
+                <span className="text-xs text-slate-600">
+                  {cfg.label}
+                  {key === "compareceu" && <span className="ml-1 text-[9px] text-teal-600 font-semibold">• gera cobrança</span>}
+                  {key === "concluido" && <span className="ml-1 text-[9px] text-slate-400 font-semibold">• encerrado</span>}
+                </span>
               </div>
             ))}
             <div className="flex items-center gap-2">
@@ -1278,7 +1283,7 @@ function AppointmentDetailModal({
                       {/* Per-patient actions */}
                       {!isDone && (
                         <div className="flex gap-1.5 flex-wrap">
-                          {member.status !== "confirmado" && member.status !== "cancelado" && member.status !== "faltou" && (
+                          {member.status !== "confirmado" && member.status !== "compareceu" && member.status !== "cancelado" && member.status !== "faltou" && (
                             <button
                               className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
                               onClick={() => handleMemberStatusChange(member.id, "confirmado")}
@@ -1287,16 +1292,16 @@ function AppointmentDetailModal({
                               <CheckCircle className="w-3 h-3 inline mr-0.5" /> Confirmar
                             </button>
                           )}
-                          {member.status === "confirmado" && (
+                          {member.status !== "compareceu" && member.status !== "cancelado" && member.status !== "faltou" && (
                             <button
-                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                              onClick={() => handleMemberStatusChange(member.id, "agendado")}
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-teal-200 text-teal-700 hover:bg-teal-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleMemberStatusChange(member.id, "compareceu")}
                               disabled={isBusy}
                             >
-                              <RefreshCw className="w-3 h-3 inline mr-0.5" /> Desfazer
+                              <Users className="w-3 h-3 inline mr-0.5" /> Compareceu
                             </button>
                           )}
-                          {member.status !== "faltou" && (
+                          {member.status !== "faltou" && member.status !== "cancelado" && (
                             <button
                               className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-orange-200 text-orange-700 hover:bg-orange-50 transition-colors disabled:opacity-50"
                               onClick={() => handleMemberStatusChange(member.id, "faltou")}
@@ -1305,7 +1310,7 @@ function AppointmentDetailModal({
                               <AlertCircle className="w-3 h-3 inline mr-0.5" /> Faltou
                             </button>
                           )}
-                          {member.status !== "cancelado" && (
+                          {member.status !== "cancelado" && member.status !== "faltou" && (
                             <button
                               className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
                               onClick={() => handleMemberStatusChange(member.id, "cancelado")}
@@ -1323,18 +1328,20 @@ function AppointmentDetailModal({
                               <RefreshCw className="w-3 h-3 inline mr-0.5" /> Reativar
                             </button>
                           )}
-                          <button
-                            className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors disabled:opacity-50 ml-auto"
-                            onClick={() => handleMemberComplete(member.id)}
-                            disabled={isBusy || member.status === "cancelado" || member.status === "faltou"}
-                          >
-                            {completeMutation.isPending ? (
-                              <Loader2 className="w-3 h-3 inline animate-spin mr-0.5" />
-                            ) : (
-                              <CheckCircle className="w-3 h-3 inline mr-0.5" />
-                            )}
-                            Concluir
-                          </button>
+                          {member.status !== "cancelado" && member.status !== "faltou" && (
+                            <button
+                              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors disabled:opacity-50 ml-auto"
+                              onClick={() => handleMemberComplete(member.id)}
+                              disabled={isBusy}
+                            >
+                              {completeMutation.isPending ? (
+                                <Loader2 className="w-3 h-3 inline animate-spin mr-0.5" />
+                              ) : (
+                                <CheckCircle className="w-3 h-3 inline mr-0.5" />
+                              )}
+                              Concluir
+                            </button>
+                          )}
                         </div>
                       )}
                       {isDone && (
@@ -1366,29 +1373,43 @@ function AppointmentDetailModal({
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Alterar Status</p>
               <div className="flex flex-wrap gap-2">
-                {appointment.status !== "confirmado" && (
+                {appointment.status !== "confirmado" && appointment.status !== "compareceu" && (
                   <Button size="sm" variant="outline" className="rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                     onClick={() => handleStatusChange("confirmado")} disabled={isBusy}>
                     <CheckCircle className="w-3.5 h-3.5 mr-1" /> Confirmar
                   </Button>
                 )}
-                {appointment.status !== "faltou" && (
+                {appointment.status !== "compareceu" && appointment.status !== "cancelado" && appointment.status !== "faltou" && (
+                  <Button size="sm" variant="outline" className="rounded-xl border-teal-200 text-teal-700 hover:bg-teal-50"
+                    onClick={() => handleStatusChange("compareceu")} disabled={isBusy}>
+                    <Users className="w-3.5 h-3.5 mr-1" /> Compareceu
+                  </Button>
+                )}
+                {appointment.status !== "faltou" && appointment.status !== "cancelado" && (
                   <Button size="sm" variant="outline" className="rounded-xl border-orange-200 text-orange-700 hover:bg-orange-50"
                     onClick={() => handleStatusChange("faltou")} disabled={isBusy}>
                     <AlertCircle className="w-3.5 h-3.5 mr-1" /> Faltou
                   </Button>
                 )}
-                {appointment.status !== "cancelado" && (
+                {appointment.status !== "cancelado" && appointment.status !== "faltou" && (
                   <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50"
                     onClick={() => handleStatusChange("cancelado")} disabled={isBusy}>
                     <XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar
                   </Button>
                 )}
-                <Button size="sm" className="rounded-xl"
-                  onClick={handleComplete} disabled={isBusy}>
-                  {completeMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
-                  Concluir
-                </Button>
+                {(appointment.status === "cancelado" || appointment.status === "faltou") && (
+                  <Button size="sm" variant="outline" className="rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50"
+                    onClick={() => handleStatusChange("agendado")} disabled={isBusy}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> Reativar
+                  </Button>
+                )}
+                {appointment.status !== "cancelado" && appointment.status !== "faltou" && (
+                  <Button size="sm" className="rounded-xl"
+                    onClick={handleComplete} disabled={isBusy}>
+                    {completeMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+                    Concluir
+                  </Button>
+                )}
               </div>
             </div>
           )}
