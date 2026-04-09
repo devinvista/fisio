@@ -79,7 +79,8 @@ async function getWithDetails(id: number, clinicId?: number | null) {
 async function applyBillingRules(
   appointmentId: number,
   newStatus: string,
-  oldStatus: string
+  oldStatus: string,
+  clinicId?: number | null
 ): Promise<void> {
   if (newStatus === oldStatus) return;
 
@@ -96,9 +97,11 @@ async function applyBillingRules(
   const confirmedStatuses = ["confirmado", "concluido", "compareceu"];
   const canceledStatuses = ["cancelado"];
 
+  const resolvedClinicId = clinicId ?? details.clinicId ?? null;
+
   // Resolve effective price: clinic override takes precedence over base procedure price
   let effectivePrice = String(procedure.price);
-  if (details.clinicId && procedureId) {
+  if (resolvedClinicId && procedureId) {
     const [clinicCostRow] = await db
       .select({ priceOverride: procedureCostsTable.priceOverride })
       .from(procedureCostsTable)
@@ -147,6 +150,7 @@ async function applyBillingRules(
             transactionType: "usoCredito",
             status: "pago",
             dueDate: today,
+            clinicId: resolvedClinicId,
           });
         } else {
           const existing = await tx
@@ -172,6 +176,7 @@ async function applyBillingRules(
               transactionType: "creditoAReceber",
               status: "pendente",
               dueDate: today,
+              clinicId: resolvedClinicId,
             });
           }
         }
@@ -190,6 +195,7 @@ async function applyBillingRules(
             quantity: 1,
             usedQuantity: 0,
             sourceAppointmentId: appointmentId,
+            clinicId: resolvedClinicId,
             notes: `Crédito por cancelamento — ${procedure.name}`,
           });
 
@@ -204,6 +210,7 @@ async function applyBillingRules(
           transactionType: "creditoSessao",
           status: "pago",
           dueDate: today,
+          clinicId: resolvedClinicId,
         });
       });
     }
@@ -647,7 +654,7 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     }
 
     if (status && status !== oldStatus) {
-      await applyBillingRules(appointment.id, status, oldStatus);
+      await applyBillingRules(appointment.id, status, oldStatus, authReq.clinicId);
     }
 
     const details = await getWithDetails(appointment.id);
@@ -761,7 +768,7 @@ router.post("/:id/complete", requirePermission("appointments.update"), async (re
       .where(eq(appointmentsTable.id, id))
       .returning();
 
-    await applyBillingRules(id, "concluido", oldStatus);
+    await applyBillingRules(id, "concluido", oldStatus, clinicId);
 
     const updatedDetails = await getWithDetails(appointment.id, clinicId);
     res.json(updatedDetails);

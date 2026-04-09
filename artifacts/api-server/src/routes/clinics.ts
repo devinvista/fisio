@@ -232,35 +232,40 @@ router.post("/:id/users", requireSuperAdmin(), async (req, res) => {
       .where(eq(usersTable.cpf, normalizedCpf))
       .limit(1);
 
-    let user = existing[0];
-    if (!user) {
-      const passwordHash = await bcrypt.hash(password, 10);
-      const [newUser] = await db
-        .insert(usersTable)
-        .values({
-          name,
-          cpf: normalizedCpf,
-          email: email ? email.toLowerCase().trim() : null,
-          passwordHash,
-          clinicId,
-        })
-        .returning();
-      user = newUser;
-    }
+    const passwordHash = existing[0] ? null : await bcrypt.hash(password, 10);
 
-    const existingRole = await db
-      .select()
-      .from(userRolesTable)
-      .where(and(eq(userRolesTable.userId, user.id), eq(userRolesTable.clinicId, clinicId)))
-      .limit(1);
+    const { userId, userName, userEmail } = await db.transaction(async (tx) => {
+      let user = existing[0];
+      if (!user) {
+        const [newUser] = await tx
+          .insert(usersTable)
+          .values({
+            name,
+            cpf: normalizedCpf,
+            email: email ? email.toLowerCase().trim() : null,
+            passwordHash: passwordHash!,
+            clinicId,
+          })
+          .returning();
+        user = newUser;
+      }
 
-    if (existingRole.length === 0) {
-      await db.insert(userRolesTable).values(
-        roleList.map((role) => ({ userId: user.id, clinicId, role }))
-      );
-    }
+      const existingRole = await tx
+        .select()
+        .from(userRolesTable)
+        .where(and(eq(userRolesTable.userId, user.id), eq(userRolesTable.clinicId, clinicId)))
+        .limit(1);
 
-    res.status(201).json({ id: user.id, name: user.name, email: user.email, roles: roleList });
+      if (existingRole.length === 0) {
+        await tx.insert(userRolesTable).values(
+          roleList.map((role) => ({ userId: user.id, clinicId, role }))
+        );
+      }
+
+      return { userId: user.id, userName: user.name, userEmail: user.email };
+    });
+
+    res.status(201).json({ id: userId, name: userName, email: userEmail, roles: roleList });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

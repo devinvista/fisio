@@ -67,11 +67,12 @@ router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res
 
     const clinicCondition = clinicFilter(req);
     const normalizedSearch = search ? normalizeCpf(search) : null;
+    const cpfDiffersFromSearch = normalizedSearch && normalizedSearch !== search && normalizedSearch.length >= 3;
     const searchCondition = search
       ? or(
           ilike(patientsTable.name, `%${search}%`),
           ilike(patientsTable.cpf, `%${search}%`),
-          normalizedSearch && normalizedSearch.length >= 3
+          cpfDiffersFromSearch
             ? ilike(patientsTable.cpf, `%${normalizedSearch}%`)
             : undefined,
           ilike(patientsTable.phone, `%${search}%`)

@@ -91,25 +91,28 @@ router.get("/professionals", async (req: AuthRequest, res) => {
 router.get("/", requirePermission("users.manage"), async (req: AuthRequest, res) => {
   try {
     if (req.isSuperAdmin || !req.clinicId) {
-      const users = await db.select().from(usersTable).orderBy(usersTable.name);
-      const result = await Promise.all(
-        users.map(async (u) => {
-          const roleRows = await db
-            .select({ role: userRolesTable.role })
-            .from(userRolesTable)
-            .where(eq(userRolesTable.userId, u.id));
-          return {
-            id: u.id,
-            name: u.name,
-            cpf: u.cpf,
-            email: u.email,
-            roles: roleRows.map((r) => r.role as Role),
-            clinicId: u.clinicId,
-            createdAt: u.createdAt,
-          };
+      const rows = await db
+        .select({
+          id: usersTable.id,
+          name: usersTable.name,
+          cpf: usersTable.cpf,
+          email: usersTable.email,
+          clinicId: usersTable.clinicId,
+          createdAt: usersTable.createdAt,
+          role: userRolesTable.role,
         })
-      );
-      res.json(result);
+        .from(usersTable)
+        .leftJoin(userRolesTable, eq(userRolesTable.userId, usersTable.id))
+        .orderBy(usersTable.name);
+
+      const superAdminMap = new Map<number, { id: number; name: string; cpf: string; email: string | null; roles: Role[]; clinicId: number | null; createdAt: Date }>();
+      for (const row of rows) {
+        if (!superAdminMap.has(row.id)) {
+          superAdminMap.set(row.id, { id: row.id, name: row.name, cpf: row.cpf, email: row.email, roles: [], clinicId: row.clinicId, createdAt: row.createdAt });
+        }
+        if (row.role) superAdminMap.get(row.id)!.roles.push(row.role as Role);
+      }
+      res.json(Array.from(superAdminMap.values()));
       return;
     }
 
