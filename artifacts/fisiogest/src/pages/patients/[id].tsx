@@ -336,6 +336,14 @@ function generatePlanHTML(
   `;
 }
 
+function extractCityState(address: string | null | undefined): string {
+  if (!address) return "_______________";
+  const withoutCep = address.replace(/,?\s*\d{5}-?\d{3}\s*$/, "").trim();
+  const parts = withoutCep.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return address;
+  return parts[parts.length - 1];
+}
+
 function generateContractHTML(
   patient: PatientBasic,
   plan: { objectives?: string; techniques?: string; frequency?: string; estimatedSessions?: string | number; status?: string; startDate?: string; responsibleProfessional?: string },
@@ -492,7 +500,7 @@ function generateContractHTML(
       </ol>
     </div>
 
-    <p style="font-size:9pt;color:#374151;margin-top:16px">Emitido em ${today}, cidade e Estado da clínica.</p>
+    <p style="font-size:9pt;color:#374151;margin-top:16px">Emitido em ${today}, ${extractCityState(clinic?.address)}.</p>
 
     <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
       <div>
