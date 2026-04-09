@@ -16,6 +16,16 @@ export const anamnesisTable = pgTable("anamnesis", {
   familyHistory: text("family_history"),
   lifestyle: text("lifestyle"),
   painScale: integer("pain_scale"),
+  occupation: text("occupation"),
+  laterality: text("laterality"),
+  cid10: text("cid10"),
+  painLocation: text("pain_location"),
+  painAggravatingFactors: text("pain_aggravating_factors"),
+  painRelievingFactors: text("pain_relieving_factors"),
+  functionalImpact: text("functional_impact"),
+  patientGoals: text("patient_goals"),
+  previousTreatments: text("previous_treatments"),
+  tobaccoAlcohol: text("tobacco_alcohol"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -33,6 +43,10 @@ export const evaluationsTable = pgTable("evaluations", {
   muscleStrength: text("muscle_strength"),
   orthopedicTests: text("orthopedic_tests"),
   functionalDiagnosis: text("functional_diagnosis"),
+  painScale: integer("pain_scale"),
+  palpation: text("palpation"),
+  gait: text("gait"),
+  functionalTests: text("functional_tests"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -91,6 +105,10 @@ export const evolutionsTable = pgTable("evolutions", {
   clinicalNotes: text("clinical_notes"),
   complications: text("complications"),
   painScale: integer("pain_scale"),
+  sessionDuration: integer("session_duration"),
+  techniquesUsed: text("techniques_used"),
+  homeExercises: text("home_exercises"),
+  nextSessionGoals: text("next_session_goals"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

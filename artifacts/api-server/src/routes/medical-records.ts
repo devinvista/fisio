@@ -30,6 +30,16 @@ const anamnesisSchema = z.object({
   familyHistory: z.string().max(2000).optional().nullable(),
   lifestyle: z.string().max(2000).optional().nullable(),
   painScale: z.number().int().min(0).max(10).optional().nullable(),
+  occupation: z.string().max(500).optional().nullable(),
+  laterality: z.string().max(100).optional().nullable(),
+  cid10: z.string().max(200).optional().nullable(),
+  painLocation: z.string().max(2000).optional().nullable(),
+  painAggravatingFactors: z.string().max(2000).optional().nullable(),
+  painRelievingFactors: z.string().max(2000).optional().nullable(),
+  functionalImpact: z.string().max(5000).optional().nullable(),
+  patientGoals: z.string().max(2000).optional().nullable(),
+  previousTreatments: z.string().max(5000).optional().nullable(),
+  tobaccoAlcohol: z.string().max(2000).optional().nullable(),
 });
 
 const evaluationSchema = z.object({
@@ -39,6 +49,10 @@ const evaluationSchema = z.object({
   muscleStrength: z.string().max(5000).optional().nullable(),
   orthopedicTests: z.string().max(5000).optional().nullable(),
   functionalDiagnosis: z.string().max(5000).optional().nullable(),
+  painScale: z.number().int().min(0).max(10).optional().nullable(),
+  palpation: z.string().max(5000).optional().nullable(),
+  gait: z.string().max(5000).optional().nullable(),
+  functionalTests: z.string().max(5000).optional().nullable(),
 });
 
 const treatmentPlanStatusEnum = z.enum(["ativo", "concluido", "cancelado"]);
@@ -62,6 +76,10 @@ const createEvolutionSchema = z.object({
   clinicalNotes: z.string().max(5000).optional().nullable(),
   complications: z.string().max(5000).optional().nullable(),
   painScale: z.number().int().min(0).max(10).optional().nullable(),
+  sessionDuration: z.number().int().min(1).max(480).optional().nullable(),
+  techniquesUsed: z.string().max(5000).optional().nullable(),
+  homeExercises: z.string().max(5000).optional().nullable(),
+  nextSessionGoals: z.string().max(5000).optional().nullable(),
 });
 
 const updateEvolutionSchema = createEvolutionSchema.partial().extend({
@@ -130,7 +148,17 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
     const patientId = parseInt(req.params.patientId);
     const body = validateBody(anamnesisSchema, req.body, res);
     if (!body) return;
-    const { mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale } = body;
+    const {
+      mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale,
+      occupation, laterality, cid10, painLocation, painAggravatingFactors, painRelievingFactors,
+      functionalImpact, patientGoals, previousTreatments, tobaccoAlcohol,
+    } = body;
+
+    const anamnesisFields = {
+      mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale,
+      occupation, laterality, cid10, painLocation, painAggravatingFactors, painRelievingFactors,
+      functionalImpact, patientGoals, previousTreatments, tobaccoAlcohol,
+    };
 
     const existing = await db
       .select()
@@ -142,13 +170,13 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
     if (isUpdate) {
       [anamnesis] = await db
         .update(anamnesisTable)
-        .set({ mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale, updatedAt: new Date() })
+        .set({ ...anamnesisFields, updatedAt: new Date() })
         .where(eq(anamnesisTable.patientId, patientId))
         .returning();
     } else {
       [anamnesis] = await db
         .insert(anamnesisTable)
-        .values({ patientId, mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale })
+        .values({ patientId, ...anamnesisFields })
         .returning();
     }
     await logAudit({
@@ -186,10 +214,10 @@ router.post("/evaluations", requirePermission("medical.write"), async (req: Requ
     const patientId = parseInt(req.params.patientId);
     const body = validateBody(evaluationSchema, req.body, res);
     if (!body) return;
-    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = body;
+    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, painScale, palpation, gait, functionalTests } = body;
     const [evaluation] = await db
       .insert(evaluationsTable)
-      .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis })
+      .values({ patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, painScale, palpation, gait, functionalTests })
       .returning();
     await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evaluation", entityId: evaluation?.id, summary: "Avaliação física criada" });
     res.status(201).json(evaluation);
@@ -205,7 +233,7 @@ router.put("/evaluations/:evaluationId", requirePermission("medical.write"), asy
     const evaluationId = parseInt(req.params.evaluationId);
     const body = validateBody(evaluationSchema.partial(), req.body, res);
     if (!body) return;
-    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis } = body;
+    const { inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, painScale, palpation, gait, functionalTests } = body;
 
     const [existing] = await db
       .select()
@@ -218,7 +246,7 @@ router.put("/evaluations/:evaluationId", requirePermission("medical.write"), asy
 
     const [updated] = await db
       .update(evaluationsTable)
-      .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, updatedAt: new Date() })
+      .set({ inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis, painScale, palpation, gait, functionalTests, updatedAt: new Date() })
       .where(eq(evaluationsTable.id, evaluationId))
       .returning();
     await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evaluation", entityId: evaluationId, summary: "Avaliação física editada" });
@@ -465,10 +493,10 @@ router.post("/evolutions", requirePermission("medical.write"), async (req: Reque
     const patientId = parseInt(req.params.patientId);
     const body = validateBody(createEvolutionSchema, req.body, res);
     if (!body) return;
-    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = body;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale, sessionDuration, techniquesUsed, homeExercises, nextSessionGoals } = body;
     const [evolution] = await db
       .insert(evolutionsTable)
-      .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
+      .values({ patientId, appointmentId, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null, sessionDuration: sessionDuration ?? null, techniquesUsed: techniquesUsed ?? null, homeExercises: homeExercises ?? null, nextSessionGoals: nextSessionGoals ?? null })
       .returning();
     await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "create", entityType: "evolution", entityId: evolution?.id, summary: "Evolução de sessão criada" });
     res.status(201).json(evolution);
@@ -484,7 +512,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
     const evolutionId = parseInt(req.params.evolutionId);
     const body = validateBody(updateEvolutionSchema, req.body, res);
     if (!body) return;
-    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale } = body;
+    const { appointmentId, description, patientResponse, clinicalNotes, complications, painScale, sessionDuration, techniquesUsed, homeExercises, nextSessionGoals } = body;
 
     const [existing] = await db
       .select()
@@ -497,7 +525,7 @@ router.put("/evolutions/:evolutionId", requirePermission("medical.write"), async
 
     const [updated] = await db
       .update(evolutionsTable)
-      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null })
+      .set({ appointmentId: appointmentId || null, description, patientResponse, clinicalNotes, complications, painScale: painScale ?? null, sessionDuration: sessionDuration ?? null, techniquesUsed: techniquesUsed ?? null, homeExercises: homeExercises ?? null, nextSessionGoals: nextSessionGoals ?? null })
       .where(eq(evolutionsTable.id, evolutionId))
       .returning();
     await logAudit({ userId: (req as AuthRequest).userId, patientId, action: "update", entityType: "evolution", entityId: evolutionId, summary: "Evolução de sessão editada" });

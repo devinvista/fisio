@@ -1252,6 +1252,9 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
   const [form, setForm] = useState({
     mainComplaint: "", diseaseHistory: "", medicalHistory: "",
     medications: "", allergies: "", familyHistory: "", lifestyle: "", painScale: 0,
+    occupation: "", laterality: "", cid10: "", painLocation: "",
+    painAggravatingFactors: "", painRelievingFactors: "",
+    functionalImpact: "", patientGoals: "", previousTreatments: "", tobaccoAlcohol: "",
   });
 
   useEffect(() => {
@@ -1265,6 +1268,16 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
         familyHistory: data.familyHistory || "",
         lifestyle: data.lifestyle || "",
         painScale: data.painScale || 0,
+        occupation: (data as any).occupation || "",
+        laterality: (data as any).laterality || "",
+        cid10: (data as any).cid10 || "",
+        painLocation: (data as any).painLocation || "",
+        painAggravatingFactors: (data as any).painAggravatingFactors || "",
+        painRelievingFactors: (data as any).painRelievingFactors || "",
+        functionalImpact: (data as any).functionalImpact || "",
+        patientGoals: (data as any).patientGoals || "",
+        previousTreatments: (data as any).previousTreatments || "",
+        tobaccoAlcohol: (data as any).tobaccoAlcohol || "",
       });
     }
   }, [data]);
@@ -1279,6 +1292,9 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
       onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
     });
   };
+
+  const [anamSections, setAnamSections] = useState({ queixa: true, historico: true, dor: true, habitos: true, complementar: true });
+  const toggleAnamSection = (s: keyof typeof anamSections) => setAnamSections(prev => ({ ...prev, [s]: !prev[s] }));
 
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
@@ -1298,64 +1314,245 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="p-6 space-y-5">
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700">Queixa Principal (QP)</Label>
-          <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-            value={form.mainComplaint} onChange={e => setForm({ ...form, mainComplaint: e.target.value })}
-            placeholder="Relato do paciente sobre o motivo da consulta..." />
+      <CardContent className="p-6 space-y-4">
+
+        {/* ── Seção 1: Queixa e História ── */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <button type="button" onClick={() => toggleAnamSection("queixa")}
+            className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center"><ClipboardList className="w-4 h-4 text-blue-600" /></div>
+              <div>
+                <p className="text-sm font-bold text-blue-800">Queixa Principal e História</p>
+                <p className="text-xs text-blue-500">QP, HDA e dados de identificação</p>
+              </div>
+            </div>
+            {anamSections.queixa ? <ChevronUp className="w-4 h-4 text-blue-500" /> : <ChevronDown className="w-4 h-4 text-blue-500" />}
+          </button>
+          {anamSections.queixa && (
+            <div className="p-4 space-y-4 bg-white">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Profissão / Ocupação</Label>
+                  <Input className="bg-slate-50 border-slate-200 focus:bg-white"
+                    value={form.occupation} onChange={e => setForm({ ...form, occupation: e.target.value })}
+                    placeholder="Ex: Professor, Atleta, Operário..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Lateralidade</Label>
+                  <Select value={form.laterality} onValueChange={v => setForm({ ...form, laterality: v })}>
+                    <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="destro">Destro (direita)</SelectItem>
+                      <SelectItem value="canhoto">Canhoto (esquerda)</SelectItem>
+                      <SelectItem value="ambidestro">Ambidestro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Queixa Principal (QP) <span className="text-red-400">*</span></Label>
+                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.mainComplaint} onChange={e => setForm({ ...form, mainComplaint: e.target.value })}
+                  placeholder="Relato do paciente sobre o motivo da consulta, em suas próprias palavras..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">História da Doença Atual (HDA)</Label>
+                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.diseaseHistory} onChange={e => setForm({ ...form, diseaseHistory: e.target.value })}
+                  placeholder="Evolução dos sintomas, quando iniciou, como iniciou, o que fez até agora..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">CID-10 (Diagnóstico Médico)</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white"
+                  value={form.cid10} onChange={e => setForm({ ...form, cid10: e.target.value })}
+                  placeholder="Ex: M54.5 – Lombalgia, M75.1 – Síndrome do Manguito Rotador..." />
+              </div>
+            </div>
+          )}
         </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700">História da Doença Atual (HDA)</Label>
-          <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-            value={form.diseaseHistory} onChange={e => setForm({ ...form, diseaseHistory: e.target.value })}
-            placeholder="Evolução dos sintomas, início, fatores agravantes..." />
+
+        {/* ── Seção 2: Dor ── */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <button type="button" onClick={() => toggleAnamSection("dor")}
+            className="w-full flex items-center justify-between px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center"><Activity className="w-4 h-4 text-red-600" /></div>
+              <div>
+                <p className="text-sm font-bold text-red-800">Dor e Sintomas</p>
+                <p className="text-xs text-red-400">EVA, localização, fatores agravantes e aliviantes</p>
+              </div>
+            </div>
+            {anamSections.dor ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
+          </button>
+          {anamSections.dor && (
+            <div className="p-4 space-y-4 bg-white">
+              <div className="space-y-3 bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA)</Label>
+                    <p className="text-xs text-slate-400 mt-0.5">Escala Visual Analógica — 0 (sem dor) a 10 (dor máxima)</p>
+                  </div>
+                  <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl text-white shadow-md ${
+                    form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
+                  }`}>{form.painScale}</div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
+                    <button key={v} type="button" onClick={() => setForm({ ...form, painScale: v })}
+                      className={`w-9 h-9 rounded-lg text-sm font-semibold border-2 transition-all ${
+                        form.painScale === v
+                          ? v >= 7 ? "bg-red-500 border-red-600 text-white" : v >= 4 ? "bg-orange-400 border-orange-500 text-white" : "bg-green-500 border-green-600 text-white"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+                      }`}>{v}</button>
+                  ))}
+                </div>
+                {form.painScale !== null && (
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <span className={`inline-block w-2 h-2 rounded-full ${form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"}`} />
+                    <span className={form.painScale >= 7 ? "text-red-600" : form.painScale >= 4 ? "text-orange-600" : "text-green-600"}>
+                      {form.painScale === 0 ? "Sem dor" : form.painScale <= 3 ? "Dor leve" : form.painScale <= 6 ? "Dor moderada" : form.painScale <= 9 ? "Dor intensa" : "Dor insuportável"}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Localização e Irradiação da Dor</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.painLocation} onChange={e => setForm({ ...form, painLocation: e.target.value })}
+                  placeholder="Ex: Dor lombar com irradiação para MID, formigamento em L5-S1..." />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Fatores que Agravam</Label>
+                  <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.painAggravatingFactors} onChange={e => setForm({ ...form, painAggravatingFactors: e.target.value })}
+                    placeholder="Ex: Ficar sentado por muito tempo, caminhar, subir escadas..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Fatores que Aliviam</Label>
+                  <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.painRelievingFactors} onChange={e => setForm({ ...form, painRelievingFactors: e.target.value })}
+                    placeholder="Ex: Repouso, compressa quente, analgésico, deitar..." />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Impacto Funcional (AVDs afetadas)</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.functionalImpact} onChange={e => setForm({ ...form, functionalImpact: e.target.value })}
+                  placeholder="Ex: Dificuldade para se vestir, limitação para dirigir, não consegue trabalhar..." />
+              </div>
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Histórico Médico (HMP)</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-              value={form.medicalHistory} onChange={e => setForm({ ...form, medicalHistory: e.target.value })}
-              placeholder="Cirurgias, internações, doenças..." />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Medicamentos em Uso</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-              value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })}
-              placeholder="Nome e dosagem dos medicamentos..." />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-              value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })}
-              placeholder="Alergias a medicamentos, alimentos..." />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-slate-700">Histórico Familiar</Label>
-            <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-              value={form.familyHistory} onChange={e => setForm({ ...form, familyHistory: e.target.value })}
-              placeholder="Doenças hereditárias, histórico familiar..." />
-          </div>
+
+        {/* ── Seção 3: Histórico Médico ── */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <button type="button" onClick={() => toggleAnamSection("historico")}
+            className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition-colors text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center"><FileText className="w-4 h-4 text-emerald-600" /></div>
+              <div>
+                <p className="text-sm font-bold text-emerald-800">Histórico Médico</p>
+                <p className="text-xs text-emerald-500">HMP, medicamentos, alergias, tratamentos anteriores</p>
+              </div>
+            </div>
+            {anamSections.historico ? <ChevronUp className="w-4 h-4 text-emerald-500" /> : <ChevronDown className="w-4 h-4 text-emerald-500" />}
+          </button>
+          {anamSections.historico && (
+            <div className="p-4 space-y-4 bg-white">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Histórico Médico (HMP)</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.medicalHistory} onChange={e => setForm({ ...form, medicalHistory: e.target.value })}
+                  placeholder="Cirurgias, internações, doenças crônicas, comorbidades..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tratamentos Anteriores</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.previousTreatments} onChange={e => setForm({ ...form, previousTreatments: e.target.value })}
+                  placeholder="Ex: Fisioterapia anterior, cirurgias, uso de órteses, infiltrações..." />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Medicamentos em Uso</Label>
+                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })}
+                    placeholder="Nome comercial, dosagem e frequência..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
+                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })}
+                    placeholder="Alergias a medicamentos, látex, materiais..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Histórico Familiar</Label>
+                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.familyHistory} onChange={e => setForm({ ...form, familyHistory: e.target.value })}
+                    placeholder="Doenças hereditárias relevantes na família..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Tabagismo / Etilismo / Outros</Label>
+                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                    value={form.tobaccoAlcohol} onChange={e => setForm({ ...form, tobaccoAlcohol: e.target.value })}
+                    placeholder="Fuma? Bebe? Usa outras substâncias? Frequência..." />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-slate-700">Estilo de Vida</Label>
-          <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-            value={form.lifestyle} onChange={e => setForm({ ...form, lifestyle: e.target.value })}
-            placeholder="Atividade física, sono, alimentação, trabalho..." />
+
+        {/* ── Seção 4: Hábitos e Estilo de Vida ── */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <button type="button" onClick={() => toggleAnamSection("habitos")}
+            className="w-full flex items-center justify-between px-4 py-3 bg-violet-50 hover:bg-violet-100 transition-colors text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-violet-100 border border-violet-200 flex items-center justify-center"><UserCheck className="w-4 h-4 text-violet-600" /></div>
+              <div>
+                <p className="text-sm font-bold text-violet-800">Hábitos e Estilo de Vida</p>
+                <p className="text-xs text-violet-500">Atividade física, sono, alimentação, rotina</p>
+              </div>
+            </div>
+            {anamSections.habitos ? <ChevronUp className="w-4 h-4 text-violet-400" /> : <ChevronDown className="w-4 h-4 text-violet-400" />}
+          </button>
+          {anamSections.habitos && (
+            <div className="p-4 bg-white">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Estilo de Vida</Label>
+                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.lifestyle} onChange={e => setForm({ ...form, lifestyle: e.target.value })}
+                  placeholder="Atividade física (tipo e frequência), qualidade do sono, alimentação, postura no trabalho, nível de estresse..." />
+              </div>
+            </div>
+          )}
         </div>
-        <div className="space-y-3 pt-2 border-t border-slate-100">
-          <div className="flex justify-between items-center">
-            <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA)</Label>
-            <span className={`font-bold text-xl ${form.painScale >= 7 ? "text-red-500" : form.painScale >= 4 ? "text-orange-500" : "text-green-500"}`}>
-              {form.painScale} / 10
-            </span>
-          </div>
-          <Slider value={[form.painScale]} max={10} step={1}
-            onValueChange={val => setForm({ ...form, painScale: val[0] })} className="py-2" />
-          <div className="flex justify-between text-xs font-medium text-slate-400">
-            <span>Sem dor (0)</span><span>Moderada (5)</span><span>Insuportável (10)</span>
-          </div>
+
+        {/* ── Seção 5: Objetivos e Expectativas ── */}
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <button type="button" onClick={() => toggleAnamSection("complementar")}
+            className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 hover:bg-amber-100 transition-colors text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center"><Target className="w-4 h-4 text-amber-600" /></div>
+              <div>
+                <p className="text-sm font-bold text-amber-800">Objetivos e Expectativas</p>
+                <p className="text-xs text-amber-500">O que o paciente espera do tratamento</p>
+              </div>
+            </div>
+            {anamSections.complementar ? <ChevronUp className="w-4 h-4 text-amber-400" /> : <ChevronDown className="w-4 h-4 text-amber-400" />}
+          </button>
+          {anamSections.complementar && (
+            <div className="p-4 bg-white">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Objetivos e Expectativas do Paciente</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
+                  value={form.patientGoals} onChange={e => setForm({ ...form, patientGoals: e.target.value })}
+                  placeholder="O que o paciente espera alcançar com o tratamento? Metas de curto e longo prazo..." />
+              </div>
+            </div>
+          )}
         </div>
+
         <ExamAttachmentsSection patientId={patientId} />
 
         <div className="pt-3 flex justify-end">
@@ -1371,7 +1568,11 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
 
 // ─── Evaluations Tab ────────────────────────────────────────────────────────────
 
-const emptyEvalForm = { inspection: "", posture: "", rangeOfMotion: "", muscleStrength: "", orthopedicTests: "", functionalDiagnosis: "" };
+const emptyEvalForm = {
+  inspection: "", posture: "", rangeOfMotion: "", muscleStrength: "",
+  orthopedicTests: "", functionalDiagnosis: "",
+  painScale: null as number | null, palpation: "", gait: "", functionalTests: "",
+};
 type EvalFormState = typeof emptyEvalForm;
 
 interface EvalFormProps {
@@ -1389,13 +1590,48 @@ function EvalForm({ onSave, onCancel, saving, title, form, setForm }: EvalFormPr
       <CardHeader className="pb-3 border-b border-slate-100">
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="p-5 space-y-4">
+      <CardContent className="p-5 space-y-5">
+
+        {/* EVA na Avaliação */}
+        <div className="space-y-3 bg-slate-50 rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA) na Avaliação</Label>
+              <p className="text-xs text-slate-400 mt-0.5">0 (sem dor) a 10 (dor máxima)</p>
+            </div>
+            {form.painScale !== null ? (
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl text-white shadow-md ${
+                form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
+              }`}>{form.painScale}</div>
+            ) : (
+              <span className="text-xs text-slate-400 italic">não avaliada</span>
+            )}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {[null, 0,1,2,3,4,5,6,7,8,9,10].map(v => (
+              <button key={v === null ? "none" : v} type="button"
+                onClick={() => setForm({ ...form, painScale: v })}
+                className={`w-9 h-9 rounded-lg text-sm font-semibold border-2 transition-all ${
+                  form.painScale === v
+                    ? v === null ? "bg-slate-200 border-slate-400 text-slate-700"
+                      : v >= 7 ? "bg-red-500 border-red-600 text-white"
+                      : v >= 4 ? "bg-orange-400 border-orange-500 text-white"
+                      : "bg-green-500 border-green-600 text-white"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+                }`}>
+                {v === null ? "—" : v}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Inspeção e Postura */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { key: "inspection", label: "Inspeção", placeholder: "Postura geral, assimetrias observadas..." },
-            { key: "posture", label: "Postura", placeholder: "Análise anterior, posterior e lateral..." },
-            { key: "rangeOfMotion", label: "Amplitude de Movimento", placeholder: "Graus de movimento, limitações..." },
-            { key: "muscleStrength", label: "Força Muscular", placeholder: "Graus de força (0-5), grupos musculares..." },
+            { key: "inspection", label: "Inspeção", placeholder: "Postura geral, assimetrias, cicatrizes, edemas observados..." },
+            { key: "posture", label: "Postura", placeholder: "Análise anterior, posterior e lateral, plomada, desvios..." },
+            { key: "rangeOfMotion", label: "Amplitude de Movimento (ADM)", placeholder: "Graus de movimento em cada plano, comparação bilateral..." },
+            { key: "muscleStrength", label: "Força Muscular", placeholder: "Graus de força (0-5) por grupo muscular, simetria..." },
           ].map(f => (
             <div key={f.key} className="space-y-1.5">
               <Label className="text-sm font-semibold text-slate-700">{f.label}</Label>
@@ -1406,18 +1642,47 @@ function EvalForm({ onSave, onCancel, saving, title, form, setForm }: EvalFormPr
             </div>
           ))}
         </div>
+
+        {/* Palpação e Marcha */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Palpação</Label>
+            <Textarea className="min-h-[75px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.palpation} onChange={e => setForm({ ...form, palpation: e.target.value })}
+              placeholder="Pontos dolorosos, tensão muscular, espasmos, temperatura, edema à palpação..." />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Marcha e Equilíbrio</Label>
+            <Textarea className="min-h-[75px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.gait} onChange={e => setForm({ ...form, gait: e.target.value })}
+              placeholder="Padrão de marcha, cadência, equilíbrio estático/dinâmico, uso de dispositivos..." />
+          </div>
+        </div>
+
+        {/* Testes Ortopédicos */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Testes Ortopédicos</Label>
+          <Label className="text-sm font-semibold text-slate-700">Testes Ortopédicos / Especiais</Label>
           <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
             value={form.orthopedicTests} onChange={e => setForm({ ...form, orthopedicTests: e.target.value })}
-            placeholder="Testes realizados e resultados..." />
+            placeholder="Ex: Lasègue (+), Phalen (+), Neer (-), Thomas... — informe o teste e resultado..." />
         </div>
+
+        {/* Testes Funcionais e Escalas */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Diagnóstico Funcional</Label>
+          <Label className="text-sm font-semibold text-slate-700">Testes Funcionais e Escalas Validadas</Label>
           <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 resize-none text-sm"
-            value={form.functionalDiagnosis} onChange={e => setForm({ ...form, functionalDiagnosis: e.target.value })}
-            placeholder="Conclusão da avaliação e objetivos do tratamento..." />
+            value={form.functionalTests} onChange={e => setForm({ ...form, functionalTests: e.target.value })}
+            placeholder="Ex: DASH: 42/100 | Berg: 48/56 | Barthel: 85/100 | SF-36 | WOMAC | NDI..." />
         </div>
+
+        {/* Diagnóstico Funcional */}
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-primary" />Diagnóstico Funcional</Label>
+          <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.functionalDiagnosis} onChange={e => setForm({ ...form, functionalDiagnosis: e.target.value })}
+            placeholder="Conclusão da avaliação: diagnóstico fisioterapêutico, prognóstico e objetivos do tratamento..." />
+        </div>
+
         <div className="flex gap-3 justify-end pt-2">
           <Button variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
           <Button onClick={onSave} className="rounded-xl" disabled={saving}>
@@ -1492,6 +1757,10 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
       muscleStrength: ev.muscleStrength || "",
       orthopedicTests: ev.orthopedicTests || "",
       functionalDiagnosis: ev.functionalDiagnosis || "",
+      painScale: ev.painScale ?? null,
+      palpation: ev.palpation || "",
+      gait: ev.gait || "",
+      functionalTests: ev.functionalTests || "",
     });
   };
 
@@ -2661,7 +2930,13 @@ function TreatmentPlanTab({ patientId, patient }: { patientId: number; patient?:
 
 // ─── Evolutions Tab ─────────────────────────────────────────────────────────────
 
-const emptyEvoForm = { appointmentId: "" as string | number, description: "", patientResponse: "", clinicalNotes: "", complications: "", painScale: null as number | null };
+const emptyEvoForm = {
+  appointmentId: "" as string | number,
+  description: "", patientResponse: "", clinicalNotes: "", complications: "",
+  painScale: null as number | null,
+  sessionDuration: "" as string | number,
+  techniquesUsed: "", homeExercises: "", nextSessionGoals: "",
+};
 type EvoFormState = typeof emptyEvoForm;
 
 // ─── Evolution Templates ──────────────────────────────────────────────────────
@@ -3048,9 +3323,11 @@ function TemplateSelector({
 
 // ─── Evolution Form Progress ──────────────────────────────────────────────────
 function FormProgress({ form }: { form: EvoFormState }) {
-  const fields = [form.description, form.patientResponse, form.clinicalNotes];
-  const filled = fields.filter(f => f && f.trim().length > 0).length;
-  const total = fields.length;
+  const fields = [form.description, form.patientResponse, form.clinicalNotes, form.techniquesUsed];
+  const extras = [form.homeExercises, form.nextSessionGoals, form.painScale !== null ? "x" : ""];
+  const allFields = [...fields, ...extras];
+  const filled = allFields.filter(f => f !== null && f !== undefined && String(f).trim().length > 0).length;
+  const total = allFields.length;
   const pct = Math.round((filled / total) * 100);
   const color = pct === 100 ? "bg-emerald-500" : pct >= 66 ? "bg-indigo-500" : pct >= 33 ? "bg-amber-400" : "bg-slate-300";
   return (
@@ -3115,25 +3392,36 @@ function EvoForm({ onSave, onCancel, saving, title, form, setForm, appointments 
         {/* Template Selector */}
         <TemplateSelector selected={selectedTemplate} onSelect={applyTemplate} onClear={clearTemplate} />
 
-        {/* Linked appointment */}
-        <div className="space-y-1.5">
-          <Label className="text-sm font-semibold text-slate-700">Consulta Vinculada <span className="text-slate-400 font-normal">(opcional)</span></Label>
-          <Select
-            value={String(form.appointmentId || "")}
-            onValueChange={v => setForm({ ...form, appointmentId: v === "none" ? "" : v })}
-          >
-            <SelectTrigger className="bg-slate-50 border-slate-200">
-              <SelectValue placeholder="Selecionar consulta..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Nenhuma consulta vinculada</SelectItem>
-              {appointments.map((appt: any) => (
-                <SelectItem key={appt.id} value={String(appt.id)}>
-                  {formatDate(appt.date)} — {appt.startTime} — {appt.procedure?.name || "Consulta"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Consulta + Duração */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2 space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Consulta Vinculada <span className="text-slate-400 font-normal">(opcional)</span></Label>
+            <Select
+              value={String(form.appointmentId || "")}
+              onValueChange={v => setForm({ ...form, appointmentId: v === "none" ? "" : v })}
+            >
+              <SelectTrigger className="bg-slate-50 border-slate-200">
+                <SelectValue placeholder="Selecionar consulta..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma consulta vinculada</SelectItem>
+                {appointments.map((appt: any) => (
+                  <SelectItem key={appt.id} value={String(appt.id)}>
+                    {formatDate(appt.date)} — {appt.startTime} — {appt.procedure?.name || "Consulta"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold text-slate-700">Duração <span className="text-slate-400 font-normal">(min)</span></Label>
+            <Input
+              type="number" min="1" max="480"
+              className="bg-slate-50 border-slate-200"
+              value={form.sessionDuration === "" ? "" : String(form.sessionDuration)}
+              onChange={e => setForm({ ...form, sessionDuration: e.target.value === "" ? "" : Number(e.target.value) })}
+              placeholder="Ex: 60" />
+          </div>
         </div>
 
         {/* Description */}
@@ -3188,6 +3476,21 @@ function EvoForm({ onSave, onCancel, saving, title, form, setForm, appointments 
           </div>
         </div>
 
+        {/* Techniques Used */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold text-slate-700">Técnicas e Recursos Utilizados</Label>
+          <Textarea className="min-h-[65px] bg-slate-50 border-slate-200 resize-none text-sm"
+            value={form.techniquesUsed} onChange={e => setForm({ ...form, techniquesUsed: e.target.value })}
+            placeholder="Ex: TENS (80Hz, 10min), Ultrassom terapêutico (1MHz, modo pulsado), Cinesioterapia ativa..." />
+          {chips && chips.description.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {chips.description.map(c => (
+                <QuickChip key={c} label={c} onAdd={() => appendChip("techniquesUsed", c)} />
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Complications */}
         <div className="space-y-2">
           <Label className="text-sm font-semibold text-slate-700">Intercorrências</Label>
@@ -3201,6 +3504,26 @@ function EvoForm({ onSave, onCancel, saving, title, form, setForm, appointments 
               ))}
             </div>
           )}
+        </div>
+
+        {/* Home exercises + Next session goals */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />Exercícios Domiciliares Prescritos
+            </Label>
+            <Textarea className="min-h-[75px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.homeExercises} onChange={e => setForm({ ...form, homeExercises: e.target.value })}
+              placeholder="Exercícios para o paciente realizar em casa, frequência e repetições..." />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5 text-indigo-500" />Objetivos Próxima Sessão
+            </Label>
+            <Textarea className="min-h-[75px] bg-slate-50 border-slate-200 resize-none text-sm"
+              value={form.nextSessionGoals} onChange={e => setForm({ ...form, nextSessionGoals: e.target.value })}
+              placeholder="O que será trabalhado na próxima sessão? Progressões planejadas..." />
+          </div>
         </div>
 
         {/* EVA Pain Scale */}
@@ -3311,6 +3634,10 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
     ...form,
     appointmentId: form.appointmentId ? Number(form.appointmentId) : undefined,
     painScale: form.painScale ?? undefined,
+    sessionDuration: form.sessionDuration !== "" ? Number(form.sessionDuration) : undefined,
+    techniquesUsed: form.techniquesUsed || undefined,
+    homeExercises: form.homeExercises || undefined,
+    nextSessionGoals: form.nextSessionGoals || undefined,
   });
 
   const handleCreate = () => {
@@ -3355,6 +3682,10 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
       clinicalNotes: ev.clinicalNotes || "",
       complications: ev.complications || "",
       painScale: ev.painScale ?? null,
+      sessionDuration: ev.sessionDuration ?? "",
+      techniquesUsed: ev.techniquesUsed || "",
+      homeExercises: ev.homeExercises || "",
+      nextSessionGoals: ev.nextSessionGoals || "",
     });
   };
 
@@ -3391,6 +3722,52 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
           appointments={appointments}
         />
       )}
+
+      {/* Pain Trend Mini-Chart */}
+      {evolutions.length >= 2 && (() => {
+        const withPain = [...evolutions].reverse().filter(e => e.painScale !== null && e.painScale !== undefined);
+        if (withPain.length < 2) return null;
+        const chartData = withPain.map((e, i) => ({
+          sessao: `S${i + 1}`,
+          dor: e.painScale,
+          data: format(new Date(e.createdAt), "dd/MM", { locale: ptBR }),
+        }));
+        const first = chartData[0]?.dor ?? 0;
+        const last = chartData[chartData.length - 1]?.dor ?? 0;
+        const diff = last - first;
+        const trend = diff < 0 ? "melhora" : diff > 0 ? "piora" : "estável";
+        const trendColor = diff < 0 ? "text-emerald-600" : diff > 0 ? "text-red-500" : "text-slate-500";
+        const trendBg = diff < 0 ? "bg-emerald-50 border-emerald-200" : diff > 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200";
+        return (
+          <div className={`rounded-xl border p-4 ${trendBg}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-bold text-slate-700">Tendência de Dor (EVA)</p>
+                <p className="text-xs text-slate-500">{withPain.length} sessões com EVA registrado</p>
+              </div>
+              <div className={`text-sm font-bold ${trendColor} flex items-center gap-1.5`}>
+                {diff < 0 ? <TrendingUp className="w-4 h-4 rotate-180" /> : diff > 0 ? <TrendingUp className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
+                {trend === "melhora" ? `↓${Math.abs(diff)} pts — Melhora` : trend === "piora" ? `↑${diff} pts — Piora` : "Estável"}
+              </div>
+            </div>
+            <div className="flex items-end gap-1.5 h-16">
+              {chartData.map((d, i) => {
+                const pct = ((d.dor as number) / 10) * 100;
+                const col = (d.dor as number) >= 7 ? "bg-red-400" : (d.dor as number) >= 4 ? "bg-orange-400" : "bg-emerald-400";
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <span className="text-[9px] text-slate-500 font-semibold">{d.dor}</span>
+                    <div className="w-full flex flex-col justify-end" style={{ height: "40px" }}>
+                      <div className={`w-full rounded-t-sm ${col} transition-all`} style={{ height: `${Math.max(4, pct * 0.4)}px` }} />
+                    </div>
+                    <span className="text-[8px] text-slate-400">{d.sessao}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {evolutions.length === 0 && !showForm ? (
         <Card className="border-dashed border-2 border-slate-200">
@@ -3447,31 +3824,38 @@ function EvolutionsTab({ patientId, patient }: { patientId: number; patient?: Pa
                             </Button>
                           </div>
                         </div>
-                        {ev.painScale !== null && ev.painScale !== undefined && (
-                          <div className="flex items-center gap-3 mb-3 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">EVA</span>
-                            <div className="flex-1 flex items-center gap-2">
+                        <div className="flex items-center gap-3 mb-3 flex-wrap">
+                          {ev.painScale !== null && ev.painScale !== undefined && (
+                            <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100 flex-1">
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">EVA</span>
                               <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all ${ev.painScale >= 7 ? "bg-red-500" : ev.painScale >= 4 ? "bg-orange-400" : "bg-green-500"}`}
                                   style={{ width: `${(ev.painScale / 10) * 100}%` }}
                                 />
                               </div>
-                              <div className={`flex items-center justify-center w-9 h-9 rounded-full font-bold text-base text-white shrink-0 ${
+                              <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm text-white shrink-0 ${
                                 ev.painScale >= 7 ? "bg-red-500" : ev.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
-                              }`}>
-                                {ev.painScale}
-                              </div>
+                              }`}>{ev.painScale}</div>
+                              <span className={`text-xs font-medium shrink-0 ${ev.painScale >= 7 ? "text-red-600" : ev.painScale >= 4 ? "text-orange-500" : "text-green-600"}`}>
+                                {ev.painScale === 0 ? "Sem dor" : ev.painScale <= 3 ? "Leve" : ev.painScale <= 6 ? "Moderada" : ev.painScale <= 9 ? "Intensa" : "Insuportável"}
+                              </span>
                             </div>
-                            <span className={`text-xs font-medium ${ev.painScale >= 7 ? "text-red-600" : ev.painScale >= 4 ? "text-orange-500" : "text-green-600"}`}>
-                              {ev.painScale === 0 ? "Sem dor" : ev.painScale <= 3 ? "Leve" : ev.painScale <= 6 ? "Moderada" : ev.painScale <= 9 ? "Intensa" : "Insuportável"}
-                            </span>
-                          </div>
-                        )}
+                          )}
+                          {(ev as any).sessionDuration && (
+                            <div className="flex items-center gap-1.5 bg-blue-50 rounded-xl px-3 py-2 border border-blue-100">
+                              <Clock className="w-3.5 h-3.5 text-blue-500" />
+                              <span className="text-xs font-semibold text-blue-700">{(ev as any).sessionDuration} min</span>
+                            </div>
+                          )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {ev.description && <InfoBlock label="Sessão" value={ev.description} className="md:col-span-2" />}
+                          {ev.description && <InfoBlock label="Descrição da Sessão" value={ev.description} className="md:col-span-2" />}
+                          {(ev as any).techniquesUsed && <InfoBlock label="Técnicas Utilizadas" value={(ev as any).techniquesUsed} className="md:col-span-2" />}
                           {ev.patientResponse && <InfoBlock label="Resposta do Paciente" value={ev.patientResponse} />}
                           {ev.clinicalNotes && <InfoBlock label="Notas Clínicas" value={ev.clinicalNotes} />}
+                          {(ev as any).homeExercises && <InfoBlock label="Exercícios Domiciliares" value={(ev as any).homeExercises} />}
+                          {(ev as any).nextSessionGoals && <InfoBlock label="Próxima Sessão" value={(ev as any).nextSessionGoals} />}
                           {ev.complications && <InfoBlock label="Intercorrências" value={ev.complications} className="md:col-span-2" />}
                         </div>
                       </CardContent>
