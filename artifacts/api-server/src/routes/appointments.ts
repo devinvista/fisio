@@ -566,6 +566,26 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
     const maxCapacity = procedure.maxCapacity ?? 1;
     const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
 
+    // Validate that the appointment fits within schedule working hours
+    if (resolvedScheduleId) {
+      const [schedule] = await db
+        .select({ startTime: schedulesTable.startTime, endTime: schedulesTable.endTime })
+        .from(schedulesTable)
+        .where(eq(schedulesTable.id, resolvedScheduleId));
+      if (schedule) {
+        if (
+          timeToMinutes(startTime) < timeToMinutes(schedule.startTime) ||
+          timeToMinutes(endTime) > timeToMinutes(schedule.endTime)
+        ) {
+          res.status(422).json({
+            error: "OutOfHours",
+            message: `O procedimento extrapola o horário de atendimento da agenda (${schedule.startTime}–${schedule.endTime}). Escolha um horário em que o procedimento termine até às ${schedule.endTime}.`,
+          });
+          return;
+        }
+      }
+    }
+
     const { conflict, currentCount, reason } = await checkConflict(
       date, startTime, endTime, procedure.id, maxCapacity, undefined, resolvedScheduleId, req.clinicId
     );
@@ -881,6 +901,26 @@ router.post("/:id/reschedule", requirePermission("appointments.create"), async (
 
     const endTime = addMinutes(startTime, original.procedure.durationMinutes);
     const maxCapacity = original.procedure.maxCapacity ?? 1;
+
+    // Validate that the rescheduled appointment fits within schedule working hours
+    if (original.scheduleId) {
+      const [schedule] = await db
+        .select({ startTime: schedulesTable.startTime, endTime: schedulesTable.endTime })
+        .from(schedulesTable)
+        .where(eq(schedulesTable.id, original.scheduleId));
+      if (schedule) {
+        if (
+          timeToMinutes(startTime) < timeToMinutes(schedule.startTime) ||
+          timeToMinutes(endTime) > timeToMinutes(schedule.endTime)
+        ) {
+          res.status(422).json({
+            error: "OutOfHours",
+            message: `O procedimento extrapola o horário de atendimento da agenda (${schedule.startTime}–${schedule.endTime}). Escolha um horário em que o procedimento termine até às ${schedule.endTime}.`,
+          });
+          return;
+        }
+      }
+    }
 
     const { conflict, currentCount, reason } = await checkConflict(
       date, startTime, endTime, original.procedureId, maxCapacity,
