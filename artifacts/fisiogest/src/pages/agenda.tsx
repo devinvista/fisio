@@ -20,6 +20,7 @@ import {
   addWeeks,
   subWeeks,
   startOfWeek,
+  getDay,
   isSameDay,
   isSameMonth,
   startOfMonth,
@@ -200,20 +201,46 @@ export default function Agenda() {
   const toTop = (minutes: number) => minutesToTop(minutes, activeHourStart);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const daysCount = view === "day" ? 1 : 7;
+  const allWeekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
+  // Derive the set of working day numbers (0=Sun … 6=Sat) from the active schedule(s).
+  // null means no schedule is configured → show all 7 days.
+  const workingDayNumbers: Set<number> | null = (() => {
+    if (!effectiveSchedules) return null;
+    const set = new Set<number>();
+    effectiveSchedules.forEach((s) => {
+      s.workingDays
+        .split(",")
+        .map((d) => parseInt(d.trim(), 10))
+        .filter((n) => !isNaN(n) && n >= 0 && n <= 6)
+        .forEach((d) => set.add(d));
+    });
+    return set.size > 0 ? set : null;
+  })();
+
   const weekDays = view === "day"
     ? [currentDate]
-    : Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+    : workingDayNumbers
+      ? allWeekDays.filter((day) => workingDayNumbers.has(getDay(day)))
+      : allWeekDays;
+
+  const daysCount = weekDays.length;
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
 
+  // Always fetch the full Mon–Sun range so switching schedule filters
+  // doesn't discard already-loaded appointment data.
   const startDateStr = view === "month"
     ? format(startOfWeek(monthStart, { weekStartsOn: 1 }), "yyyy-MM-dd")
-    : format(weekDays[0], "yyyy-MM-dd");
+    : view === "day"
+      ? format(currentDate, "yyyy-MM-dd")
+      : format(allWeekDays[0], "yyyy-MM-dd");
   const endDateStr = view === "month"
     ? format(endOfWeek(monthEnd, { weekStartsOn: 1 }), "yyyy-MM-dd")
-    : format(weekDays[daysCount - 1], "yyyy-MM-dd");
+    : view === "day"
+      ? format(currentDate, "yyyy-MM-dd")
+      : format(allWeekDays[6], "yyyy-MM-dd");
 
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
