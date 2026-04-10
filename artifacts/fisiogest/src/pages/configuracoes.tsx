@@ -1287,7 +1287,7 @@ function AgendasSection() {
         form.type === "professional" && form.professionalId
           ? parseInt(form.professionalId)
           : null,
-      workingDays: form.workingDays,
+      workingDays: form.workingDays.map(Number),
       startTime: form.startTime,
       endTime: form.endTime,
       slotDurationMinutes: parseInt(form.slotDurationMinutes),
