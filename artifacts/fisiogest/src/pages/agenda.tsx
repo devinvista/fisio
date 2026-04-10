@@ -147,6 +147,7 @@ export default function Agenda() {
   const quickUpdateMutation = useUpdateAppointment();
   const quickCompleteMutation = useCompleteAppointment();
 
+  const { toast } = useToast();
   const { hasPermission, hasRole } = useAuth();
   const canFilterByProfessional = hasPermission("users.manage") || hasRole("secretaria");
 
