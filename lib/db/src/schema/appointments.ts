@@ -21,6 +21,9 @@ export const appointmentsTable = pgTable("appointments", {
   recurrenceIndex: integer("recurrence_index"),
   bookingToken: text("booking_token"),
   source: text("source").notNull().default("presencial"),
+  rescheduledToId: integer("rescheduled_to_id"),
+  confirmedBy: text("confirmed_by"),
+  confirmedAt: timestamp("confirmed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_appointments_clinic_id").on(table.clinicId),
@@ -28,6 +31,7 @@ export const appointmentsTable = pgTable("appointments", {
   index("idx_appointments_status").on(table.status),
   index("idx_appointments_patient_id").on(table.patientId),
   index("idx_appointments_professional_id").on(table.professionalId),
+  index("idx_appointments_rescheduled_to_id").on(table.rescheduledToId),
 ]);
 
 export const insertAppointmentSchema = createInsertSchema(appointmentsTable).omit({ id: true, createdAt: true });

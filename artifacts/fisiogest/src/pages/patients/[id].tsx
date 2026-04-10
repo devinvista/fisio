@@ -870,11 +870,13 @@ function ExportProntuarioButton({ patientId, patient }: { patientId: number; pat
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  agendado: { label: "Agendado", color: "bg-blue-100 text-blue-700", icon: <Clock className="w-3 h-3" /> },
-  confirmado: { label: "Confirmado", color: "bg-green-100 text-green-700", icon: <CheckCircle className="w-3 h-3" /> },
-  concluido: { label: "Concluído", color: "bg-slate-100 text-slate-700", icon: <CheckCircle className="w-3 h-3" /> },
-  cancelado: { label: "Cancelado", color: "bg-red-100 text-red-700", icon: <XCircle className="w-3 h-3" /> },
-  faltou: { label: "Faltou", color: "bg-orange-100 text-orange-700", icon: <AlertCircle className="w-3 h-3" /> },
+  agendado:   { label: "Agendado",   color: "bg-blue-100 text-blue-700",     icon: <Clock className="w-3 h-3" /> },
+  confirmado: { label: "Confirmado", color: "bg-green-100 text-green-700",   icon: <CheckCircle className="w-3 h-3" /> },
+  compareceu: { label: "Compareceu", color: "bg-teal-100 text-teal-700",     icon: <CheckCircle className="w-3 h-3" /> },
+  concluido:  { label: "Concluído",  color: "bg-slate-100 text-slate-700",   icon: <CheckCircle className="w-3 h-3" /> },
+  cancelado:  { label: "Cancelado",  color: "bg-red-100 text-red-700",       icon: <XCircle className="w-3 h-3" /> },
+  faltou:     { label: "Faltou",     color: "bg-orange-100 text-orange-700", icon: <AlertCircle className="w-3 h-3" /> },
+  remarcado:  { label: "Remarcado",  color: "bg-purple-100 text-purple-700", icon: <RefreshCw className="w-3 h-3" /> },
 };
 
 function formatDate(dateStr: string) {
@@ -4732,6 +4734,8 @@ function AuditLogTab({ patientId }: { patientId: number }) {
 // ─── Appointment History Tab ────────────────────────────────────────────────────
 
 function HistoryTab({ patientId, patient }: { patientId: number; patient: PatientBasic }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: appointments = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/patients/${patientId}/appointments`],
     queryFn: () => fetch(`/api/patients/${patientId}/appointments`, {
@@ -4740,11 +4744,98 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
     enabled: !!patientId,
   });
   const [dialogAppt, setDialogAppt] = useState<any | null>(null);
+  const [rescheduleAppt, setRescheduleAppt] = useState<any | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: "", startTime: "" });
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = appointments.filter((a: any) =>
+    (a.date > today || (a.date === today && ["agendado", "confirmado", "compareceu"].includes(a.status))) &&
+    !["cancelado", "remarcado", "concluido", "faltou"].includes(a.status)
+  ).sort((a: any, b: any) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  const past = appointments.filter((a: any) =>
+    !upcoming.includes(a)
+  ).sort((a: any, b: any) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
+
+  const openReschedule = (appt: any) => {
+    setRescheduleAppt(appt);
+    setRescheduleForm({ date: appt.date, startTime: appt.startTime });
+  };
+
+  const handleReschedule = async () => {
+    if (!rescheduleAppt) return;
+    setRescheduleBusy(true);
+    try {
+      const token = localStorage.getItem("fisiogest_token");
+      const res = await fetch(`/api/appointments/${rescheduleAppt.id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(rescheduleForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Erro ao remarcar", description: err.message || "Verifique o horário e tente novamente." });
+        return;
+      }
+      toast({ title: "Remarcado com sucesso!", description: `Nova consulta em ${rescheduleForm.date} às ${rescheduleForm.startTime}.` });
+      setRescheduleAppt(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/appointments`] });
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao remarcar." });
+    } finally {
+      setRescheduleBusy(false);
+    }
+  };
 
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
+  const renderCard = (appt: any) => {
+    const cfg = statusConfig[appt.status] || statusConfig.agendado;
+    const isConcluido = appt.status === "concluido";
+    const canReschedule = ["agendado", "confirmado", "faltou", "cancelado"].includes(appt.status);
+    return (
+      <Card key={appt.id} className="border border-slate-200 shadow-sm">
+        <CardContent className="p-4 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex flex-col items-center justify-center text-primary shrink-0">
+            <span className="text-lg font-bold leading-none">{format(parseISO(appt.date), "d")}</span>
+            <span className="text-[10px] uppercase font-medium opacity-70">
+              {format(parseISO(appt.date), "MMM", { locale: ptBR })}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-slate-800 truncate">{appt.procedure?.name || "Procedimento não informado"}</p>
+            <p className="text-sm text-slate-500">{appt.startTime} — {appt.endTime} &bull; {formatDate(appt.date)}</p>
+            {appt.notes && <p className="text-xs text-slate-400 mt-0.5 truncate">{appt.notes}</p>}
+            {appt.status === "remarcado" && appt.rescheduledToId && (
+              <p className="text-xs text-purple-500 mt-0.5">Remarcado para novo agendamento</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {canReschedule && (
+              <Button variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50"
+                onClick={() => openReschedule(appt)}>
+                <RefreshCw className="w-3.5 h-3.5" /> Remarcar
+              </Button>
+            )}
+            {isConcluido && (
+              <Button variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs border-slate-200 text-slate-600 hover:text-primary hover:border-primary"
+                onClick={() => setDialogAppt(appt)}>
+                <ScrollText className="w-3.5 h-3.5" /> Atestado
+              </Button>
+            )}
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.color}`}>
+              {cfg.icon} {cfg.label}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
         <h3 className="text-lg font-semibold text-slate-800">Histórico de Consultas</h3>
         <p className="text-sm text-slate-500">{appointments.length} consulta(s) registrada(s)</p>
@@ -4758,41 +4849,26 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {appointments.map((appt: any) => {
-            const cfg = statusConfig[appt.status] || statusConfig.agendado;
-            const isConcluido = appt.status === "concluido";
-            return (
-              <Card key={appt.id} className="border border-slate-200 shadow-sm">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex flex-col items-center justify-center text-primary shrink-0">
-                    <span className="text-lg font-bold leading-none">{format(parseISO(appt.date), "d")}</span>
-                    <span className="text-[10px] uppercase font-medium opacity-70">
-                      {format(parseISO(appt.date), "MMM", { locale: ptBR })}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800 truncate">{appt.procedure?.name || "Procedimento não informado"}</p>
-                    <p className="text-sm text-slate-500">{appt.startTime} — {appt.endTime} &bull; {formatDate(appt.date)}</p>
-                    {appt.notes && <p className="text-xs text-slate-400 mt-0.5 truncate">{appt.notes}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isConcluido && (
-                      <Button variant="outline" size="sm"
-                        className="h-8 gap-1.5 text-xs border-slate-200 text-slate-600 hover:text-primary hover:border-primary"
-                        onClick={() => setDialogAppt(appt)}>
-                        <ScrollText className="w-3.5 h-3.5" /> Atestado
-                      </Button>
-                    )}
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.color}`}>
-                      {cfg.icon} {cfg.label}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          {upcoming.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-700">Próximas consultas</span>
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{upcoming.length}</span>
+              </div>
+              {upcoming.map(renderCard)}
+            </div>
+          )}
+          {past.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-500">Histórico passado</span>
+                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-semibold">{past.length}</span>
+              </div>
+              {past.map(renderCard)}
+            </div>
+          )}
+        </>
       )}
 
       <AtestadoDialog
@@ -4804,6 +4880,41 @@ function HistoryTab({ patientId, patient }: { patientId: number; patient: Patien
         defaultType="comparecimento"
       />
 
+      {/* Reschedule dialog */}
+      <Dialog open={!!rescheduleAppt} onOpenChange={(open) => { if (!open) setRescheduleAppt(null); }}>
+        <DialogContent className="sm:max-w-[380px] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Remarcar consulta</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-slate-500">
+              Selecione nova data e horário para: <strong>{rescheduleAppt?.procedure?.name}</strong>
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nova data</Label>
+                <DatePickerPTBR value={rescheduleForm.date} onChange={(v) => setRescheduleForm(f => ({ ...f, date: v }))} className="rounded-xl h-10" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Novo horário</Label>
+                <input
+                  type="time"
+                  value={rescheduleForm.startTime}
+                  onChange={(e) => setRescheduleForm(f => ({ ...f, startTime: e.target.value }))}
+                  className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="rounded-xl flex-1" onClick={() => setRescheduleAppt(null)}>Cancelar</Button>
+            <Button className="rounded-xl flex-1" onClick={handleReschedule} disabled={rescheduleBusy}>
+              {rescheduleBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+              Confirmar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

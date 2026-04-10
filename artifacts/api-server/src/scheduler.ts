@@ -5,7 +5,7 @@
  * 1. Billing automático — diariamente às 06:00 BRT (09:00 UTC)
  *    Executa runBilling() com janela de tolerância de 3 dias.
  *
- * 2. Políticas de agendamento — a cada hora
+ * 2. Políticas de agendamento — a cada 15 minutos
  *    Executa runAppointmentPolicies():
  *    - Auto-confirmação: confirma agendamentos dentro da janela configurada
  *    - No-show: marca como "faltou" agendamentos cujo horário já passou
@@ -16,8 +16,8 @@ import cron from "node-cron";
 import { runBilling } from "./services/billingService.js";
 import { runAppointmentPolicies } from "./services/policyService.js";
 
-const BILLING_CRON  = "0 9 * * *";  // 09:00 UTC = 06:00 BRT diariamente
-const POLICIES_CRON = "0 * * * *";  // todo início de hora
+const BILLING_CRON  = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
+const POLICIES_CRON = "*/15 * * * *"; // a cada 15 minutos
 
 export function startScheduler(): void {
   // ── Billing automático ─────────────────────────────────────────────────────
@@ -66,6 +66,6 @@ export function startScheduler(): void {
       }
     }, { timezone: "America/Sao_Paulo" });
 
-    console.log(`[scheduler] Políticas de agendamento agendadas — ${POLICIES_CRON} (a cada hora)`);
+    console.log(`[scheduler] Políticas de agendamento agendadas — ${POLICIES_CRON} (a cada 15 minutos)`);
   }
 }

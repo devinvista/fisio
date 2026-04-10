@@ -18,9 +18,11 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const STATUS_CONFIG: Record<string, { dot: string; text: string; bg: string; label: string }> = {
   agendado:  { dot: "bg-blue-400",   text: "text-blue-700",   bg: "bg-blue-50",   label: "Agendado"  },
   confirmado:{ dot: "bg-green-500",  text: "text-green-700",  bg: "bg-green-50",  label: "Confirmado"},
+  compareceu:{ dot: "bg-teal-500",   text: "text-teal-700",   bg: "bg-teal-50",   label: "Compareceu"},
   concluido: { dot: "bg-slate-400",  text: "text-slate-600",  bg: "bg-slate-100", label: "Concluído" },
   cancelado: { dot: "bg-red-400",    text: "text-red-700",    bg: "bg-red-50",    label: "Cancelado" },
   faltou:    { dot: "bg-orange-400", text: "text-orange-700", bg: "bg-orange-50", label: "Faltou"    },
+  remarcado: { dot: "bg-purple-400", text: "text-purple-700", bg: "bg-purple-50", label: "Remarcado" },
 };
 
 function StatusBadge({ status }: { status: string }) {

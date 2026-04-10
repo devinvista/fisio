@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -8,9 +8,36 @@ import { resolvePermissions } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
 import { parseIntParam, validateBody } from "../lib/validate.js";
+import { logAudit } from "../lib/auditLog.js";
 import { z } from "zod/v4";
 
 const appointmentStatusEnum = z.enum(["agendado", "confirmado", "compareceu", "concluido", "cancelado", "faltou", "remarcado"]);
+
+// ─── State machine: valid transitions ────────────────────────────────────────
+// "admin_override" keys allow any-to-any via the edit form (secretary/admin only)
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  agendado:   ["confirmado", "compareceu", "cancelado", "faltou", "remarcado"],
+  confirmado: ["compareceu", "cancelado", "faltou", "remarcado", "agendado"],
+  compareceu: ["concluido", "faltou", "cancelado"],
+  concluido:  [],
+  cancelado:  ["agendado"],
+  faltou:     ["agendado", "remarcado"],
+  remarcado:  [],
+};
+
+function isValidTransition(from: string, to: string, isAdmin: boolean): boolean {
+  if (from === to) return true;
+  if (isAdmin && ["concluido", "remarcado"].includes(from)) return true;
+  const allowed = VALID_TRANSITIONS[from] ?? [];
+  return allowed.includes(to);
+}
+
+// ─── Reschedule schema ────────────────────────────────────────────────────────
+const rescheduleSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date deve estar no formato YYYY-MM-DD"),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "startTime deve estar no formato HH:MM"),
+  notes: z.string().max(2000).optional().nullable(),
+});
 
 const createAppointmentSchema = z.object({
   patientId: z.number({ error: "patientId deve ser um número" }).int().positive(),
@@ -40,6 +67,8 @@ const recurringAppointmentSchema = createAppointmentSchema.extend({
 
 const router = Router();
 router.use(authMiddleware);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number);
@@ -77,6 +106,8 @@ async function getWithDetails(id: number, clinicId?: number | null) {
   return { ...appointment, patient, procedure };
 }
 
+// ─── Billing rules ────────────────────────────────────────────────────────────
+
 async function applyBillingRules(
   appointmentId: number,
   newStatus: string,
@@ -95,8 +126,6 @@ async function applyBillingRules(
   const patientName = details.patient?.name ?? "Paciente";
   const today = todayBRT();
 
-  // Billing triggers only when patient actually attends (compareceu/concluido).
-  // "confirmado" is just an administrative pre-confirmation and must NOT generate a receivable.
   const confirmedStatuses = ["compareceu", "concluido"];
   const canceledStatuses = ["cancelado"];
 
@@ -120,6 +149,7 @@ async function applyBillingRules(
     }
   }
 
+  // ── BILLING: attendance → generate receivable or consume credit ────────────
   if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
     if (billingType === "porSessao") {
       await db.transaction(async (tx) => {
@@ -187,7 +217,22 @@ async function applyBillingRules(
     }
   }
 
-  if (canceledStatuses.includes(newStatus) && !canceledStatuses.includes(oldStatus)) {
+  // ── ROLLBACK: compareceu/concluido → cancelado → cancel pending receivable ──
+  if (canceledStatuses.includes(newStatus) && confirmedStatuses.includes(oldStatus)) {
+    await db
+      .update(financialRecordsTable)
+      .set({ status: "cancelado" })
+      .where(
+        and(
+          eq(financialRecordsTable.appointmentId, appointmentId),
+          eq(financialRecordsTable.transactionType, "creditoAReceber"),
+          eq(financialRecordsTable.status, "pendente")
+        )
+      );
+  }
+
+  // ── BILLING: cancellation on monthly plan → generate session credit ─────────
+  if (canceledStatuses.includes(newStatus) && !canceledStatuses.includes(oldStatus) && !confirmedStatuses.includes(oldStatus)) {
     if (billingType === "mensal") {
       await db.transaction(async (tx) => {
         await tx
@@ -218,7 +263,23 @@ async function applyBillingRules(
       });
     }
   }
+
+  // ── ROLLBACK: faltou → agendado → cancel no-show fee if pending ───────────
+  if (newStatus === "agendado" && oldStatus === "faltou") {
+    await db
+      .update(financialRecordsTable)
+      .set({ status: "cancelado" })
+      .where(
+        and(
+          eq(financialRecordsTable.appointmentId, appointmentId),
+          eq(financialRecordsTable.transactionType, "taxaNoShow"),
+          eq(financialRecordsTable.status, "pendente")
+        )
+      );
+  }
 }
+
+// ─── Conflict check ───────────────────────────────────────────────────────────
 
 async function checkConflict(
   date: string,
@@ -231,13 +292,11 @@ async function checkConflict(
   clinicId?: number | null
 ): Promise<{ conflict: boolean; currentCount: number; reason?: string }> {
   if (maxCapacity > 1) {
-    // Rule: all patients in a group session must share the exact same startTime (and endTime).
-    // 1. Count bookings already in this exact group session (scoped to the same schedule/clinic when provided).
     const sameSessionConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
       eq(appointmentsTable.startTime, startTime),
-      sql`status NOT IN ('cancelado', 'faltou')`,
+      sql`status NOT IN ('cancelado', 'faltou', 'remarcado')`,
     ];
     if (clinicId) sameSessionConds.push(eq(appointmentsTable.clinicId, clinicId));
     if (scheduleId) sameSessionConds.push(eq(appointmentsTable.scheduleId, scheduleId));
@@ -252,11 +311,10 @@ async function checkConflict(
       return { conflict: true, currentCount: sameSession.length, reason: "full" };
     }
 
-    // 2. Ensure no other group session of this procedure overlaps this time slot within the same clinic/schedule.
     const overlapConds: any[] = [
       eq(appointmentsTable.date, date),
       eq(appointmentsTable.procedureId, procedureId),
-      sql`status NOT IN ('cancelado', 'faltou')`,
+      sql`status NOT IN ('cancelado', 'faltou', 'remarcado')`,
       sql`start_time != ${startTime}`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
@@ -275,11 +333,9 @@ async function checkConflict(
 
     return { conflict: false, currentCount: sameSession.length };
   } else {
-    // Rule: next slot is only free after the previous one ends.
-    // When a clinicId/scheduleId is provided, only check conflicts within the same clinic/schedule.
     const conditions: any[] = [
       eq(appointmentsTable.date, date),
-      sql`status NOT IN ('cancelado', 'faltou')`,
+      sql`status NOT IN ('cancelado', 'faltou', 'remarcado')`,
       sql`start_time < ${endTime} AND end_time > ${startTime}`,
     ];
     if (clinicId) conditions.push(eq(appointmentsTable.clinicId, clinicId));
@@ -295,6 +351,8 @@ async function checkConflict(
   }
 }
 
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 router.get("/", requirePermission("appointments.read"), async (req: AuthRequest, res) => {
   try {
     const { date, startDate, endDate, patientId, status } = req.query;
@@ -307,12 +365,10 @@ router.get("/", requirePermission("appointments.read"), async (req: AuthRequest,
 
     const conditions = [];
 
-    // Clinic isolation
     if (!req.isSuperAdmin && req.clinicId) {
       conditions.push(eq(appointmentsTable.clinicId, req.clinicId));
     }
 
-    // Profissional without admin permission sees only their own appointments
     const roles = (req.userRoles ?? []) as Role[];
     const perms = resolvePermissions(roles, req.isSuperAdmin);
     const isAdminOrSecretary = perms.has("users.manage") || roles.includes("secretaria");
@@ -348,7 +404,7 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
   try {
     const { date, procedureId, scheduleId } = req.query;
     let { clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
-    let slotStep = 30; // default step in minutes
+    let slotStep = 30;
 
     if (!date || !procedureId) {
       res.status(400).json({ error: "date e procedureId são obrigatórios" });
@@ -367,7 +423,6 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
         clinicEnd = schedule.endTime;
         slotStep = schedule.slotDurationMinutes ?? 30;
 
-        // Validate that the requested date is a working day for this schedule
         if (schedule.workingDays) {
           const workingDayNums = schedule.workingDays.split(",").map(Number);
           const dateDow = new Date((date as string) + "T12:00:00Z").getUTCDay();
@@ -399,10 +454,9 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
     const duration = procedure.durationMinutes;
     const maxCap = procedure.maxCapacity ?? 1;
 
-    // Fetch only appointments from the relevant schedule (or all if no schedule filter)
     const apptConditions: any[] = [
       eq(appointmentsTable.date, date as string),
-      sql`status NOT IN ('cancelado', 'faltou')`,
+      sql`status NOT IN ('cancelado', 'faltou', 'remarcado')`,
     ];
     if (resolvedScheduleId) {
       apptConditions.push(eq(appointmentsTable.scheduleId, resolvedScheduleId));
@@ -423,7 +477,6 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
     if (!authReq.isSuperAdmin && authReq.clinicId) {
       blockedConditions.push(eq(blockedSlotsTable.clinicId, authReq.clinicId));
     }
-    // When a specific schedule is requested, only apply blocks for that schedule
     if (resolvedScheduleId) {
       blockedConditions.push(eq(blockedSlotsTable.scheduleId, resolvedScheduleId));
     }
@@ -434,8 +487,6 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
       .where(and(...blockedConditions));
 
     const slots: { time: string; available: boolean; spotsLeft: number }[] = [];
-
-    // Use the schedule's slot step so the grid aligns with the configured agenda
     const effectiveStep = Math.min(slotStep, duration > 0 ? duration : slotStep);
 
     for (let start = openMin; start + duration <= closeMin; start += effectiveStep) {
@@ -454,12 +505,10 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
       let spotsLeft: number;
 
       if (maxCap > 1) {
-        // Group procedures: all patients share the exact same startTime.
         const sameSessionCount = existingAppts.filter(
           (a) => a.procedureId === procedure.id && a.startTime === startTime
         ).length;
 
-        // Check if a DIFFERENT group session of this procedure overlaps this slot.
         const hasConflictingSession = existingAppts.some(
           (a) =>
             a.procedureId === procedure.id &&
@@ -468,13 +517,8 @@ router.get("/available-slots", requirePermission("appointments.read"), async (re
             timeToMinutes(a.endTime) > start
         );
 
-        if (hasConflictingSession) {
-          spotsLeft = 0;
-        } else {
-          spotsLeft = Math.max(0, maxCap - sameSessionCount);
-        }
+        spotsLeft = hasConflictingSession ? 0 : Math.max(0, maxCap - sameSessionCount);
       } else {
-        // Individual procedures: blocked if any appointment overlaps this slot.
         const occupiedCount = existingAppts.filter(
           (a) =>
             timeToMinutes(a.startTime) < slotEnd &&
@@ -520,7 +564,6 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
 
     const endTime = addMinutes(startTime, procedure.durationMinutes);
     const maxCapacity = procedure.maxCapacity ?? 1;
-
     const resolvedScheduleId = scheduleId ? parseInt(String(scheduleId)) : null;
 
     const { conflict, currentCount, reason } = await checkConflict(
@@ -540,9 +583,6 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       return;
     }
 
-    // Determine which professional to assign:
-    // - admin/secretary can pass an explicit professionalId
-    // - professionals always get assigned to themselves
     const roles2 = (req.userRoles ?? []) as Role[];
     const perms2 = resolvePermissions(roles2, req.isSuperAdmin);
     const isAdminOrSecretary2 = perms2.has("users.manage") || roles2.includes("secretaria");
@@ -565,6 +605,15 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
         scheduleId: resolvedScheduleId,
       })
       .returning();
+
+    await logAudit({
+      userId: req.userId,
+      patientId,
+      action: "create",
+      entityType: "appointment",
+      entityId: appointment.id,
+      summary: `Agendamento criado: ${procedure.name} em ${date} às ${startTime}`,
+    });
 
     const details = await getWithDetails(appointment.id);
     res.status(201).json(details);
@@ -598,54 +647,108 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     if (!body) return;
     const { patientId, procedureId, date, startTime, status, notes } = body;
 
+    const currentAppt = await getWithDetails(id);
+    if (!currentAppt) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+    const oldStatus = currentAppt.status;
+
+    // ── State machine validation ───────────────────────────────────────────
+    if (status && status !== oldStatus) {
+      const authReqSM = req as AuthRequest;
+      const rolesSM = (authReqSM.userRoles ?? []) as Role[];
+      const permsSM = resolvePermissions(rolesSM, authReqSM.isSuperAdmin);
+      const isAdminSM = authReqSM.isSuperAdmin || permsSM.has("users.manage") || rolesSM.includes("secretaria");
+
+      if (!isValidTransition(oldStatus, status, isAdminSM)) {
+        res.status(422).json({
+          error: "InvalidTransition",
+          message: `Não é possível alterar de "${oldStatus}" para "${status}".`,
+        });
+        return;
+      }
+    }
+
+    // ── Cancellation policy enforcement ───────────────────────────────────
+    if (status === "cancelado" && oldStatus !== "cancelado") {
+      const authReqCP = req as AuthRequest;
+      const rolesCP = (authReqCP.userRoles ?? []) as Role[];
+      const permsCP = resolvePermissions(rolesCP, authReqCP.isSuperAdmin);
+      const isAdminCP = authReqCP.isSuperAdmin || permsCP.has("users.manage") || rolesCP.includes("secretaria");
+
+      if (!isAdminCP && authReqCP.clinicId) {
+        const [clinic] = await db
+          .select({ cancellationPolicyHours: clinicsTable.cancellationPolicyHours })
+          .from(clinicsTable)
+          .where(eq(clinicsTable.id, authReqCP.clinicId))
+          .limit(1);
+
+        if (clinic?.cancellationPolicyHours && clinic.cancellationPolicyHours > 0) {
+          const apptDate = currentAppt.date;
+          const apptStart = currentAppt.startTime;
+          const apptDatetime = new Date(`${apptDate}T${apptStart}:00`);
+          const nowBRT = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+          const diffHours = (apptDatetime.getTime() - nowBRT.getTime()) / (1000 * 60 * 60);
+
+          if (diffHours < clinic.cancellationPolicyHours && diffHours > 0) {
+            res.status(422).json({
+              error: "CancellationPolicyViolation",
+              message: `Cancelamento não permitido: a política da clínica exige aviso com ${clinic.cancellationPolicyHours}h de antecedência. Contate a secretaria.`,
+            });
+            return;
+          }
+        }
+      }
+    }
+
     let endTime: string | undefined;
     let maxCapacity = 1;
     let effectiveProcedureId = procedureId;
     let effectiveScheduleId: number | null = null;
 
-    if (startTime) {
-      if (procedureId) {
-        const [proc] = await db
-          .select()
-          .from(proceduresTable)
-          .where(eq(proceduresTable.id, procedureId));
-        if (proc) {
-          endTime = addMinutes(startTime, proc.durationMinutes);
-          maxCapacity = proc.maxCapacity ?? 1;
-        }
-      } else {
-        const current = await getWithDetails(id);
-        if (current?.procedure) {
-          endTime = addMinutes(startTime, current.procedure.durationMinutes);
-          maxCapacity = current.procedure.maxCapacity ?? 1;
-          effectiveProcedureId = current.procedureId;
-          effectiveScheduleId = current.scheduleId ?? null;
-        }
-      }
+    // ── Recalculate endTime whenever startTime OR procedureId changes ──────
+    const needsEndTimeRecalc = !!(startTime || procedureId);
+    if (needsEndTimeRecalc) {
+      const targetProcedureId = procedureId ?? currentAppt.procedureId;
+      const targetStartTime = startTime ?? currentAppt.startTime;
 
-      if (date && endTime && effectiveProcedureId != null) {
-        const authReqForConflict = req as AuthRequest;
-        const { conflict, currentCount, reason } = await checkConflict(
-          date, startTime, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId, authReqForConflict.clinicId
-        );
+      const [proc] = await db
+        .select()
+        .from(proceduresTable)
+        .where(eq(proceduresTable.id, targetProcedureId));
 
-        if (conflict) {
-          let message: string;
-          if (maxCapacity > 1) {
-            message = reason === "full"
-              ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas neste horário.`
-              : `Conflito de horário: já existe uma sessão que se sobrepõe a este horário.`;
-          } else {
-            message = `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
-          }
-          res.status(409).json({ error: "Conflict", message });
-          return;
-        }
+      if (proc) {
+        endTime = addMinutes(targetStartTime, proc.durationMinutes);
+        maxCapacity = proc.maxCapacity ?? 1;
+        effectiveProcedureId = targetProcedureId;
+        effectiveScheduleId = currentAppt.scheduleId ?? null;
       }
     }
 
-    const currentAppt = await getWithDetails(id);
-    const oldStatus = currentAppt?.status ?? "agendado";
+    // ── Conflict check if scheduling fields changed ────────────────────────
+    const targetDate = date ?? currentAppt.date;
+    const targetStart = startTime ?? currentAppt.startTime;
+    if (endTime && effectiveProcedureId != null) {
+      const authReqFC = req as AuthRequest;
+      const { conflict, currentCount, reason } = await checkConflict(
+        targetDate, targetStart, endTime, effectiveProcedureId, maxCapacity, id, effectiveScheduleId, authReqFC.clinicId
+      );
+
+      if (conflict) {
+        const calculatedEnd = endTime;
+        let message: string;
+        if (maxCapacity > 1) {
+          message = reason === "full"
+            ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas neste horário.`
+            : `Conflito de horário: já existe uma sessão que se sobrepõe a este horário.`;
+        } else {
+          message = `Conflito de horário: já existe um agendamento entre ${targetStart} e ${calculatedEnd}.`;
+        }
+        res.status(409).json({ error: "Conflict", message });
+        return;
+      }
+    }
 
     const updateFields: Record<string, any> = {};
     if (patientId !== undefined) updateFields.patientId = patientId;
@@ -656,10 +759,21 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     if (status !== undefined) updateFields.status = status;
     if (notes !== undefined) updateFields.notes = notes;
 
+    // Set confirmedBy when status moves to confirmado
+    if (status === "confirmado" && oldStatus !== "confirmado") {
+      const authReqCB = req as AuthRequest;
+      const rolesCB = (authReqCB.userRoles ?? []) as Role[];
+      const permsCB = resolvePermissions(rolesCB, authReqCB.isSuperAdmin);
+      const isAdminCB = authReqCB.isSuperAdmin || permsCB.has("users.manage") || rolesCB.includes("secretaria");
+      updateFields.confirmedBy = isAdminCB ? "secretaria" : "paciente";
+      updateFields.confirmedAt = new Date();
+    }
+
     const authReq = req as AuthRequest;
     const updateWhere = (!authReq.isSuperAdmin && authReq.clinicId)
       ? and(eq(appointmentsTable.id, id), eq(appointmentsTable.clinicId, authReq.clinicId))
       : eq(appointmentsTable.id, id);
+
     const [appointment] = await db
       .update(appointmentsTable)
       .set(updateFields)
@@ -671,8 +785,30 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
       return;
     }
 
+    // ── Billing rules ──────────────────────────────────────────────────────
     if (status && status !== oldStatus) {
       await applyBillingRules(appointment.id, status, oldStatus, authReq.clinicId);
+    }
+
+    // ── Audit log ─────────────────────────────────────────────────────────
+    if (status && status !== oldStatus) {
+      await logAudit({
+        userId: authReq.userId,
+        patientId: currentAppt.patientId,
+        action: "update",
+        entityType: "appointment",
+        entityId: id,
+        summary: `Status: ${oldStatus} → ${status}`,
+      });
+    } else if (Object.keys(updateFields).length > 0) {
+      await logAudit({
+        userId: authReq.userId,
+        patientId: currentAppt.patientId,
+        action: "update",
+        entityType: "appointment",
+        entityId: id,
+        summary: `Agendamento atualizado`,
+      });
     }
 
     const details = await getWithDetails(appointment.id);
@@ -696,6 +832,15 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
       res.status(404).json({ error: "Not Found" });
       return;
     }
+
+    await logAudit({
+      userId: authReq.userId,
+      action: "delete",
+      entityType: "appointment",
+      entityId: id,
+      summary: `Agendamento excluído`,
+    });
+
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -703,6 +848,167 @@ router.delete("/:id", requirePermission("appointments.delete"), async (req, res)
   }
 });
 
+// ─── Reschedule (atomic: mark old as remarcado + create new) ─────────────────
+router.post("/:id/reschedule", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseIntParam(req.params.id, res, "ID do agendamento");
+    if (id === null) return;
+
+    const body = validateBody(rescheduleSchema, req.body, res);
+    if (!body) return;
+
+    const { date, startTime, notes } = body;
+
+    const original = await getWithDetails(id, req.clinicId);
+    if (!original) {
+      res.status(404).json({ error: "Not Found", message: "Agendamento não encontrado." });
+      return;
+    }
+
+    const blockableStatuses = ["agendado", "confirmado", "faltou"];
+    if (!blockableStatuses.includes(original.status)) {
+      res.status(422).json({
+        error: "InvalidOperation",
+        message: `Não é possível remarcar um agendamento com status "${original.status}".`,
+      });
+      return;
+    }
+
+    if (!original.procedure) {
+      res.status(422).json({ error: "InvalidOperation", message: "Procedimento do agendamento não encontrado." });
+      return;
+    }
+
+    const endTime = addMinutes(startTime, original.procedure.durationMinutes);
+    const maxCapacity = original.procedure.maxCapacity ?? 1;
+
+    const { conflict, currentCount, reason } = await checkConflict(
+      date, startTime, endTime, original.procedureId, maxCapacity,
+      undefined, original.scheduleId, req.clinicId
+    );
+
+    if (conflict) {
+      let message: string;
+      if (maxCapacity > 1) {
+        message = reason === "full"
+          ? `Horário lotado: ${currentCount}/${maxCapacity} vagas ocupadas neste horário.`
+          : `Conflito de horário: já existe uma sessão que se sobrepõe a este horário.`;
+      } else {
+        message = `Conflito de horário: já existe um agendamento entre ${startTime} e ${endTime}.`;
+      }
+      res.status(409).json({ error: "Conflict", message });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [newAppt] = await tx
+        .insert(appointmentsTable)
+        .values({
+          patientId: original.patientId,
+          procedureId: original.procedureId,
+          professionalId: original.professionalId,
+          date,
+          startTime,
+          endTime,
+          status: "agendado",
+          notes: notes ?? original.notes,
+          clinicId: original.clinicId,
+          scheduleId: original.scheduleId,
+          source: original.source,
+        })
+        .returning();
+
+      await tx
+        .update(appointmentsTable)
+        .set({ status: "remarcado", rescheduledToId: newAppt.id })
+        .where(eq(appointmentsTable.id, id));
+
+      return newAppt;
+    });
+
+    // Cancel any pending no-show fee from the original appointment
+    await db
+      .update(financialRecordsTable)
+      .set({ status: "cancelado" })
+      .where(
+        and(
+          eq(financialRecordsTable.appointmentId, id),
+          eq(financialRecordsTable.transactionType, "taxaNoShow"),
+          eq(financialRecordsTable.status, "pendente")
+        )
+      );
+
+    await logAudit({
+      userId: req.userId,
+      patientId: original.patientId,
+      action: "update",
+      entityType: "appointment",
+      entityId: id,
+      summary: `Remarcado para ${date} às ${startTime} (novo ID: ${result.id})`,
+    });
+
+    const newDetails = await getWithDetails(result.id);
+    const oldDetails = await getWithDetails(id);
+
+    res.status(201).json({ rescheduled: oldDetails, new: newDetails });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Complete ─────────────────────────────────────────────────────────────────
+router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const clinicId = (req as AuthRequest).clinicId;
+
+    const details = await getWithDetails(id, clinicId);
+    if (!details) {
+      res.status(404).json({ error: "Not Found" });
+      return;
+    }
+
+    const oldStatus = details.status;
+    const authReq = req as AuthRequest;
+    const rolesC = (authReq.userRoles ?? []) as Role[];
+    const permsC = resolvePermissions(rolesC, authReq.isSuperAdmin);
+    const isAdminC = authReq.isSuperAdmin || permsC.has("users.manage") || rolesC.includes("secretaria");
+
+    if (!isValidTransition(oldStatus, "concluido", isAdminC)) {
+      res.status(422).json({
+        error: "InvalidTransition",
+        message: `Não é possível concluir um agendamento com status "${oldStatus}".`,
+      });
+      return;
+    }
+
+    const [appointment] = await db
+      .update(appointmentsTable)
+      .set({ status: "concluido" })
+      .where(eq(appointmentsTable.id, id))
+      .returning();
+
+    await applyBillingRules(id, "concluido", oldStatus, clinicId);
+
+    await logAudit({
+      userId: authReq.userId,
+      patientId: details.patientId,
+      action: "update",
+      entityType: "appointment",
+      entityId: id,
+      summary: `Status: ${oldStatus} → concluido`,
+    });
+
+    const updatedDetails = await getWithDetails(appointment.id, clinicId);
+    res.json(updatedDetails);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Recurring ────────────────────────────────────────────────────────────────
 router.post("/recurring", requirePermission("appointments.create"), async (req: AuthRequest, res) => {
   try {
     const body = validateBody(recurringAppointmentSchema, req.body, res);
@@ -738,7 +1044,7 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
 
     while (sessionCount < totalSessions && safetyLimit < 500) {
       safetyLimit++;
-      const dow = cursor.getUTCDay(); // 0=Sun ... 6=Sat
+      const dow = cursor.getUTCDay();
       if (daysOfWeek.includes(dow)) {
         const sessionDate = cursor.toISOString().slice(0, 10);
         const et = endTimeFn(startTime);
@@ -768,35 +1074,6 @@ router.post("/recurring", requirePermission("appointments.create"), async (req: 
     }
 
     res.status(201).json({ created: created.length, skipped: skipped.length, recurrenceGroupId, skippedDetails: skipped });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.post("/:id/complete", requirePermission("appointments.update"), async (req, res) => {
-  try {
-    const id = parseInt(req.params.id as string);
-    const clinicId = (req as AuthRequest).clinicId;
-
-    const details = await getWithDetails(id, clinicId);
-    if (!details) {
-      res.status(404).json({ error: "Not Found" });
-      return;
-    }
-
-    const oldStatus = details.status;
-
-    const [appointment] = await db
-      .update(appointmentsTable)
-      .set({ status: "concluido" })
-      .where(eq(appointmentsTable.id, id))
-      .returning();
-
-    await applyBillingRules(id, "concluido", oldStatus, clinicId);
-
-    const updatedDetails = await getWithDetails(appointment.id, clinicId);
-    res.json(updatedDetails);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

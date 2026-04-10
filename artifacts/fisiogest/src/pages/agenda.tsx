@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,12 +76,13 @@ const SLOT_HEIGHT = 64; // px per hour
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string; border: string; badge: string; cardBg: string; cardSub: string }> = {
-  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",       cardBg: "bg-blue-500",    cardSub: "text-white/70" },
-  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700", cardBg: "bg-emerald-500", cardSub: "text-white/70" },
-  compareceu: { label: "Compareceu", bg: "bg-teal-500",    text: "text-white", dot: "bg-teal-500",    border: "border-teal-600",    badge: "bg-teal-100 text-teal-700",       cardBg: "bg-teal-500",    cardSub: "text-white/70" },
-  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",     cardBg: "bg-slate-400",   cardSub: "text-white/70" },
-  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",         cardBg: "bg-red-400",     cardSub: "text-white/70" },
-  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700",   cardBg: "bg-orange-400",  cardSub: "text-white/70" },
+  agendado:   { label: "Agendado",   bg: "bg-blue-500",    text: "text-white", dot: "bg-blue-500",    border: "border-blue-600",    badge: "bg-blue-100 text-blue-700",         cardBg: "bg-blue-500",    cardSub: "text-white/70" },
+  confirmado: { label: "Confirmado", bg: "bg-emerald-500", text: "text-white", dot: "bg-emerald-500", border: "border-emerald-600", badge: "bg-emerald-100 text-emerald-700",   cardBg: "bg-emerald-500", cardSub: "text-white/70" },
+  compareceu: { label: "Compareceu", bg: "bg-teal-500",    text: "text-white", dot: "bg-teal-500",    border: "border-teal-600",    badge: "bg-teal-100 text-teal-700",         cardBg: "bg-teal-500",    cardSub: "text-white/70" },
+  concluido:  { label: "Concluído",  bg: "bg-slate-400",   text: "text-white", dot: "bg-slate-400",   border: "border-slate-500",   badge: "bg-slate-100 text-slate-600",       cardBg: "bg-slate-400",   cardSub: "text-white/70" },
+  cancelado:  { label: "Cancelado",  bg: "bg-red-400",     text: "text-white", dot: "bg-red-400",     border: "border-red-500",     badge: "bg-red-100 text-red-700",           cardBg: "bg-red-400",     cardSub: "text-white/70" },
+  faltou:     { label: "Faltou",     bg: "bg-orange-400",  text: "text-white", dot: "bg-orange-400",  border: "border-orange-500",  badge: "bg-orange-100 text-orange-700",     cardBg: "bg-orange-400",  cardSub: "text-white/70" },
+  remarcado:  { label: "Remarcado",  bg: "bg-purple-400",  text: "text-white", dot: "bg-purple-400",  border: "border-purple-500",  badge: "bg-purple-100 text-purple-700",     cardBg: "bg-purple-400",  cardSub: "text-white/70" },
 };
 
 type Appointment = AppointmentWithDetails;
@@ -1108,6 +1110,11 @@ function AppointmentDetailModal({
   const deleteMutation = useDeleteAppointment();
   const completeMutation = useCompleteAppointment();
 
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: appointment.date, startTime: appointment.startTime });
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
+
   const cfg = STATUS_CONFIG[appointment.status] || STATUS_CONFIG.agendado;
   const isBusy = updateMutation.isPending || deleteMutation.isPending || completeMutation.isPending;
 
@@ -1121,14 +1128,67 @@ function AppointmentDetailModal({
     );
   };
 
-  const handleStatusChange = (newStatus: string) => {
+  const executeStatusChange = (newStatus: string) => {
     updateMutation.mutate(
       { id: appointment.id, data: { status: newStatus as UpdateAppointmentRequestStatus } },
       {
-        onSuccess: () => { toast({ title: `Status: ${STATUS_CONFIG[newStatus]?.label}` }); onRefresh(); },
-        onError: () => toast({ variant: "destructive", title: "Erro ao alterar status." }),
+        onSuccess: () => {
+          toast({ title: `Status: ${STATUS_CONFIG[newStatus]?.label}` });
+          onRefresh();
+          if (newStatus === "faltou") {
+            toast({
+              title: "Paciente não compareceu",
+              description: "Deseja remarcar para outro horário?",
+              action: (
+                <button
+                  onClick={() => setIsRescheduling(true)}
+                  className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium transition-colors hover:bg-secondary focus:outline-none"
+                >
+                  Remarcar
+                </button>
+              ) as any,
+            });
+          }
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Erro ao alterar status.";
+          toast({ variant: "destructive", title: "Erro", description: msg });
+        },
       }
     );
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    if (newStatus === "cancelado" || newStatus === "faltou") {
+      setPendingStatus(newStatus);
+      return;
+    }
+    executeStatusChange(newStatus);
+  };
+
+  const handleReschedule = async () => {
+    setRescheduleBusy(true);
+    try {
+      const token = localStorage.getItem("fisiogest_token");
+      const res = await fetch(`/api/appointments/${appointment.id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(rescheduleForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: "Erro ao remarcar", description: err.message || "Verifique o horário e tente novamente." });
+        return;
+      }
+      toast({ title: "Remarcado com sucesso!", description: `Nova consulta em ${rescheduleForm.date} às ${rescheduleForm.startTime}.` });
+      setIsRescheduling(false);
+      onRefresh();
+      onClose();
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao remarcar." });
+    } finally {
+      setRescheduleBusy(false);
+    }
   };
 
   const handleComplete = () => {
@@ -1174,6 +1234,7 @@ function AppointmentDetailModal({
   };
 
   return (
+    <>
     <Dialog open onOpenChange={onClose}>
       <DialogContent className={cn("border-none shadow-2xl rounded-3xl", isGroupSession ? "sm:max-w-[520px]" : "sm:max-w-[480px]")}>
         <DialogHeader>
@@ -1430,6 +1491,12 @@ function AppointmentDetailModal({
                     <RefreshCw className="w-3.5 h-3.5 mr-1" /> Reativar
                   </Button>
                 )}
+                {(appointment.status === "cancelado" || appointment.status === "faltou") && (
+                  <Button size="sm" variant="outline" className="rounded-xl border-purple-200 text-purple-700 hover:bg-purple-50"
+                    onClick={() => setIsRescheduling(true)} disabled={isBusy}>
+                    <Repeat className="w-3.5 h-3.5 mr-1" /> Remarcar
+                  </Button>
+                )}
                 {appointment.status !== "cancelado" && appointment.status !== "faltou" && (
                   <Button size="sm" className="rounded-xl"
                     onClick={handleComplete} disabled={isBusy}>
@@ -1495,6 +1562,66 @@ function AppointmentDetailModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Confirmation dialog for destructive status changes */}
+    <AlertDialog open={!!pendingStatus} onOpenChange={(open) => { if (!open) setPendingStatus(null); }}>
+      <AlertDialogContent className="rounded-2xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {pendingStatus === "cancelado" ? "Cancelar consulta?" : "Marcar como faltou?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {pendingStatus === "cancelado"
+              ? "Esta ação cancelará a consulta. Lançamentos financeiros gerados serão estornados automaticamente."
+              : "O paciente será marcado como ausente. Um lançamento de taxa de no-show poderá ser gerado conforme política da clínica."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setPendingStatus(null)}>Voltar</AlertDialogCancel>
+          <AlertDialogAction
+            className={pendingStatus === "cancelado" ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"}
+            onClick={() => {
+              if (pendingStatus) {
+                executeStatusChange(pendingStatus);
+                setPendingStatus(null);
+              }
+            }}
+          >
+            {pendingStatus === "cancelado" ? "Sim, cancelar" : "Sim, marcar faltou"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Reschedule dialog */}
+    <Dialog open={isRescheduling} onOpenChange={(open) => { if (!open) setIsRescheduling(false); }}>
+      <DialogContent className="sm:max-w-[380px] rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>Remarcar consulta</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-slate-500">Selecione a nova data e horário para o paciente <strong>{appointment.patient?.name}</strong>.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Nova data</Label>
+              <DatePickerPTBR value={rescheduleForm.date} onChange={(v) => setRescheduleForm(f => ({ ...f, date: v }))} className="rounded-xl h-10" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Novo horário</Label>
+              <TimeInputPTBR value={rescheduleForm.startTime} onChange={(v) => setRescheduleForm(f => ({ ...f, startTime: v }))} className="rounded-xl h-10" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="rounded-xl" onClick={() => setIsRescheduling(false)}>Cancelar</Button>
+          <Button className="rounded-xl" onClick={handleReschedule} disabled={rescheduleBusy}>
+            {rescheduleBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Repeat className="w-4 h-4 mr-1" />}
+            Confirmar remarcação
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

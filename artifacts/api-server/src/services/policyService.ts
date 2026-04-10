@@ -4,7 +4,7 @@
  * Executa três regras por clínica:
  * 1. Auto-confirmação: agendamentos com status "agendado" que estão dentro
  *    da janela `autoConfirmHours` horas antes do horário marcado são
- *    automaticamente confirmados.
+ *    automaticamente confirmados (confirmedBy = "sistema").
  * 2. No-show: agendamentos "agendado" ou "confirmado" cujo horário já passou
  *    são marcados como "faltou".
  * 3. Taxa de no-show: se `noShowFeeEnabled`, gera um lançamento financeiro
@@ -38,7 +38,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
     details: [],
   };
 
-  // Fetch all active clinics that have at least one policy configured
   const clinics = await db
     .select()
     .from(clinicsTable)
@@ -48,7 +47,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
     try {
       // ── 1. AUTO-CONFIRM ──────────────────────────────────────────────────
       if (clinic.autoConfirmHours && clinic.autoConfirmHours > 0) {
-        // Find "agendado" appointments starting within the next autoConfirmHours
         const toAutoConfirm = await db
           .select({ id: appointmentsTable.id })
           .from(appointmentsTable)
@@ -56,7 +54,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
             and(
               eq(appointmentsTable.clinicId, clinic.id),
               eq(appointmentsTable.status, "agendado"),
-              // The appointment starts within the next autoConfirmHours hours from now
               sql`(
                 (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.startTime})::timestamp
                 BETWEEN NOW() AT TIME ZONE 'America/Sao_Paulo'
@@ -69,7 +66,11 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           try {
             await db
               .update(appointmentsTable)
-              .set({ status: "confirmado" })
+              .set({
+                status: "confirmado",
+                confirmedBy: "sistema",
+                confirmedAt: new Date(),
+              })
               .where(eq(appointmentsTable.id, appt.id));
             result.autoConfirmed++;
             result.details.push({ clinicId: clinic.id, action: "auto_confirmed", appointmentId: appt.id });
@@ -81,7 +82,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
       }
 
       // ── 2. NO-SHOW DETECTION ─────────────────────────────────────────────
-      // Find appointments in "agendado" or "confirmado" whose end_time has already passed today or before
       const noShowCandidates = await db
         .select({
           id: appointmentsTable.id,
@@ -95,7 +95,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           and(
             eq(appointmentsTable.clinicId, clinic.id),
             inArray(appointmentsTable.status, ["agendado", "confirmado"]),
-            // Appointment end time is in the past
             sql`(
               (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.endTime})::timestamp
               < NOW() AT TIME ZONE 'America/Sao_Paulo'
@@ -114,7 +113,6 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
 
           // ── 3. NO-SHOW FEE ───────────────────────────────────────────────
           if (clinic.noShowFeeEnabled && clinic.noShowFeeAmount) {
-            // Avoid duplicate fee records for the same appointment
             const existing = await db
               .select({ id: financialRecordsTable.id })
               .from(financialRecordsTable)

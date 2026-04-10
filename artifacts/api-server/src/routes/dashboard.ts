@@ -35,6 +35,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
     const patFilter = patientClinicFilter(authReq);
     const finFilter = financialClinicFilter(authReq);
 
+    // Today's appointments: exclude cancelled and rescheduled — they won't happen
     const todayAppts = await db
       .select({
         appointment: appointmentsTable,
@@ -44,7 +45,13 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .from(appointmentsTable)
       .leftJoin(patientsTable, eq(appointmentsTable.patientId, patientsTable.id))
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
-      .where(and(eq(appointmentsTable.date, today), apptFilter ?? undefined))
+      .where(
+        and(
+          eq(appointmentsTable.date, today),
+          sql`${appointmentsTable.status} NOT IN ('cancelado', 'remarcado')`,
+          apptFilter ?? undefined
+        )
+      )
       .orderBy(appointmentsTable.startTime);
 
     const upcomingAppts = await db
@@ -59,7 +66,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
       .where(
         and(
           gt(appointmentsTable.date, today),
-          sql`${appointmentsTable.status} NOT IN ('cancelado', 'concluido', 'faltou')`,
+          sql`${appointmentsTable.status} NOT IN ('cancelado', 'concluido', 'faltou', 'remarcado')`,
           apptFilter ?? undefined
         )
       )
@@ -91,6 +98,7 @@ router.get("/", requirePermission("patients.read"), async (req, res) => {
         and(
           gte(appointmentsTable.date, startDate),
           lte(appointmentsTable.date, endDate),
+          sql`${appointmentsTable.status} NOT IN ('cancelado', 'remarcado')`,
           apptFilter ?? undefined
         )
       );
