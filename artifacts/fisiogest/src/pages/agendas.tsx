@@ -261,7 +261,7 @@ export default function AgendasPage() {
       description: form.description.trim() || null,
       type: form.type,
       professionalId: form.type === "professional" && form.professionalId ? parseInt(form.professionalId) : null,
-      workingDays: form.workingDays,
+      workingDays: form.workingDays.map(Number),
       startTime: form.startTime,
       endTime: form.endTime,
       slotDurationMinutes: parseInt(form.slotDurationMinutes),
