@@ -56,8 +56,8 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
               eq(appointmentsTable.status, "agendado"),
               sql`(
                 (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.startTime})::timestamp
-                BETWEEN NOW() AT TIME ZONE 'America/Sao_Paulo'
-                AND (NOW() AT TIME ZONE 'America/Sao_Paulo' + INTERVAL '${sql.raw(String(clinic.autoConfirmHours))} hours')
+                BETWEEN (NOW() AT TIME ZONE 'America/Sao_Paulo')
+                AND ((NOW() AT TIME ZONE 'America/Sao_Paulo') + INTERVAL '${sql.raw(String(clinic.autoConfirmHours))} hours')
               )`
             )
           );
