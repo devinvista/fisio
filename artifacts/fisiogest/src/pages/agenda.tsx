@@ -1508,6 +1508,33 @@ function AppointmentDetailModal({
             </div>
           )}
 
+          {/* Reschedule form (inline — avoids nested Dialog focus-trap issues) */}
+          {isRescheduling && (
+            <div className="space-y-3 bg-purple-50 rounded-2xl p-4 border border-purple-100">
+              <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider flex items-center gap-1.5">
+                <Repeat className="w-3.5 h-3.5" /> Remarcar consulta
+              </p>
+              <p className="text-sm text-slate-500">Selecione a nova data e horário para <strong>{appointment.patient?.name}</strong>.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Nova data</Label>
+                  <DatePickerPTBR value={rescheduleForm.date} onChange={(v) => setRescheduleForm(f => ({ ...f, date: v }))} className="rounded-xl h-10" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Novo horário</Label>
+                  <TimeInputPTBR value={rescheduleForm.startTime} onChange={(v) => setRescheduleForm(f => ({ ...f, startTime: v }))} className="rounded-xl h-10" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" className="rounded-xl flex-1 bg-purple-600 hover:bg-purple-700" onClick={handleReschedule} disabled={rescheduleBusy}>
+                  {rescheduleBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Repeat className="w-4 h-4 mr-1" />}
+                  Confirmar remarcação
+                </Button>
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setIsRescheduling(false)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+
           {/* Edit form */}
           {isEditing && (
             <div className="space-y-3 bg-slate-50 rounded-2xl p-4">
@@ -1593,34 +1620,6 @@ function AppointmentDetailModal({
       </AlertDialogContent>
     </AlertDialog>
 
-    {/* Reschedule dialog */}
-    <Dialog open={isRescheduling} onOpenChange={(open) => { if (!open) setIsRescheduling(false); }}>
-      <DialogContent className="sm:max-w-[380px] rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>Remarcar consulta</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <p className="text-sm text-slate-500">Selecione a nova data e horário para o paciente <strong>{appointment.patient?.name}</strong>.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Nova data</Label>
-              <DatePickerPTBR value={rescheduleForm.date} onChange={(v) => setRescheduleForm(f => ({ ...f, date: v }))} className="rounded-xl h-10" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Novo horário</Label>
-              <TimeInputPTBR value={rescheduleForm.startTime} onChange={(v) => setRescheduleForm(f => ({ ...f, startTime: v }))} className="rounded-xl h-10" />
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" className="rounded-xl" onClick={() => setIsRescheduling(false)}>Cancelar</Button>
-          <Button className="rounded-xl" onClick={handleReschedule} disabled={rescheduleBusy}>
-            {rescheduleBusy ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Repeat className="w-4 h-4 mr-1" />}
-            Confirmar remarcação
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
     </>
   );
 }
