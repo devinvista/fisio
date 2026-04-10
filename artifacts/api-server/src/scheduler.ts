@@ -54,6 +54,7 @@ export function startScheduler(): void {
         console.log(
           `[scheduler] Políticas concluídas: ` +
           `${result.autoConfirmed} auto-confirmados, ` +
+          `${result.autoCompleted} auto-concluídos, ` +
           `${result.noShowMarked} no-shows marcados, ` +
           `${result.noShowFeesGenerated} taxas geradas, ` +
           `${result.errors} erros`

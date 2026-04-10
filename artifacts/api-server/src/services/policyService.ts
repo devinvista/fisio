@@ -23,6 +23,7 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 
 export interface PolicyRunResult {
   autoConfirmed: number;
+  autoCompleted: number;
   noShowMarked: number;
   noShowFeesGenerated: number;
   errors: number;
@@ -32,6 +33,7 @@ export interface PolicyRunResult {
 export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
   const result: PolicyRunResult = {
     autoConfirmed: 0,
+    autoCompleted: 0,
     noShowMarked: 0,
     noShowFeesGenerated: 0,
     errors: 0,
@@ -158,6 +160,35 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
         }
       }
+      // ── 3. AUTO-COMPLETE: compareceu → concluido ─────────────────────────
+      const toAutoComplete = await db
+        .select({ id: appointmentsTable.id })
+        .from(appointmentsTable)
+        .where(
+          and(
+            eq(appointmentsTable.clinicId, clinic.id),
+            eq(appointmentsTable.status, "compareceu"),
+            sql`(
+              (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.endTime})::timestamp
+              < NOW() AT TIME ZONE 'America/Sao_Paulo'
+            )`
+          )
+        );
+
+      for (const appt of toAutoComplete) {
+        try {
+          await db
+            .update(appointmentsTable)
+            .set({ status: "concluido" })
+            .where(eq(appointmentsTable.id, appt.id));
+          result.autoCompleted++;
+          result.details.push({ clinicId: clinic.id, action: "auto_completed", appointmentId: appt.id });
+        } catch (err: any) {
+          result.errors++;
+          result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
+        }
+      }
+
     } catch (err: any) {
       result.errors++;
       result.details.push({ clinicId: clinic.id, action: "clinic_error", error: String(err.message) });

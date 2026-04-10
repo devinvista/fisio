@@ -141,6 +141,11 @@ export default function Agenda() {
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<number | null>(null);
   const [editingBlock, setEditingBlock] = useState<BlockedSlot | null>(null);
+  const [showRemarcado, setShowRemarcado] = useState(false);
+  const [quickCheckInId, setQuickCheckInId] = useState<number | null>(null);
+  const [batchCompleting, setBatchCompleting] = useState(false);
+  const quickUpdateMutation = useUpdateAppointment();
+  const quickCompleteMutation = useCompleteAppointment();
 
   const { hasPermission, hasRole } = useAuth();
   const canFilterByProfessional = hasPermission("users.manage") || hasRole("secretaria");
@@ -213,7 +218,44 @@ export default function Agenda() {
 
   const filteredAppointments = appointments
     .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId)
-    .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId);
+    .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId)
+    .filter((a) => showRemarcado || a.status !== "remarcado");
+
+  // Today's appointments with "compareceu" status (for batch complete button)
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayCompareceu = appointments.filter(
+    (a) => a.date === todayStr && a.status === "compareceu"
+  );
+
+  const handleQuickCheckIn = (aptId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setQuickCheckInId(aptId);
+    quickUpdateMutation.mutate(
+      { id: aptId, data: { status: "compareceu" } },
+      {
+        onSuccess: () => { setQuickCheckInId(null); refetch(); },
+        onError: () => { setQuickCheckInId(null); toast({ variant: "destructive", title: "Erro ao registrar chegada." }); },
+      }
+    );
+  };
+
+  const handleBatchComplete = async () => {
+    if (todayCompareceu.length === 0) return;
+    setBatchCompleting(true);
+    try {
+      await Promise.all(
+        todayCompareceu.map((a) =>
+          new Promise<void>((resolve) => {
+            quickCompleteMutation.mutate({ id: a.id }, { onSuccess: () => resolve(), onError: () => resolve() });
+          })
+        )
+      );
+      toast({ title: `${todayCompareceu.length} consulta${todayCompareceu.length !== 1 ? "s" : ""} concluída${todayCompareceu.length !== 1 ? "s" : ""}!` });
+      refetch();
+    } finally {
+      setBatchCompleting(false);
+    }
+  };
 
   const { data: blockedSlots = [], refetch: refetchBlocked } = useQuery<BlockedSlot[]>({
     queryKey: ["blocked-slots", startDateStr, endDateStr, selectedScheduleId],
@@ -402,6 +444,39 @@ export default function Agenda() {
               Mês
             </button>
           </div>
+
+          {/* Batch complete: shown only when there are compareceu appointments today */}
+          {todayCompareceu.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 px-3 rounded-lg border-teal-300 text-teal-700 hover:bg-teal-50 gap-1.5"
+              onClick={handleBatchComplete}
+              disabled={batchCompleting}
+            >
+              {batchCompleting
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <CheckCircle className="w-3.5 h-3.5" />}
+              Concluir todos ({todayCompareceu.length})
+            </Button>
+          )}
+
+          {/* Toggle remarcados */}
+          <button
+            className={cn(
+              "h-9 px-3 rounded-lg text-xs font-medium border transition-colors",
+              showRemarcado
+                ? "border-purple-300 bg-purple-50 text-purple-700"
+                : "border-slate-200 text-slate-400 hover:bg-slate-50"
+            )}
+            onClick={() => setShowRemarcado((v) => !v)}
+            title={showRemarcado ? "Ocultar remarcados" : "Mostrar remarcados"}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
+              Remarcados
+            </span>
+          </button>
 
           {/* Block button */}
           <Button
@@ -746,11 +821,14 @@ export default function Agenda() {
 
                         const tiny = height < 36;
 
+                        const canQuickCheckIn = (apt.status === "agendado" || apt.status === "confirmado");
+                        const isCheckingIn = quickCheckInId === apt.id;
+
                         return (
                           <div
                             key={apt.id}
                             className={cn(
-                              "absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20",
+                              "absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20 group/card",
                               cfg.cardBg
                             )}
                             style={{
@@ -789,6 +867,25 @@ export default function Agenda() {
                                 </>
                               )}
                             </div>
+
+                            {/* Quick check-in button — visible on hover for agendado/confirmado */}
+                            {canQuickCheckIn && !tiny && (
+                              <div
+                                className="absolute bottom-0 left-0 right-0 flex justify-center pb-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  className="flex items-center gap-1 bg-white/25 hover:bg-white/40 text-white text-[9px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm transition-colors"
+                                  onClick={(e) => handleQuickCheckIn(apt.id, e)}
+                                  disabled={isCheckingIn}
+                                >
+                                  {isCheckingIn
+                                    ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                    : <CheckCircle className="w-2.5 h-2.5" />}
+                                  Chegou
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
