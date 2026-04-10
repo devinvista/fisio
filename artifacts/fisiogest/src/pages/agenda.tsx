@@ -195,6 +195,19 @@ export default function Agenda() {
       }))
     : HOUR_END;
 
+  // Use the smallest slot duration among active schedule(s) so the grid is
+  // always granular enough for all visible schedules.
+  const VALID_SLOT_DURATIONS = [15, 20, 30, 45, 60, 90];
+  const activeSlotDuration = effectiveSchedules
+    ? Math.min(...effectiveSchedules.map((s) => s.slotDurationMinutes))
+    : 30;
+  // Clamp to a valid duration that divides evenly into 60 min
+  const slotDuration = VALID_SLOT_DURATIONS.includes(activeSlotDuration)
+    ? activeSlotDuration
+    : 30;
+  const slotsPerHour = Math.round(60 / slotDuration);
+  const slotPxHeight = SLOT_HEIGHT / slotsPerHour;
+
   const activeTotalHours = activeHourEnd - activeHourStart;
   const hours = Array.from({ length: activeTotalHours }).map((_, i) => activeHourStart + i);
 
@@ -331,8 +344,8 @@ export default function Agenda() {
     setSelectedAppointment(null);
   };
 
-  const handleSlotClick = (date: Date, hour: number, half: 0 | 30 = 0) => {
-    const clickedMin = hour * 60 + half;
+  const handleSlotClick = (date: Date, hour: number, offsetMin: number = 0) => {
+    const clickedMin = hour * 60 + offsetMin;
     const dayAppts = getDayAppointments(date);
     const dayBlocked = getDayBlockedSlots(date);
 
@@ -364,7 +377,7 @@ export default function Agenda() {
 
     setSelectedSlot({
       date: format(date, "yyyy-MM-dd"),
-      time: `${String(hour).padStart(2, "0")}:${half === 30 ? "30" : "00"}`,
+      time: `${String(hour).padStart(2, "0")}:${String(offsetMin).padStart(2, "0")}`,
     });
     setIsNewModalOpen(true);
   };
@@ -674,39 +687,38 @@ export default function Agenda() {
                       )}
                       style={{ height: activeTotalHours * SLOT_HEIGHT }}
                     >
-                      {/* Hour lines — split into two 30-min clickable halves */}
+                      {/* Hour rows — sub-slots match the schedule's slotDurationMinutes */}
                       {hours.map((h) => (
                         <div
                           key={h}
                           className="absolute left-0 right-0 border-b border-slate-100"
                           style={{ top: (h - activeHourStart) * SLOT_HEIGHT, height: SLOT_HEIGHT }}
                         >
-                          {/* Top half: :00 */}
-                          <div
-                            className="absolute left-0 right-0 cursor-pointer hover:bg-primary/5 transition-colors group/half"
-                            style={{ top: 0, height: SLOT_HEIGHT / 2 }}
-                            onClick={() => handleSlotClick(day, h, 0)}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/half:opacity-100 transition-opacity pointer-events-none">
-                              <span className="text-[9px] font-semibold text-primary/60 bg-primary/10 rounded px-1">
-                                +{String(h).padStart(2, "0")}:00
-                              </span>
-                            </div>
-                          </div>
-                          {/* Half-hour divider */}
-                          <div className="absolute left-0 right-0 border-b border-slate-100/80" style={{ top: SLOT_HEIGHT / 2 }} />
-                          {/* Bottom half: :30 */}
-                          <div
-                            className="absolute left-0 right-0 cursor-pointer hover:bg-primary/5 transition-colors group/half"
-                            style={{ top: SLOT_HEIGHT / 2, height: SLOT_HEIGHT / 2 }}
-                            onClick={() => handleSlotClick(day, h, 30)}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/half:opacity-100 transition-opacity pointer-events-none">
-                              <span className="text-[9px] font-semibold text-primary/60 bg-primary/10 rounded px-1">
-                                +{String(h).padStart(2, "0")}:30
-                              </span>
-                            </div>
-                          </div>
+                          {Array.from({ length: slotsPerHour }).map((_, si) => {
+                            const offsetMin = si * slotDuration;
+                            const mm = String(offsetMin).padStart(2, "0");
+                            return (
+                              <div key={si}>
+                                {si > 0 && (
+                                  <div
+                                    className="absolute left-0 right-0 border-b border-slate-100/60"
+                                    style={{ top: si * slotPxHeight, height: 0 }}
+                                  />
+                                )}
+                                <div
+                                  className="absolute left-0 right-0 cursor-pointer hover:bg-primary/5 transition-colors group/slot"
+                                  style={{ top: si * slotPxHeight, height: slotPxHeight }}
+                                  onClick={() => handleSlotClick(day, h, offsetMin)}
+                                >
+                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none">
+                                    <span className="text-[9px] font-semibold text-primary/60 bg-primary/10 rounded px-1">
+                                      +{String(h).padStart(2, "0")}:{mm}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       ))}
 
