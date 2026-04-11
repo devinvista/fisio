@@ -8,12 +8,28 @@ import { logAudit } from "../lib/auditLog.js";
 import { parseIntParam, validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
+// Accepts a valid YYYY-MM-DD string, an empty string (treated as null), or null/undefined.
+const birthDateField = z
+  .union([
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birthDate deve estar no formato YYYY-MM-DD"),
+    z.literal(""),
+    z.null(),
+  ])
+  .optional()
+  .transform((v) => (v === "" ? null : v ?? null));
+
+// Accepts a valid e-mail, an empty string (treated as null), or null/undefined.
+const emailField = z
+  .union([z.email("E-mail inválido"), z.literal(""), z.null()])
+  .optional()
+  .transform((v) => (v === "" ? null : v ?? null));
+
 const createPatientSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(200),
   cpf: z.string().min(1, "CPF é obrigatório"),
   phone: z.string().min(1, "Telefone é obrigatório").max(30),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "birthDate deve estar no formato YYYY-MM-DD").optional().nullable(),
-  email: z.email("E-mail inválido").optional().nullable(),
+  birthDate: birthDateField,
+  email: emailField,
   address: z.string().max(500).optional().nullable(),
   profession: z.string().max(200).optional().nullable(),
   emergencyContact: z.string().max(500).optional().nullable(),

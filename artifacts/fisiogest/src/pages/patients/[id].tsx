@@ -6176,8 +6176,20 @@ function EditPatientDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Convert empty strings to null for optional fields so the backend
+    // schema (which only accepts a valid value, null, or undefined) doesn't
+    // reject empty inputs.
+    const payload = {
+      ...form,
+      birthDate: form.birthDate || null,
+      email: form.email || null,
+      address: form.address || null,
+      profession: form.profession || null,
+      emergencyContact: form.emergencyContact || null,
+      notes: form.notes || null,
+    };
     mutation.mutate(
-      { id: patient.id, data: form },
+      { id: patient.id, data: payload },
       {
         onSuccess: () => {
           toast({ title: "Cadastro atualizado", description: "Os dados do paciente foram salvos com sucesso." });
