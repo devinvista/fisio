@@ -1796,6 +1796,11 @@ function RecurringExpenseModal({ open, editData, onClose, onSuccess }: {
 
 // ─── Modal: New Financial Record ──────────────────────────────────────────────
 
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
   const [type, setType] = useState<"receita" | "despesa">("despesa");
   const [amount, setAmount] = useState("");
@@ -1803,6 +1808,7 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
   const [category, setCategory] = useState("");
   const [expenseSubtype, setExpenseSubtype] = useState<"geral" | "procedimento">("geral");
   const [procedureId, setProcedureId] = useState<string>("");
+  const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const { data: procedures } = useListProcedures();
@@ -1818,6 +1824,7 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
     if (!open) {
       setType("despesa"); setAmount(""); setDescription("");
       setCategory(""); setExpenseSubtype("geral"); setProcedureId("");
+      setDate(todayISO());
     }
   }, [open]);
 
@@ -1834,6 +1841,7 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
           description,
           category: category || undefined,
           procedureId: procedureId ? Number(procedureId) : undefined,
+          paymentDate: date || todayISO(),
         } as any,
       });
       toast({ title: "Lançamento criado com sucesso." });
@@ -1906,6 +1914,16 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
+              <Label>Data *</Label>
+              <Input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                max={`${new Date().getFullYear() + 1}-12-31`}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label>Valor (R$) *</Label>
               <Input
                 type="number" min="0" step="0.01"
@@ -1913,15 +1931,16 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
                 placeholder="0,00" className="rounded-xl"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Categoria</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
-                <SelectContent>
-                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Categoria</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+              <SelectContent>
+                {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>

@@ -16,6 +16,7 @@ const createRecordSchema = z.object({
   category: z.string().max(100).optional().nullable(),
   patientId: z.number().int().positive().optional().nullable(),
   procedureId: z.number().int().positive().optional().nullable(),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate deve estar no formato YYYY-MM-DD").optional(),
 });
 
 const createPaymentSchema = z.object({
@@ -62,6 +63,18 @@ function monthDateRange(year: number, month: number): { startDate: string; endDa
   };
 }
 
+// Unified date filter used by every financial endpoint:
+//  1. paymentDate in range (normal paid records)
+//  2. paymentDate IS NULL but dueDate in range (pending/unpaid records)
+//  3. Both null → fall back to createdAt (legacy records without any date)
+function recordDateFilter(startDate: string, endDate: string) {
+  return or(
+    and(isNotNull(financialRecordsTable.paymentDate), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate)),
+    and(isNull(financialRecordsTable.paymentDate), isNotNull(financialRecordsTable.dueDate), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate)),
+    and(isNull(financialRecordsTable.paymentDate), isNull(financialRecordsTable.dueDate), gte(sql`DATE(${financialRecordsTable.createdAt})`, startDate), lte(sql`DATE(${financialRecordsTable.createdAt})`, endDate))
+  )!;
+}
+
 router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
     const brt = nowBRT();
@@ -77,11 +90,7 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
     const records = await db
       .select()
       .from(financialRecordsTable)
-      .where(
-        cc
-          ? and(cc, gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-          : and(gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-      );
+      .where(cc ? and(cc, recordDateFilter(startDate, endDate)) : recordDateFilter(startDate, endDate));
 
     const monthlyRevenue = records
       .filter((r) => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
@@ -122,8 +131,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
+          : and(eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
       )
       .groupBy(proceduresTable.category);
 
@@ -137,8 +146,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-          : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+          ? and(cc, eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
+          : and(eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
       )
       .groupBy(proceduresTable.name)
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
@@ -264,9 +273,10 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
   try {
     const body = validateBody(createRecordSchema, req.body, res);
     if (!body) return;
-    const { type, amount, description, category, patientId, procedureId } = body;
+    const { type, amount, description, category, patientId, procedureId, paymentDate } = body;
 
-    const today = todayBRT();
+    // Use the user-supplied date (for backdating/future entries) or fall back to today.
+    const dateToUse = paymentDate ?? todayBRT();
 
     const [record] = await db
       .insert(financialRecordsTable)
@@ -278,10 +288,8 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
         patientId: patientId ?? null,
         procedureId: procedureId ?? null,
         clinicId: req.clinicId ?? null,
-        // Default both dates to today so the record always appears in the
-        // current month when the listing is filtered by month/year.
-        paymentDate: today,
-        dueDate: today,
+        paymentDate: dateToUse,
+        dueDate: dateToUse,
       })
       .returning();
 
@@ -850,11 +858,7 @@ router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest,
       const records = await db
         .select()
         .from(financialRecordsTable)
-        .where(
-          cc
-            ? and(cc, gte(financialRecordsTable.paymentDate, s), lte(financialRecordsTable.paymentDate, e))
-            : and(gte(financialRecordsTable.paymentDate, s), lte(financialRecordsTable.paymentDate, e))
-        );
+        .where(cc ? and(cc, recordDateFilter(s, e)) : recordDateFilter(s, e));
 
       const revenue = records
         .filter(r => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
