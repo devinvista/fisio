@@ -214,8 +214,17 @@ router.get("/records", requirePermission("financial.read"), async (req: AuthRequ
       const { startDate, endDate } = monthDateRange(year, month);
       conditions.push(
         or(
-          and(gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate)),
-          and(isNull(financialRecordsTable.paymentDate), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate))
+          // 1. Record has a paymentDate and it falls in the month
+          and(isNotNull(financialRecordsTable.paymentDate), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate)),
+          // 2. No paymentDate but dueDate falls in the month
+          and(isNull(financialRecordsTable.paymentDate), isNotNull(financialRecordsTable.dueDate), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate)),
+          // 3. Both dates are null — fall back to createdAt (handles legacy records)
+          and(
+            isNull(financialRecordsTable.paymentDate),
+            isNull(financialRecordsTable.dueDate),
+            gte(sql`DATE(${financialRecordsTable.createdAt})`, startDate),
+            lte(sql`DATE(${financialRecordsTable.createdAt})`, endDate)
+          )
         )!
       );
     }
@@ -257,6 +266,8 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
     if (!body) return;
     const { type, amount, description, category, patientId, procedureId } = body;
 
+    const today = todayBRT();
+
     const [record] = await db
       .insert(financialRecordsTable)
       .values({
@@ -267,6 +278,10 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
         patientId: patientId ?? null,
         procedureId: procedureId ?? null,
         clinicId: req.clinicId ?? null,
+        // Default both dates to today so the record always appears in the
+        // current month when the listing is filtered by month/year.
+        paymentDate: today,
+        dueDate: today,
       })
       .returning();
 
