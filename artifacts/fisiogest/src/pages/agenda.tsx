@@ -213,6 +213,12 @@ export default function Agenda() {
 
   const toTop = (minutes: number) => minutesToTop(minutes, activeHourStart);
 
+  const scheduleColorMap = useMemo(() => {
+    const map = new Map<number, string>();
+    schedules.forEach((s) => map.set(s.id, s.color));
+    return map;
+  }, [schedules]);
+
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const allWeekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
@@ -773,6 +779,9 @@ export default function Agenda() {
                           const firstApt = grpApts[0];
 
                           const tiny = height < 36;
+                          const grpScheduleColor = (!selectedScheduleId && activeSchedules.length >= 2 && firstApt.scheduleId)
+                            ? scheduleColorMap.get(firstApt.scheduleId)
+                            : undefined;
 
                           return (
                             <div
@@ -786,6 +795,13 @@ export default function Agenda() {
                               }}
                               onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
                             >
+                              {grpScheduleColor && (
+                                <div
+                                  className="absolute top-0 right-0 bottom-0 w-1 rounded-r-xl"
+                                  style={{ backgroundColor: grpScheduleColor }}
+                                  title={schedules.find((s) => s.id === firstApt.scheduleId)?.name}
+                                />
+                              )}
                               <div className="px-2.5 py-2 h-full flex flex-col text-white gap-0.5">
                                 {tiny ? (
                                   /* Tiny: just time + occupancy badge */
@@ -863,6 +879,8 @@ export default function Agenda() {
 
                         const canQuickCheckIn = (apt.status === "agendado" || apt.status === "confirmado");
                         const isCheckingIn = quickCheckInId === apt.id;
+                        const showScheduleIndicator = !selectedScheduleId && activeSchedules.length >= 2;
+                        const aptScheduleColor = apt.scheduleId ? scheduleColorMap.get(apt.scheduleId) : undefined;
 
                         return (
                           <div
@@ -879,6 +897,13 @@ export default function Agenda() {
                             }}
                             onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
                           >
+                            {showScheduleIndicator && aptScheduleColor && (
+                              <div
+                                className="absolute top-0 right-0 bottom-0 w-1 rounded-r-xl"
+                                style={{ backgroundColor: aptScheduleColor }}
+                                title={schedules.find((s) => s.id === apt.scheduleId)?.name}
+                              />
+                            )}
                             <div className="px-2.5 py-2 h-full flex flex-col text-white gap-0.5">
                               {tiny ? (
                                 <p className="text-[9px] font-bold leading-none truncate">
