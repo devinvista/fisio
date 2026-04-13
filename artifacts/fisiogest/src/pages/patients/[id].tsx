@@ -6176,17 +6176,17 @@ function EditPatientDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Convert empty strings to null for optional fields so the backend
-    // schema (which only accepts a valid value, null, or undefined) doesn't
-    // reject empty inputs.
+    // Convert empty strings to undefined for optional fields so the generated
+    // API client type (string | undefined) is satisfied. The backend Zod schema
+    // treats undefined as "not provided" and stores null in the database.
     const payload = {
       ...form,
-      birthDate: form.birthDate || null,
-      email: form.email || null,
-      address: form.address || null,
-      profession: form.profession || null,
-      emergencyContact: form.emergencyContact || null,
-      notes: form.notes || null,
+      birthDate: form.birthDate || undefined,
+      email: form.email || undefined,
+      address: form.address || undefined,
+      profession: form.profession || undefined,
+      emergencyContact: form.emergencyContact || undefined,
+      notes: form.notes || undefined,
     };
     mutation.mutate(
       { id: patient.id, data: payload },
