@@ -620,6 +620,12 @@ export default function Agenda() {
             {weekDays.map((day, i) => {
               const dayAppts = getDayAppointments(day);
               const today = isToday(day);
+              const dayNum = getDay(day);
+              const schedulesOnDay = (!selectedScheduleId && activeSchedules.length >= 2)
+                ? activeSchedules.filter((s) =>
+                    s.workingDays.split(",").map((d) => parseInt(d.trim(), 10)).includes(dayNum)
+                  )
+                : [];
               return (
                 <div
                   key={i}
@@ -641,6 +647,18 @@ export default function Agenda() {
                       {format(day, "d")}
                     </span>
                   </div>
+                  {schedulesOnDay.length > 0 && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      {schedulesOnDay.map((s) => (
+                        <span
+                          key={s.id}
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: s.color }}
+                          title={s.name}
+                        />
+                      ))}
+                    </div>
+                  )}
                   {dayAppts.length > 0 && (
                     <p className="text-[9px] text-slate-400 mt-0.5">
                       {dayAppts.length} consulta{dayAppts.length !== 1 ? "s" : ""}
