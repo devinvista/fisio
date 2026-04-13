@@ -71,3 +71,14 @@ Thumbs.db
 /.vs/fisio/v17/.wsuo
 /.vs/fisio/v17/DocumentLayout.json
 /.vs/fisio/FileContentIndex/0e7004df-76a0-4165-9770-45777003e34d.vsidx
+/.agents/skills/brainstorming/scripts/start-server.sh
+/.vs/fisio/FileContentIndex/1161653f-e194-4ef6-ad42-81aefb5a856b.vsidx
+/.vs/fisio/FileContentIndex/1db5f382-a189-43b8-a164-38a28a188d39.vsidx
+/.vs/fisio/FileContentIndex/26b19047-d17e-4002-be9c-40d1cff00fe5.vsidx
+/.vs/fisio/FileContentIndex/8ed6ab46-020d-4eef-8cac-5e84419e84ff.vsidx
+/.vs/fisio/FileContentIndex/9248744b-5b69-46f4-8997-774c3d026436.vsidx
+/.vs/slnx.sqlite-journal
+/.vs/fisio/FileContentIndex/6439120f-b695-4364-8d0a-d680ce28b9f5.vsidx
+/.vs/fisio/FileContentIndex/8ff00b50-d3b9-4b51-b279-e9734225a051.vsidx
+/.agents/skills/brainstorming/scripts/stop-server.sh
+*.vsidx
