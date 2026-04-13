@@ -16,7 +16,22 @@ const createRecordSchema = z.object({
   category: z.string().max(100).optional().nullable(),
   patientId: z.number().int().positive().optional().nullable(),
   procedureId: z.number().int().positive().optional().nullable(),
-  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate deve estar no formato YYYY-MM-DD").optional(),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dueDate deve estar no formato YYYY-MM-DD").optional().nullable(),
+  status: z.enum(["pendente", "pago", "cancelado"]).optional().default("pago"),
+  paymentMethod: z.string().max(50).optional().nullable(),
+});
+
+const updateRecordSchema = z.object({
+  type: z.enum(["receita", "despesa"]).optional(),
+  amount: positiveNumber.optional(),
+  description: z.string().min(1).max(500).optional(),
+  category: z.string().max(100).optional().nullable(),
+  procedureId: z.number().int().positive().optional().nullable(),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  status: z.enum(["pendente", "pago", "cancelado", "estornado"]).optional(),
+  paymentMethod: z.string().max(50).optional().nullable(),
 });
 
 const createPaymentSchema = z.object({
@@ -273,10 +288,13 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
   try {
     const body = validateBody(createRecordSchema, req.body, res);
     if (!body) return;
-    const { type, amount, description, category, patientId, procedureId, paymentDate } = body;
+    const { type, amount, description, category, patientId, procedureId, paymentDate, dueDate, status, paymentMethod } = body;
 
-    // Use the user-supplied date (for backdating/future entries) or fall back to today.
-    const dateToUse = paymentDate ?? todayBRT();
+    const today = todayBRT();
+    // If status is pendente, paymentDate should be null (not yet paid)
+    const resolvedPaymentDate = status === "pendente" ? null : (paymentDate ?? today);
+    // dueDate: explicit or fall back to paymentDate or today
+    const resolvedDueDate = dueDate ?? paymentDate ?? today;
 
     const [record] = await db
       .insert(financialRecordsTable)
@@ -288,8 +306,10 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
         patientId: patientId ?? null,
         procedureId: procedureId ?? null,
         clinicId: req.clinicId ?? null,
-        paymentDate: dateToUse,
-        dueDate: dateToUse,
+        paymentDate: resolvedPaymentDate,
+        dueDate: resolvedDueDate,
+        status: status ?? "pago",
+        paymentMethod: paymentMethod ?? null,
       })
       .returning();
 
@@ -304,6 +324,65 @@ router.post("/records", requirePermission("financial.write"), async (req: AuthRe
     }
 
     res.status(201).json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.patch("/records/:id", requirePermission("financial.write"), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const body = validateBody(updateRecordSchema, req.body, res);
+    if (!body) return;
+
+    const cc = clinicCond(req);
+    const whereClause = cc ? and(eq(financialRecordsTable.id, id), cc) : eq(financialRecordsTable.id, id);
+
+    const [existing] = await db.select().from(financialRecordsTable).where(whereClause);
+    if (!existing) {
+      res.status(404).json({ error: "Not Found", message: "Registro não encontrado" });
+      return;
+    }
+
+    const updates: Record<string, any> = {};
+    if (body.type !== undefined) updates.type = body.type;
+    if (body.amount !== undefined) updates.amount = String(body.amount);
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.category !== undefined) updates.category = body.category;
+    if (body.procedureId !== undefined) updates.procedureId = body.procedureId;
+    if (body.dueDate !== undefined) updates.dueDate = body.dueDate;
+    if (body.paymentMethod !== undefined) updates.paymentMethod = body.paymentMethod;
+    if (body.status !== undefined) updates.status = body.status;
+    // If status becomes pendente, clear paymentDate; otherwise use supplied or keep existing
+    if (body.status === "pendente") {
+      updates.paymentDate = null;
+    } else if (body.paymentDate !== undefined) {
+      updates.paymentDate = body.paymentDate;
+    }
+
+    const [record] = await db
+      .update(financialRecordsTable)
+      .set(updates)
+      .where(whereClause)
+      .returning();
+
+    await logAudit({
+      userId: req.userId,
+      action: "update",
+      entityType: "financial_record",
+      entityId: id,
+      patientId: record.patientId ?? null,
+      summary: `Lançamento editado: ${record.description} (R$ ${Number(record.amount).toFixed(2)})`,
+    });
+
+    let procedureName: string | null = null;
+    if (record.procedureId) {
+      const [proc] = await db.select({ name: proceduresTable.name }).from(proceduresTable).where(eq(proceduresTable.id, record.procedureId));
+      procedureName = proc?.name ?? null;
+    }
+
+    res.json({ ...record, procedureName });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

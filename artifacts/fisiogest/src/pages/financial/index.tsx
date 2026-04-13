@@ -70,6 +70,11 @@ const FREQUENCY_OPTIONS = [
 
 const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#14b8a6", "#f97316"];
 
+const PAYMENT_METHODS = [
+  "Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito",
+  "Transferência", "Boleto", "Cheque", "Outros",
+];
+
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
@@ -251,6 +256,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
   const [typeFilter, setTypeFilter] = useState<"all" | "receita" | "despesa">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; description: string; amount: number } | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [billingRunning, setBillingRunning] = useState(false);
   const [billingResult, setBillingResult] = useState<{ generated: number; skipped: number; recordIds: number[] } | null>(null);
@@ -303,7 +309,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
     }));
   }, [dashboard]);
 
-  const handleSuccess = () => { setIsModalOpen(false); refetchDash(); refetchRec(); };
+  const handleSuccess = () => { setIsModalOpen(false); setEditTarget(null); refetchDash(); refetchRec(); };
 
   const handleDeleteRecord = async () => {
     if (!deleteTarget) return;
@@ -764,42 +770,63 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-100">
-                    <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data</th>
+                    <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data/Vencimento</th>
                     <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Descrição</th>
                     <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:table-cell">Categoria</th>
-                    <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo</th>
+                    <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden lg:table-cell">Pagamento</th>
                     <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:table-cell">Status</th>
                     <th className="py-2.5 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Valor</th>
-                    <th className="py-2.5 px-3 w-10" />
+                    <th className="py-2.5 px-3 w-20" />
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((record, idx) => {
-                    const displayDate = (record as any).paymentDate ?? (record as any).dueDate ?? record.createdAt;
-                    const recStatus: string = (record as any).status ?? "pago";
-                    const statusCfg: Record<string, { label: string; dot: string; text: string }> = {
-                      pago: { label: "Pago", dot: "bg-emerald-400", text: "text-emerald-700" },
-                      pendente: { label: "Pendente", dot: "bg-amber-400", text: "text-amber-700" },
-                      estornado: { label: "Estornado", dot: "bg-red-400", text: "text-red-600" },
-                      cancelado: { label: "Cancelado", dot: "bg-slate-300", text: "text-slate-500" },
+                  {records.map((record) => {
+                    const rec = record as any;
+                    const recStatus: string = rec.status ?? "pago";
+                    const dueDate = rec.dueDate ? new Date(rec.dueDate + "T12:00:00") : null;
+                    const paymentDate = rec.paymentDate ? new Date(rec.paymentDate + "T12:00:00") : null;
+                    const displayDate = paymentDate ?? dueDate ?? new Date(record.createdAt);
+
+                    // Aging: days overdue for pending records
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const daysOverdue = (recStatus === "pendente" && dueDate)
+                      ? Math.floor((today.getTime() - dueDate.getTime()) / 86400000)
+                      : 0;
+                    const isOverdue = daysOverdue > 0;
+
+                    const statusCfg: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+                      pago: { label: "Pago", dot: "bg-emerald-400", text: "text-emerald-700", bg: "bg-emerald-50" },
+                      pendente: { label: "Pendente", dot: "bg-amber-400", text: "text-amber-700", bg: "bg-amber-50" },
+                      estornado: { label: "Estornado", dot: "bg-red-400", text: "text-red-600", bg: "bg-red-50" },
+                      cancelado: { label: "Cancelado", dot: "bg-slate-300", text: "text-slate-500", bg: "bg-slate-50" },
                     };
-                    const { label: statusLabel, dot: statusDot, text: statusText } = statusCfg[recStatus] ?? { label: recStatus, dot: "bg-slate-300", text: "text-slate-500" };
+                    const statusInfo = isOverdue
+                      ? { label: `Vencido há ${daysOverdue}d`, dot: "bg-red-500", text: "text-red-700", bg: "bg-red-50" }
+                      : (statusCfg[recStatus] ?? { label: recStatus, dot: "bg-slate-300", text: "text-slate-500", bg: "bg-slate-50" });
+
                     return (
                       <tr
                         key={record.id}
-                        className="group border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+                        className={`group border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${isOverdue ? "bg-red-50/30" : ""}`}
                       >
-                        <td className="py-3.5 px-5 text-xs text-slate-400 whitespace-nowrap tabular-nums">
-                          {format(new Date(displayDate), "dd/MM/yy")}
+                        <td className="py-3.5 px-5 whitespace-nowrap">
+                          <p className="text-xs tabular-nums text-slate-700 font-medium">
+                            {format(displayDate, "dd/MM/yy")}
+                          </p>
+                          {dueDate && recStatus === "pendente" && (
+                            <p className={`text-[10px] tabular-nums ${isOverdue ? "text-red-500 font-semibold" : "text-slate-400"}`}>
+                              Venc. {format(dueDate, "dd/MM/yy")}
+                            </p>
+                          )}
                         </td>
                         <td className="py-3.5 px-5 text-sm font-medium text-slate-800 max-w-[180px] truncate">
                           {record.description}
                         </td>
                         <td className="py-3.5 px-5 hidden md:table-cell">
-                          {(record as any).procedureName ? (
+                          {rec.procedureName ? (
                             <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
                               <Link2 className="w-3 h-3" />
-                              {(record as any).procedureName}
+                              {rec.procedureName}
                             </span>
                           ) : record.category ? (
                             <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
@@ -807,31 +834,39 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
                             </span>
                           ) : <span className="text-xs text-slate-300">—</span>}
                         </td>
-                        <td className="py-3.5 px-5">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full ${record.type === "receita"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-red-100 text-red-700"
-                            }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${record.type === "receita" ? "bg-emerald-500" : "bg-red-500"}`} />
-                            {record.type === "receita" ? "Entrada" : "Saída"}
-                          </span>
+                        <td className="py-3.5 px-5 hidden lg:table-cell">
+                          {rec.paymentMethod ? (
+                            <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">
+                              {rec.paymentMethod}
+                            </span>
+                          ) : <span className="text-xs text-slate-300">—</span>}
                         </td>
                         <td className="py-3.5 px-5 hidden sm:table-cell">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusText}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
-                            {statusLabel}
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${statusInfo.bg} ${statusInfo.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+                            {statusInfo.label}
                           </span>
                         </td>
                         <td className={`py-3.5 px-5 text-sm font-bold text-right whitespace-nowrap tabular-nums ${record.type === "receita" ? "text-emerald-600" : "text-red-600"}`}>
                           {record.type === "receita" ? "+" : "−"}{formatCurrency(Number(record.amount))}
                         </td>
-                        <td className="py-3.5 px-3 w-10">
-                          <button
-                            onClick={() => setDeleteTarget({ id: record.id, description: record.description, amount: Number(record.amount) })}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-100 text-slate-300 hover:text-red-500 transition-all"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        <td className="py-3.5 px-3 w-20">
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={() => setEditTarget(record)}
+                              className="p-1.5 rounded-lg hover:bg-blue-100 text-slate-300 hover:text-blue-600 transition-all"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget({ id: record.id, description: record.description, amount: Number(record.amount) })}
+                              className="p-1.5 rounded-lg hover:bg-red-100 text-slate-300 hover:text-red-500 transition-all"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -840,7 +875,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
                 {records.length > 0 && (
                   <tfoot>
                     <tr className="bg-slate-50 border-t-2 border-slate-200">
-                      <td colSpan={5} className="py-3 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:table-cell">
+                      <td colSpan={6} className="py-3 px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:table-cell">
                         Totais do período
                       </td>
                       <td colSpan={2} className="py-3 px-5 md:hidden" />
@@ -869,6 +904,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
 
       {/* Modals */}
       <NewRecordModal open={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={handleSuccess} />
+      <EditRecordModal open={!!editTarget} record={editTarget} onClose={() => setEditTarget(null)} onSuccess={handleSuccess} />
 
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent className="rounded-2xl">
@@ -1808,7 +1844,10 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
   const [category, setCategory] = useState("");
   const [expenseSubtype, setExpenseSubtype] = useState<"geral" | "procedimento">("geral");
   const [procedureId, setProcedureId] = useState<string>("");
-  const [date, setDate] = useState(todayISO());
+  const [status, setStatus] = useState<"pago" | "pendente">("pago");
+  const [paymentDate, setPaymentDate] = useState(todayISO());
+  const [dueDate, setDueDate] = useState(todayISO());
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const { data: procedures } = useListProcedures();
@@ -1824,7 +1863,8 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
     if (!open) {
       setType("despesa"); setAmount(""); setDescription("");
       setCategory(""); setExpenseSubtype("geral"); setProcedureId("");
-      setDate(todayISO());
+      setStatus("pago"); setPaymentDate(todayISO()); setDueDate(todayISO());
+      setPaymentMethod("");
     }
   }, [open]);
 
@@ -1841,7 +1881,10 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
           description,
           category: category || undefined,
           procedureId: procedureId ? Number(procedureId) : undefined,
-          paymentDate: date || todayISO(),
+          status,
+          paymentDate: status === "pendente" ? null : (paymentDate || todayISO()),
+          dueDate: dueDate || todayISO(),
+          paymentMethod: paymentMethod || undefined,
         } as any,
       });
       toast({ title: "Lançamento criado com sucesso." });
@@ -1855,7 +1898,7 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="rounded-2xl max-w-md">
+      <DialogContent className="rounded-2xl max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo Lançamento</DialogTitle>
           <DialogDescription>Registre uma receita ou despesa manualmente.</DialogDescription>
@@ -1907,6 +1950,25 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
             </div>
           )}
 
+          {/* Status */}
+          <div className="space-y-1.5">
+            <Label>Status *</Label>
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+              {([
+                { value: "pago", label: type === "receita" ? "Recebido" : "Pago", color: "bg-emerald-500" },
+                { value: "pendente", label: type === "receita" ? "A Receber" : "A Pagar", color: "bg-amber-500" },
+              ] as const).map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => setStatus(s.value)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${status === s.value ? `${s.color} text-white shadow-sm` : "text-slate-500 hover:text-slate-700"}`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label>Descrição *</Label>
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex: Pagamento de aluguel, Consulta Dr. Silva…" className="rounded-xl" />
@@ -1914,15 +1976,25 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Data *</Label>
+              <Label>Vencimento *</Label>
               <Input
                 type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                max={`${new Date().getFullYear() + 1}-12-31`}
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
                 className="rounded-xl"
               />
             </div>
+            {status === "pago" && (
+              <div className="space-y-1.5">
+                <Label>Data de Pagamento</Label>
+                <Input
+                  type="date"
+                  value={paymentDate}
+                  onChange={e => setPaymentDate(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Valor (R$) *</Label>
               <Input
@@ -1932,6 +2004,18 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
               />
             </div>
           </div>
+
+          {status === "pago" && (
+            <div className="space-y-1.5">
+              <Label>Forma de Pagamento</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Categoria</Label>
@@ -1952,6 +2036,175 @@ function NewRecordModal({ open, onClose, onSuccess }: { open: boolean; onClose: 
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             {type === "receita" ? "Registrar Receita" : "Registrar Despesa"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Modal: Edit Financial Record ─────────────────────────────────────────────
+
+function EditRecordModal({ open, record, onClose, onSuccess }: {
+  open: boolean;
+  record: any | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [type, setType] = useState<"receita" | "despesa">("despesa");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [status, setStatus] = useState<"pendente" | "pago" | "cancelado" | "estornado">("pendente");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (record) {
+      setType(record.type ?? "despesa");
+      setAmount(String(record.amount ?? ""));
+      setDescription(record.description ?? "");
+      setCategory(record.category ?? "");
+      setStatus(record.status ?? "pendente");
+      setPaymentDate(record.paymentDate ?? "");
+      setDueDate(record.dueDate ?? "");
+      setPaymentMethod(record.paymentMethod ?? "");
+    }
+  }, [record]);
+
+  const categories = type === "receita" ? REVENUE_CATEGORIES : GENERAL_EXPENSE_CATEGORIES;
+
+  const handleSubmit = async () => {
+    if (!amount || !description) {
+      toast({ variant: "destructive", title: "Preencha descrição e valor." }); return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/financial/records/${record.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          type,
+          amount: Number(amount),
+          description,
+          category: category || null,
+          status,
+          paymentDate: status === "pendente" ? null : (paymentDate || null),
+          dueDate: dueDate || null,
+          paymentMethod: paymentMethod || null,
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "Lançamento atualizado." });
+        onSuccess();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast({ variant: "destructive", title: d.message ?? "Erro ao atualizar." });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao atualizar lançamento." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="rounded-2xl max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar Lançamento</DialogTitle>
+          <DialogDescription>Atualize os dados do lançamento financeiro.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* Type toggle */}
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            {(["receita", "despesa"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setType(t); setCategory(""); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${type === t
+                  ? t === "receita" ? "bg-emerald-500 text-white shadow-sm" : "bg-red-500 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"}`}
+              >
+                {t === "receita" ? "Receita" : "Despesa"}
+              </button>
+            ))}
+          </div>
+
+          {/* Status */}
+          <div className="space-y-1.5">
+            <Label>Status *</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as any)}>
+              <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pago">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />Pago / Recebido</span>
+                </SelectItem>
+                <SelectItem value="pendente">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Pendente</span>
+                </SelectItem>
+                <SelectItem value="cancelado">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Cancelado</span>
+                </SelectItem>
+                <SelectItem value="estornado">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Estornado</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Descrição *</Label>
+            <Input value={description} onChange={e => setDescription(e.target.value)} className="rounded-xl" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Vencimento</Label>
+              <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="rounded-xl" />
+            </div>
+            {status !== "pendente" && (
+              <div className="space-y-1.5">
+                <Label>Data de Pagamento</Label>
+                <Input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="rounded-xl" />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Valor (R$) *</Label>
+              <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" className="rounded-xl" />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Forma de Pagamento</Label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Nenhuma</SelectItem>
+                {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Categoria</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Nenhuma</SelectItem>
+                {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Salvar alterações
           </Button>
         </DialogFooter>
       </DialogContent>
