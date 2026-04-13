@@ -8,10 +8,10 @@ FisioGest Pro é uma plataforma SaaS de gestão clínica completa para fisiotera
 - `/` → Landing page pública (`artifacts/fisiogest/src/pages/landing.tsx`) — hero dark, features, pricing, testimonials, CTA
 - `/login` → Login
 - `/register` → Cadastro
-- `/dashboard` → Dashboard protegido (rota principal pós-login, movida de `/`)
-- Após login bem-sucedido: redireciona para `/dashboard` (atualizado em `auth-context.tsx`)
+- `/dashboard` → Dashboard protegido (rota principal pós-login)
+- Após login bem-sucedido: redireciona para `/dashboard` (configurado em `auth-context.tsx`)
 
-O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em dois artefatos (frontend + API) servidos pelo proxy reverso compartilhado do Replit na porta 80.
+O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefatos (frontend + API + mockup-sandbox) servidos pelo proxy reverso compartilhado do Replit na porta 80.
 
 **Idioma padrão**: Português do Brasil (pt-BR)
 **Moeda**: Real Brasileiro (BRL — R$)
@@ -147,50 +147,6 @@ const STATUS_FINANCEIRO = {
 
 ---
 
-## Deploy no Hostinger
-
-O projeto está pronto para deploy no **Node.js Hosting** da Hostinger com as configurações abaixo.
-
-### Configurações do painel Hostinger
-
-| Campo | Valor |
-|---|---|
-| Node.js version | **22.x** |
-| Package manager | **pnpm** |
-| Build command | `pnpm install && pnpm run build` |
-| Start command | `node dist/server.cjs` |
-| Entry point | `dist/server.cjs` |
-
-### Variáveis de ambiente obrigatórias
-
-Configurar no painel Hostinger → **Environment Variables**:
-
-| Variável | Descrição |
-|---|---|
-| `DATABASE_URL` | String de conexão PostgreSQL (ex.: `postgresql://user:pass@host:5432/db`) |
-| `JWT_SECRET` | Chave secreta longa e aleatória (ex.: gere com `openssl rand -base64 64`) |
-| `NODE_ENV` | `production` |
-| `CORS_ORIGIN` | URL do domínio (ex.: `https://fisiogest.seudominio.com`) |
-
-> **JWT_SECRET é obrigatório**: o servidor recusa iniciar em produção sem essa variável.
-
-### Fluxo de build
-
-```
-pnpm install                    # instala todas as dependências
-pnpm run build
-  ├── vite build                # compila o frontend → dist/public/
-  └── tsx server/build.ts       # empacota o backend  → dist/server.cjs
-                                #                     + copia dist/migrations/
-node dist/server.cjs            # inicia o servidor (aplica migrations automaticamente)
-```
-
-### Migrações
-
-As migrations SQL ficam em `db/migrations/` (geradas com `pnpm run db:generate`). O servidor as aplica automaticamente na inicialização via `drizzle-orm/migrator`. Em um banco já existente (sem journal de migrations), a aplicação ignora tabelas já criadas com segurança.
-
----
-
 ## Arquitetura Replit — IMPORTANTE
 
 O Replit usa um **proxy reverso compartilhado na porta 80** para rotear tráfego entre serviços.
@@ -199,23 +155,45 @@ O Replit usa um **proxy reverso compartilhado na porta 80** para rotear tráfego
 |---|---|---|---|
 | Frontend | `@workspace/fisiogest` | **3000** | `/` |
 | API Server | `@workspace/api-server` | **8080** | `/api` |
+| Mockup Sandbox | `@workspace/mockup-sandbox` | **8081** | `/__mockup` |
 
-> **Nunca execute o layout raiz (`src/` + `server/`) no Replit.** Esses arquivos existem apenas para hospedagem externa (ex.: Hostinger/Railway/Render).
+### Artifacts e Workflows
 
-### Workflows (artifact-based)
+Os três artefatos são gerenciados pelo sistema de artifacts do Replit (cada um tem `.replit-artifact/artifact.toml`):
 
-Os serviços são iniciados por workflows individuais gerenciados pelo Replit:
-- `API Server` → `PORT=8080 pnpm --filter @workspace/api-server run dev`
-- `Frontend` → `PORT=3000 pnpm --filter @workspace/fisiogest run dev`
+| Workflow | Comando | Porta | Status |
+|---|---|---|---|
+| `artifacts/api-server: API Server` | `pnpm --filter @workspace/api-server run dev` | 8080 | ✅ sempre rodando |
+| `artifacts/fisiogest: web` | `pnpm --filter @workspace/fisiogest run dev` | 3000 | ✅ sempre rodando |
+| `artifacts/mockup-sandbox: Component Preview Server` | `pnpm --filter @workspace/mockup-sandbox run dev` | 8081 | ⏸ sob demanda |
+
+> As variáveis de ambiente (`PORT`, `BASE_PATH`) são injetadas automaticamente pelo sistema de artifacts via `[services.env]` no `artifact.toml` — não precisam constar no comando do workflow.
 
 ### Fluxo de requisições em desenvolvimento
 
 ```
 Browser → https://<repl>.replit.dev/
-  ├── /api/*  → Proxy Replit → localhost:8080  (api-server)
-  └── /*      → Proxy Replit → localhost:3000  (fisiogest Vite dev server)
-                  └── /api/* (proxy Vite) → localhost:8080
+  ├── /api/*      → Proxy Replit → localhost:8080  (api-server)
+  ├── /__mockup/* → Proxy Replit → localhost:8081  (mockup-sandbox)
+  └── /*          → Proxy Replit → localhost:3000  (fisiogest Vite dev server)
+                      └── /api/* (proxy Vite) → localhost:8080
 ```
+
+### Deploy no Replit
+
+Para publicar o projeto no Replit (`.replit.app`):
+1. Clicar em **Publish** no painel do Replit
+2. O sistema faz build automático de cada artifact:
+   - Frontend: `pnpm --filter @workspace/fisiogest run build` → `artifacts/fisiogest/dist/public/`
+   - API Server: `pnpm --filter @workspace/api-server run build` → `artifacts/api-server/dist/index.cjs`
+3. Variáveis de ambiente obrigatórias em produção:
+
+| Variável | Descrição |
+|---|---|
+| `DATABASE_URL` | String de conexão PostgreSQL |
+| `JWT_SECRET` | Chave secreta longa e aleatória |
+| `NODE_ENV` | `production` |
+| `CORS_ORIGIN` | URL do domínio publicado |
 
 ---
 
@@ -225,6 +203,8 @@ Browser → https://<repl>.replit.dev/
 /
 ├── artifacts/
 │   ├── fisiogest/                      # Frontend React (@workspace/fisiogest)
+│   │   ├── .replit-artifact/
+│   │   │   └── artifact.toml           # kind=web, previewPath=/, port=3000
 │   │   ├── src/
 │   │   │   ├── main.tsx
 │   │   │   ├── App.tsx
@@ -236,7 +216,12 @@ Browser → https://<repl>.replit.dev/
 │   │   │   │   ├── dashboard.tsx
 │   │   │   │   ├── agenda.tsx
 │   │   │   │   ├── procedimentos.tsx
+│   │   │   │   ├── pacotes.tsx
 │   │   │   │   ├── relatorios.tsx
+│   │   │   │   ├── clinicas.tsx
+│   │   │   │   ├── configuracoes.tsx
+│   │   │   │   ├── agendar.tsx
+│   │   │   │   ├── not-found.tsx
 │   │   │   │   ├── patients/
 │   │   │   │   │   ├── index.tsx       # Lista de pacientes + busca
 │   │   │   │   │   └── [id].tsx        # Prontuário completo (abas)
@@ -244,22 +229,26 @@ Browser → https://<repl>.replit.dev/
 │   │   │   │       └── index.tsx       # Lançamentos, custos, DRE, despesas fixas
 │   │   │   ├── components/
 │   │   │   │   ├── layout/app-layout.tsx
+│   │   │   │   ├── error-boundary.tsx
 │   │   │   │   ├── logo-mark.tsx       # SVG logo da marca
 │   │   │   │   └── ui/                 # Componentes shadcn/ui
 │   │   │   └── lib/
-│   │   │       └── auth-context.tsx
+│   │   │       ├── auth-context.tsx
+│   │   │       └── permissions.ts      # Definição de permissões RBAC
 │   │   ├── index.html                  # lang="pt-BR"
-│   │   └── vite.config.ts
+│   │   └── vite.config.ts              # proxy /api → 8080, port=$PORT, base=$BASE_PATH
 │   │
 │   ├── api-server/                     # API Express (@workspace/api-server)
+│   │   ├── .replit-artifact/
+│   │   │   └── artifact.toml           # kind=api, previewPath=/api, port=8080
 │   │   └── src/
-│   │       ├── index.ts
-│   │       ├── app.ts
+│   │       ├── index.ts                # Inicializa servidor + aplica migrations automáticas
+│   │       ├── app.ts                  # Express app, CORS, middlewares globais
 │   │       ├── middleware/
 │   │       │   ├── auth.ts             # JWT authMiddleware
 │   │       │   └── rbac.ts             # requirePermission()
 │   │       ├── lib/
-│   │       │   ├── dateUtils.ts        # todayBRT(), nowBRT()
+│   │       │   ├── dateUtils.ts        # todayBRT(), nowBRT(), monthDateRangeBRT()
 │   │       │   ├── auditLog.ts         # logAudit()
 │   │       │   └── validate.ts         # validateBody()
 │   │       └── routes/
@@ -287,32 +276,37 @@ Browser → https://<repl>.replit.dev/
 │   │           ├── audit-log.ts        # /api/audit-log
 │   │           └── recurring-expenses.ts # /api/recurring-expenses
 │   │
-│   └── mockup-sandbox/                 # Sandbox de prototipagem de UI
+│   └── mockup-sandbox/                 # Sandbox de prototipagem de UI (@workspace/mockup-sandbox)
+│       └── .replit-artifact/
+│           └── artifact.toml           # kind=design, previewPath=/__mockup, port=8081
 │
 ├── lib/
 │   ├── db/                             # @workspace/db — Drizzle ORM + schema
 │   │   ├── src/schema/
+│   │   │   ├── index.ts                # Re-exporta todos os schemas
 │   │   │   ├── patients.ts
 │   │   │   ├── appointments.ts
 │   │   │   ├── procedures.ts           # Campo maxCapacity (vagas simultâneas)
 │   │   │   ├── medical-records.ts
 │   │   │   ├── financial.ts
 │   │   │   └── users.ts
-│   │   └── drizzle.config.ts
+│   │   ├── src/index.ts               # Exporta db (Drizzle), pool, e todos os schemas
+│   │   └── drizzle.config.ts          # Configuração do drizzle-kit
 │   ├── api-zod/                        # @workspace/api-zod — schemas Zod compartilhados
 │   ├── api-client-react/               # @workspace/api-client-react — hooks React Query (Orval)
-│   └── api-spec/                       # Especificação OpenAPI
+│   └── api-spec/                       # Especificação OpenAPI (lib/api-spec/openapi.yaml)
 │
-├── src/                                # [SOMENTE HOSPEDAGEM EXTERNA]
-├── server/                             # [SOMENTE HOSPEDAGEM EXTERNA]
-├── db/                                 # [SOMENTE HOSPEDAGEM EXTERNA]
+├── db/                                 # Migrations SQL geradas pelo drizzle-kit
+│   ├── index.ts                        # Conexão Drizzle (usada por scripts externos)
+│   └── migrations/                     # Arquivos SQL versionados (0000_*.sql …)
+│
 ├── scripts/
-│   ├── post-merge.sh
+│   ├── post-merge.sh                   # Roda após merge de task agents
 │   ├── seed-demo.ts                    # Seed completo (novo clinic) — falha se usuários já existem
 │   └── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
 │
 ├── pnpm-workspace.yaml
-└── .replit
+└── package.json                        # Scripts raiz: build:libs, typecheck, db:seed-demo
 ```
 
 ---
@@ -431,7 +425,7 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 | GET | `/api/financial/dashboard` | KPIs mensais — receita, despesas, lucro, MRR, cobranças pendentes |
 | GET | `/api/financial/records` | Listar registros (filtros: type, month, year) |
 | POST | `/api/financial/records` | Criar registro manual — aceita status, dueDate, paymentMethod |
-| **PATCH** | **`/api/financial/records/:id`** | **Editar lançamento completo (todos os campos)** |
+| PATCH | `/api/financial/records/:id` | Editar lançamento completo (todos os campos) |
 | PATCH | `/api/financial/records/:id/status` | Atualizar apenas status + paymentDate + paymentMethod |
 | PATCH | `/api/financial/records/:id/estorno` | Soft-reversal: status=estornado |
 | DELETE | `/api/financial/records/:id` | Deleta despesas; estorna receitas (soft) |
@@ -519,7 +513,7 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 
 1. **endTime sempre calculado** — o sistema calcula `endTime = startTime + procedure.durationMinutes`. O cliente nunca envia `endTime`.
 2. **Procedimentos com maxCapacity = 1** (padrão) — qualquer sobreposição de horário ativo gera conflito 409.
-3. **Procedimentos com maxCapacity > 1** (ex.: Pilates em Grupo = 4) — permite até N agendamentos simultâneos do mesmo procedimento. A 5ª tentativa retorna 409 com a mensagem "Horário lotado: N/N vagas ocupadas".
+3. **Procedimentos com maxCapacity > 1** (ex.: Pilates em Grupo = 4) — permite até N agendamentos simultâneos do mesmo procedimento. A N+1ª tentativa retorna 409 com a mensagem "Horário lotado: N/N vagas ocupadas".
 4. **Endpoint de vagas** — `GET /api/appointments/available-slots?date=&procedureId=&clinicStart=08:00&clinicEnd=18:00` retorna slots a cada 30 min com `available` e `spotsLeft`.
 5. **Agendamento recorrente** — `POST /api/appointments/recurring` persiste `clinicId` e `scheduleId` em cada sessão; conflitos são verificados por agenda (scope de `scheduleId`).
 6. **Validação de dias úteis** — `available-slots` retorna `{ slots: [], notWorkingDay: true }` quando a data não é dia de funcionamento da agenda. Frontend exibe aviso visual âmbar.
@@ -576,14 +570,15 @@ A página do prontuário (`artifacts/fisiogest/src/pages/patients/[id].tsx`) imp
 
 ---
 
-## Scripts
+## Scripts e Comandos
 
 ```bash
 # Instalar dependências
 pnpm install
 
-# Iniciar os dois serviços
-pnpm dev
+# Iniciar todos os serviços (via workflows do Replit)
+# → artifacts/api-server: API Server  (porta 8080)
+# → artifacts/fisiogest: web          (porta 3000)
 
 # Compilar declarações TypeScript das libs compartilhadas (necessário antes do typecheck)
 pnpm run build:libs
@@ -595,7 +590,7 @@ pnpm run typecheck
 pnpm --filter @workspace/db exec drizzle-kit push --config drizzle.config.ts
 
 # Seed de demonstração
-pnpm run db:seed
+pnpm run db:seed-demo
 ```
 
 ### Notas sobre TypeScript
