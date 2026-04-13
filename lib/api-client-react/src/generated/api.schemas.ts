@@ -353,13 +353,20 @@ export const FinancialRecordType = {
 export interface FinancialRecord {
   id: number;
   type: FinancialRecordType;
-  amount: number;
+  /** Numeric string returned by PostgreSQL (e.g. "150.00") */
+  amount: string;
   description: string;
-  category?: string;
-  appointmentId?: number;
-  patientId?: number;
-  procedureId?: number;
-  procedureName?: string;
+  status: "pendente" | "pago" | "cancelado" | "estornado";
+  category?: string | null;
+  appointmentId?: number | null;
+  patientId?: number | null;
+  procedureId?: number | null;
+  procedureName?: string | null;
+  transactionType?: string | null;
+  paymentDate?: string | null;
+  dueDate?: string | null;
+  paymentMethod?: string | null;
+  subscriptionId?: number | null;
   createdAt: string;
 }
 

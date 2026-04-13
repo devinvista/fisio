@@ -2180,10 +2180,13 @@ function EditRecordModal({ open, record, onClose, onSuccess }: {
 
           <div className="space-y-1.5">
             <Label>Forma de Pagamento</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+            <Select
+              value={paymentMethod || "__none__"}
+              onValueChange={(v) => setPaymentMethod(v === "__none__" ? "" : v)}
+            >
               <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nenhuma</SelectItem>
+                <SelectItem value="__none__">Nenhuma</SelectItem>
                 {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -2191,10 +2194,13 @@ function EditRecordModal({ open, record, onClose, onSuccess }: {
 
           <div className="space-y-1.5">
             <Label>Categoria</Label>
-            <Select value={category} onValueChange={setCategory}>
+            <Select
+              value={category || "__none__"}
+              onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
+            >
               <SelectTrigger className="rounded-xl"><SelectValue placeholder="Selecione…" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nenhuma</SelectItem>
+                <SelectItem value="__none__">Nenhuma</SelectItem>
                 {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>

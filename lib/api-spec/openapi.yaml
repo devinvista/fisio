@@ -1579,19 +1579,45 @@ components:
           type: string
           enum: [receita, despesa]
         amount:
-          type: number
+          type: string
+          description: Numeric string returned by PostgreSQL (e.g. "150.00")
         description:
           type: string
         category:
           type: string
+          nullable: true
         appointmentId:
           type: integer
+          nullable: true
         patientId:
           type: integer
+          nullable: true
         procedureId:
           type: integer
+          nullable: true
         procedureName:
           type: string
+          nullable: true
+        transactionType:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pendente, pago, cancelado, estornado]
+        paymentDate:
+          type: string
+          format: date
+          nullable: true
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        paymentMethod:
+          type: string
+          nullable: true
+        subscriptionId:
+          type: integer
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -1600,6 +1626,7 @@ components:
         - type
         - amount
         - description
+        - status
         - createdAt
 
     CreateFinancialRecordRequest:
