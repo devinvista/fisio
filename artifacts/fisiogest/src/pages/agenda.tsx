@@ -270,7 +270,7 @@ export default function Agenda() {
 
   // Today's appointments with "compareceu" status (for batch complete button)
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayCompareceu = appointments.filter(
+  const todayCompareceu = filteredAppointments.filter(
     (a) => a.date === todayStr && a.status === "compareceu"
   );
 
@@ -603,7 +603,7 @@ export default function Agenda() {
           {view === "month" && (
             <MonthGrid
               currentDate={currentDate}
-              appointments={appointments}
+              appointments={filteredAppointments}
               blockedSlots={blockedSlots}
               onDayClick={(day) => { setCurrentDate(day); setMiniCalMonth(day); setView("day"); }}
               onNewAppointment={(dateStr) => { setSelectedSlot({ date: dateStr, time: "" }); setIsNewModalOpen(true); }}
@@ -2634,9 +2634,11 @@ function MonthGrid({
   const STATUS_COLORS: Record<string, string> = {
     agendado: "bg-blue-400",
     confirmado: "bg-emerald-400",
+    compareceu: "bg-teal-400",
     concluido: "bg-slate-400",
     cancelado: "bg-red-400",
     faltou: "bg-orange-400",
+    remarcado: "bg-purple-400",
   };
 
   return (
