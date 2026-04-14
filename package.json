@@ -12,9 +12,9 @@
     "dev": "pnpm run build:libs && (PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=20408 API_PORT=8080 pnpm --filter @workspace/fisiogest run dev)",
     "build": "vite build --config vite.config.ts && tsx server/build.ts",
     "start": "NODE_ENV=production node dist/server.cjs",
-    "db:push": "drizzle-kit push --config drizzle.config.ts",
-    "db:push-force": "drizzle-kit push --force --config drizzle.config.ts",
-    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:push": "drizzle-kit push --config lib/db/drizzle.config.ts",
+    "db:push-force": "drizzle-kit push --force --config lib/db/drizzle.config.ts",
+    "db:generate": "drizzle-kit generate --config lib/db/drizzle.config.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
     "typecheck": "pnpm run build:libs && tsc --noEmit -p artifacts/fisiogest/tsconfig.json && tsc --noEmit -p artifacts/api-server/tsconfig.json"
