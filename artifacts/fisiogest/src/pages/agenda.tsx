@@ -137,7 +137,7 @@ export default function Agenda() {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; procedureId?: number } | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<number | null>(null);
@@ -263,6 +263,10 @@ export default function Agenda() {
 
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
+  const selectedAppointment = selectedAppointmentId != null
+    ? (appointments.find((a) => a.id === selectedAppointmentId) ?? null)
+    : null;
+
   const filteredAppointments = appointments
     .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId || a.scheduleId == null)
     .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId)
@@ -347,7 +351,7 @@ export default function Agenda() {
   const handleRefreshAll = () => {
     refetch();
     refetchBlocked();
-    setSelectedAppointment(null);
+    setSelectedAppointmentId(null);
   };
 
   const handleSlotClick = (date: Date, hour: number, offsetMin: number = 0) => {
@@ -801,17 +805,21 @@ export default function Agenda() {
                             ? scheduleColorMap.get(firstApt.scheduleId)
                             : undefined;
 
+                          const allCompareceuOrDone = grpApts.every((a) => ["compareceu", "concluido"].includes(a.status));
+                          const allConfirmedOrHigher = grpApts.every((a) => ["confirmado", "compareceu", "concluido"].includes(a.status));
+                          const grpBg = allCompareceuOrDone ? "bg-teal-500" : allConfirmedOrHigher ? "bg-emerald-500" : "bg-violet-500";
+
                           return (
                             <div
                               key={`group-${item.procedureId}-${startTime}`}
-                              className="absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20 bg-violet-500"
+                              className={`absolute rounded-xl overflow-hidden cursor-pointer z-10 transition-all duration-150 hover:brightness-95 hover:shadow-xl hover:z-20 ${grpBg}`}
                               style={{
                                 top: top + 2,
                                 height: height - 4,
                                 left: `${leftPct + 1}%`,
                                 width: `${widthPct - 2}%`,
                               }}
-                              onClick={(e) => { e.stopPropagation(); setSelectedAppointment(firstApt); }}
+                              onClick={(e) => { e.stopPropagation(); setSelectedAppointmentId(firstApt.id); }}
                             >
                               {grpScheduleColor && (
                                 <div
@@ -913,7 +921,7 @@ export default function Agenda() {
                               left: `${leftPct + 1}%`,
                               width: `${widthPct - 2}%`,
                             }}
-                            onClick={(e) => { e.stopPropagation(); setSelectedAppointment(apt); }}
+                            onClick={(e) => { e.stopPropagation(); setSelectedAppointmentId(apt.id); }}
                           >
                             {showScheduleIndicator && aptScheduleColor && (
                               <div
@@ -1007,10 +1015,10 @@ export default function Agenda() {
         <AppointmentDetailModal
           appointment={selectedAppointment}
           allAppointments={appointments}
-          onClose={() => setSelectedAppointment(null)}
+          onClose={() => setSelectedAppointmentId(null)}
           onRefresh={handleRefreshAll}
           onAddToSession={(date, time, procedureId) => {
-            setSelectedAppointment(null);
+            setSelectedAppointmentId(null);
             setSelectedSlot({ date, time, procedureId });
             setIsNewModalOpen(true);
           }}
