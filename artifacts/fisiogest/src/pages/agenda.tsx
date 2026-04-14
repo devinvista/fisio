@@ -264,7 +264,7 @@ export default function Agenda() {
   const { data: appointments = [], isLoading, refetch } = useListAppointments({ startDate: startDateStr, endDate: endDateStr });
 
   const filteredAppointments = appointments
-    .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId)
+    .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId || a.scheduleId == null)
     .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId)
     .filter((a) => showRemarcado || a.status !== "remarcado");
 
