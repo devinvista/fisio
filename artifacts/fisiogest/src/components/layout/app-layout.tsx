@@ -69,6 +69,7 @@ interface SidebarContentProps {
   collapsed: boolean;
   onToggle: () => void;
   isMobile?: boolean;
+  onNavigate?: () => void;
 }
 
 function SidebarContent({
@@ -81,6 +82,7 @@ function SidebarContent({
   collapsed,
   onToggle,
   isMobile = false,
+  onNavigate,
 }: SidebarContentProps) {
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     const hasAccess = item.anyPermission
@@ -145,6 +147,7 @@ function SidebarContent({
                     <TooltipTrigger asChild>
                       <Link
                         href={item.href}
+                        onClick={onNavigate}
                         className={`
                           flex items-center justify-center rounded-xl p-3 transition-all duration-200
                           ${
@@ -168,6 +171,7 @@ function SidebarContent({
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={onNavigate}
                   className={`
                     flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
                     ${
@@ -259,6 +263,7 @@ function SidebarContent({
 export function AppLayout({ children, title }: AppLayoutProps) {
   const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
   const [location] = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -302,14 +307,19 @@ export function AppLayout({ children, title }: AppLayoutProps) {
       <div className="flex flex-1 flex-col overflow-hidden relative min-w-0">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-white/80 backdrop-blur-md px-4 md:px-6 shadow-sm z-10">
           <div className="flex items-center gap-3">
-            <Sheet>
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="lg:hidden shrink-0">
+                <Button variant="ghost" size="icon" className="lg:hidden shrink-0 h-11 w-11">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 p-0 border-none">
-                <SidebarContent {...sidebarProps} collapsed={false} isMobile={true} />
+                <SidebarContent
+                  {...sidebarProps}
+                  collapsed={false}
+                  isMobile={true}
+                  onNavigate={() => setMobileOpen(false)}
+                />
               </SheetContent>
             </Sheet>
 

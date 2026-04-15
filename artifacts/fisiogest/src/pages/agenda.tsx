@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -68,6 +68,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { DatePickerPTBR, TimeInputPTBR } from "@/components/ui/date-picker-ptbr";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -132,8 +133,11 @@ function minutesToHeight(minutes: number): number {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Agenda() {
+  const isMobile = useIsMobile();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<ViewMode>("fullweek");
+  const [view, setView] = useState<ViewMode>(() =>
+    window.innerWidth < 768 ? "day" : "fullweek"
+  );
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; procedureId?: number } | null>(null);

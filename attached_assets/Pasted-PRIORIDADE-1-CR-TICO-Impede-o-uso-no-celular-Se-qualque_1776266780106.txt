@@ -1,0 +1,316 @@
+PRIORIDADE 1 — CRÍTICO
+(Impede o uso no celular)
+
+Se qualquer item abaixo falhar, não publicar.
+
+1) VIEWPORT
+
+Verificar:
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+Checklist:
+
+ Viewport configurado
+ Sem zoom bloqueado
+ Layout escala corretamente
+2) SCROLL HORIZONTAL
+
+Checklist:
+
+ Não existe scroll lateral inesperado
+ Conteúdo não sai da tela
+ Layout não quebra
+
+Verificar:
+
+tabelas
+grids
+modais
+formulários
+3) SIDEBAR / MENU MOBILE
+
+Checklist:
+
+ Sidebar não aparece fixa no celular
+ Menu abre por botão
+ Menu fecha ao clicar fora
+ Menu fecha ao selecionar item
+ Menu cobre a tela
+
+Sem isso:
+
+Usuário não consegue navegar.
+
+4) TABELAS
+
+Checklist:
+
+ Tabela não quebra layout
+ Tabela funciona no celular
+ Tabela não fica ilegível
+ Linhas não são cortadas
+
+Obrigatório:
+
+Mobile:
+
+Tabela vira lista
+
+5) FORMULÁRIOS
+
+Checklist:
+
+ Campos ocupam 100%
+ Não existe campo fora da tela
+ Não existe scroll horizontal
+ Inputs são clicáveis
+
+Altura mínima:
+
+44px
+
+6) BOTÕES
+
+Checklist:
+
+ Botões clicáveis com dedo
+ Botões não são pequenos
+ Botões não ficam fora da tela
+
+Altura mínima:
+
+44px
+
+7) MODAIS
+
+Checklist:
+
+ Modal abre corretamente
+ Modal não fica cortado
+ Modal não sai da tela
+ Modal pode ser fechado
+
+Mobile:
+
+Modal deve abrir em tela cheia.
+
+PRIORIDADE 2 — ALTA
+(Usabilidade e produtividade)
+
+Sistema funciona, mas o uso fica difícil.
+
+8) HEADER
+
+Checklist:
+
+ Header visível
+ Header não cobre conteúdo
+ Header mantém posição
+9) LAYOUT RESPONSIVO
+
+Checklist:
+
+ Layout usa mobile-first
+ Grids se adaptam
+ Elementos reorganizam
+
+Exemplo:
+
+Cards:
+
+Desktop:
+
+4 colunas
+
+Mobile:
+
+1 coluna
+
+10) ESPAÇAMENTO
+
+Checklist:
+
+ Espaçamento adequado
+ Interface não fica apertada
+ Conteúdo não fica colado
+
+Padrão:
+
+Mobile:
+
+p-3
+
+Tablet:
+
+p-4
+
+Desktop:
+
+p-6
+
+11) TIPOGRAFIA
+
+Checklist:
+
+ Texto legível
+ Texto não fica pequeno
+ Texto não quebra layout
+
+Tamanho mínimo:
+
+14px
+
+12) AGENDA MOBILE
+
+Crítico para clínica.
+
+Checklist:
+
+ Agenda funciona no celular
+ Horários legíveis
+ Botões acessíveis
+
+Cada item deve mostrar:
+
+Hora
+Paciente
+Procedimento
+Status
+
+13) DASHBOARD MOBILE
+
+Checklist:
+
+ KPIs visíveis
+ Layout organizado
+ Conteúdo não sobreposto
+
+Ordem recomendada:
+
+KPIs
+Agenda
+Financeiro
+Alertas
+PRIORIDADE 3 — MÉDIA
+(Qualidade e estabilidade)
+
+Sistema funciona, mas pode causar falhas ou frustração.
+
+14) SCROLL
+
+Checklist:
+
+ Scroll suave
+ Scroll não trava
+ Scroll não pula
+15) ORIENTAÇÃO
+
+Checklist:
+
+ Funciona em retrato
+ Funciona em paisagem
+ Layout não quebra
+16) TOUCH
+
+Checklist:
+
+ Não depende de hover
+ Funciona com dedo
+ Gestos funcionam
+17) IMAGENS
+
+Checklist:
+
+ Imagens não estouram layout
+ Imagens se adaptam
+PRIORIDADE 4 — PERFORMANCE
+(Escalabilidade e experiência)
+18) PERFORMANCE MOBILE
+
+Checklist:
+
+ Carregamento rápido
+ Sem travamentos
+ Sem lag ao rolar
+
+Verificar:
+
+ Lazy loading
+ Skeleton loading
+ Paginação
+ Virtualização
+19) LISTAS GRANDES
+
+Checklist:
+
+ Listas paginadas
+ Listas virtualizadas
+ Não renderiza tudo de uma vez
+
+Crítico para:
+
+pacientes
+agenda
+financeiro
+PRIORIDADE 5 — COMPATIBILIDADE
+(Produção real)
+20) NAVEGADORES
+
+Testar:
+
+ Chrome Android
+ Safari iPhone
+ Edge
+ Samsung Internet
+21) DISPOSITIVOS
+
+Testar:
+
+ Android pequeno
+ Android grande
+ iPhone
+ Tablet
+PRIORIDADE 6 — QUALIDADE FINAL
+(Profissionalização)
+22) ACESSIBILIDADE
+
+Checklist:
+
+ Contraste adequado
+ Botões visíveis
+ Labels visíveis
+23) ERROS VISUAIS
+
+Checklist:
+
+ Nenhum layout quebrado
+ Nenhum botão fora da tela
+ Nenhum texto cortado
+ Nenhuma sobreposição
+ORDEM DE EXECUÇÃO RECOMENDADA
+
+Se for implementar agora no projeto, siga esta sequência:
+
+Viewport
+Menu mobile
+Tabelas
+Formulários
+Botões
+Modais
+Layout responsivo
+Dashboard
+Agenda
+Performance
+Compatibilidade
+Qualidade final
+CRITÉRIO DE PUBLICAÇÃO (GO / NO-GO)
+
+Pode publicar quando:
+
+Sistema funciona no celular
+Navegação funciona
+Não existe scroll horizontal
+Formulários funcionam
+Tabelas funcionam
+Performance está estável
