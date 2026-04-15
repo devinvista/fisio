@@ -235,10 +235,10 @@ export default function Usuarios() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>CPF</TableHead>
-                <TableHead>E-mail</TableHead>
+                <TableHead className="hidden md:table-cell">CPF</TableHead>
+                <TableHead className="hidden md:table-cell">E-mail</TableHead>
                 <TableHead>Perfis</TableHead>
-                <TableHead>Cadastrado em</TableHead>
+                <TableHead className="hidden lg:table-cell">Cadastrado em</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -261,17 +261,20 @@ export default function Usuarios() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                           {u.name.charAt(0).toUpperCase()}
                         </div>
-                        {u.name}
-                        {u.id === currentUser?.id && (
-                          <span className="text-xs text-muted-foreground">(você)</span>
-                        )}
+                        <div className="min-w-0">
+                          <p className="truncate">{u.name}</p>
+                          {u.id === currentUser?.id && (
+                            <span className="text-xs text-muted-foreground">(você)</span>
+                          )}
+                          <p className="text-xs text-muted-foreground md:hidden truncate">{u.email ?? ""}</p>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-sm">{displayCpf(u.cpf)}</TableCell>
-                    <TableCell className="text-muted-foreground">{u.email ?? <span className="text-slate-300">—</span>}</TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-sm hidden md:table-cell">{displayCpf(u.cpf)}</TableCell>
+                    <TableCell className="text-muted-foreground hidden md:table-cell">{u.email ?? <span className="text-slate-300">—</span>}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {u.roles.map((r) => (
@@ -286,7 +289,7 @@ export default function Usuarios() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
+                    <TableCell className="text-muted-foreground text-sm hidden lg:table-cell">
                       {new Date(u.createdAt).toLocaleDateString("pt-BR")}
                     </TableCell>
                     <TableCell className="text-right">

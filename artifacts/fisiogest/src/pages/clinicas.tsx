@@ -657,7 +657,7 @@ export default function Clinicas() {
                     <TableHeader>
                       <TableRow className="bg-muted/30">
                         <TableHead className="text-xs">Nome</TableHead>
-                        <TableHead className="text-xs">E-mail</TableHead>
+                        <TableHead className="text-xs hidden sm:table-cell">E-mail</TableHead>
                         <TableHead className="text-xs">Perfis</TableHead>
                         <TableHead className="w-20 text-xs text-right">Ações</TableHead>
                       </TableRow>
@@ -666,7 +666,7 @@ export default function Clinicas() {
                       {clinicUsers.map((u) => (
                         <TableRow key={u.id}>
                           <TableCell className="font-medium text-sm">{u.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-xs">{u.email ?? "—"}</TableCell>
+                          <TableCell className="text-muted-foreground text-xs hidden sm:table-cell">{u.email ?? "—"}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {u.roles.map((r) => (

@@ -1554,15 +1554,16 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onCon
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       {/* Header row */}
-      <div className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"
-        style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 96px" }}
-      >
+      <div className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-400
+        grid-cols-[1fr_90px_96px]
+        md:grid-cols-[1fr_120px_90px_96px]
+        lg:grid-cols-[1fr_120px_90px_90px_70px_70px_96px]">
         <span>Procedimento</span>
-        <span>Categoria</span>
+        <span className="hidden md:block">Categoria</span>
         <span className="text-right">Preço</span>
-        <span className="text-right">Custo</span>
-        <span className="text-right">Margem</span>
-        <span className="text-right">Duração</span>
+        <span className="text-right hidden lg:block">Custo</span>
+        <span className="text-right hidden lg:block">Margem</span>
+        <span className="text-right hidden lg:block">Duração</span>
         <span />
       </div>
 
@@ -1577,10 +1578,10 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onCon
             key={proc.id}
             className={cn(
               "grid items-center px-4 py-3 hover:bg-slate-50/70 transition-colors group",
+              "grid-cols-[1fr_90px_96px] md:grid-cols-[1fr_120px_90px_96px] lg:grid-cols-[1fr_120px_90px_90px_70px_70px_96px]",
               idx !== procedures.length - 1 && "border-b border-slate-100",
               !proc.isActive && "opacity-60"
             )}
-            style={{ gridTemplateColumns: "1fr 120px 90px 90px 70px 70px 96px" }}
           >
             <div className="min-w-0 pr-3">
               <div className="flex items-center gap-1.5">
@@ -1601,8 +1602,10 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onCon
               )}
             </div>
 
-            <div><CategoryBadge category={proc.category} /></div>
+            {/* Categoria — md+ */}
+            <div className="hidden md:block"><CategoryBadge category={proc.category} /></div>
 
+            {/* Preço — sempre visível */}
             <div className="text-right">
               <p className={cn("text-sm font-semibold", hasClinicOverride ? "text-emerald-700" : "text-slate-800")}>
                 {formatCurrency(effectivePrice)}
@@ -1612,17 +1615,20 @@ function ListView({ procedures, onEdit, onDelete, isAdmin, onToggleActive, onCon
               )}
             </div>
 
-            <div className="text-right">
+            {/* Custo — lg+ */}
+            <div className="text-right hidden lg:block">
               <p className={cn("text-xs", proc.clinicCost ? "text-emerald-700 font-medium" : "text-slate-500")}>
                 {formatCurrency(effectiveCost)}
               </p>
             </div>
 
-            <div className="text-right">
+            {/* Margem — lg+ */}
+            <div className="text-right hidden lg:block">
               <MarginBadge margin={margin} />
             </div>
 
-            <div className="text-right">
+            {/* Duração — lg+ */}
+            <div className="text-right hidden lg:block">
               <p className="text-xs text-slate-500 flex items-center justify-end gap-1">
                 <Clock className="w-3 h-3" />{proc.durationMinutes}m
               </p>
