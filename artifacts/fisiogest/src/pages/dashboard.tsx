@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { useGetDashboard } from "@workspace/api-client-react";
+import { useGetDashboard, useUpdateAppointment } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Users, DollarSign, Calendar as CalendarIcon, TrendingUp, Clock,
   AlertCircle, Activity, UserX, Globe, Copy, Check, ExternalLink,
   Cake, Phone, Mail, ArrowUpRight, Target, Plus, CalendarPlus, Stethoscope,
+  CheckCircle2, ClipboardList, RefreshCw, Loader2, ArrowRight,
 } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -32,6 +34,76 @@ function StatusBadge({ status }: { status: string }) {
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
       {cfg.label}
     </span>
+  );
+}
+
+// ─── Next-step action chip ─────────────────────────────────────────────────────
+type NextAction = {
+  label: string;
+  icon: React.ElementType;
+  chipClass: string;
+  kind: "inline" | "navigate";
+  toStatus?: string;
+  href?: string;
+};
+
+function getNextAction(status: string, patientId: number): NextAction | null {
+  switch (status) {
+    case "agendado":
+      return { label: "Confirmar", icon: CheckCircle2, chipClass: "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200", kind: "inline", toStatus: "confirmado" };
+    case "confirmado":
+      return { label: "Check-in", icon: CheckCircle2, chipClass: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200", kind: "inline", toStatus: "compareceu" };
+    case "compareceu":
+      return { label: "Evoluir", icon: ClipboardList, chipClass: "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200", kind: "navigate", href: `/pacientes/${patientId}?tab=evolutions` };
+    case "faltou":
+      return { label: "Remarcar", icon: RefreshCw, chipClass: "bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200", kind: "navigate", href: "/agenda" };
+    case "cancelado":
+      return { label: "Remarcar", icon: RefreshCw, chipClass: "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200", kind: "navigate", href: "/agenda" };
+    default:
+      return null;
+  }
+}
+
+function ActionChip({
+  appointmentId,
+  status,
+  patientId,
+  onInlineUpdate,
+  loadingId,
+}: {
+  appointmentId: number;
+  status: string;
+  patientId: number;
+  onInlineUpdate: (id: number, toStatus: string) => void;
+  loadingId: number | null;
+}) {
+  const [, navigate] = useLocation();
+  const action = getNextAction(status, patientId);
+  const isLoading = loadingId === appointmentId;
+
+  return (
+    <div className="flex flex-col items-end gap-1.5 shrink-0">
+      <StatusBadge status={status} />
+      {action && (
+        <button
+          onClick={() => {
+            if (action.kind === "inline" && action.toStatus) {
+              onInlineUpdate(appointmentId, action.toStatus);
+            } else if (action.kind === "navigate" && action.href) {
+              navigate(action.href);
+            }
+          }}
+          disabled={isLoading}
+          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full transition-all cursor-pointer disabled:opacity-50 ${action.chipClass}`}
+        >
+          {isLoading
+            ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+            : <action.icon className="w-2.5 h-2.5" />}
+          {action.label}
+          {action.kind === "navigate" && <ArrowRight className="w-2.5 h-2.5" />}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -103,6 +175,20 @@ function getGreeting() {
 export default function Dashboard() {
   const { data, isLoading } = useGetDashboard();
   const [copied, setCopied] = useState(false);
+  const [loadingId, setLoadingId] = useState<number | null>(null);
+  const updateMutation = useUpdateAppointment();
+  const queryClient = useQueryClient();
+
+  const handleInlineUpdate = (id: number, toStatus: string) => {
+    setLoadingId(id);
+    updateMutation.mutate(
+      { id, data: { status: toStatus as any } },
+      {
+        onSettled: () => setLoadingId(null),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }),
+      }
+    );
+  };
 
   const bookingUrl = `${window.location.origin}${BASE}/agendar`;
 
@@ -352,7 +438,13 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <StatusBadge status={apt.status} />
+                      <ActionChip
+                        appointmentId={apt.id}
+                        status={apt.status}
+                        patientId={(apt as any).patientId}
+                        onInlineUpdate={handleInlineUpdate}
+                        loadingId={loadingId}
+                      />
                     </div>
                   ))}
                 </div>
@@ -416,7 +508,13 @@ export default function Dashboard() {
                         <p className="text-xs text-slate-400 truncate">{apt.procedure?.name}</p>
                       </div>
 
-                      <StatusBadge status={apt.status} />
+                      <ActionChip
+                        appointmentId={apt.id}
+                        status={apt.status}
+                        patientId={(apt as any).patientId}
+                        onInlineUpdate={handleInlineUpdate}
+                        loadingId={loadingId}
+                      />
                     </div>
                   ))}
                 </div>

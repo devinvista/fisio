@@ -6370,7 +6370,11 @@ export default function PatientDetail() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("jornada");
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    const validTabs = ["jornada","anamnesis","evaluations","treatment","evolutions","history","financial","atestados","discharge","auditoria"];
+    return validTabs.includes(tabParam ?? "") ? (tabParam as string) : "jornada";
+  });
 
   const canEdit = hasPermission("patients.update");
   const canDelete = hasPermission("patients.delete");
