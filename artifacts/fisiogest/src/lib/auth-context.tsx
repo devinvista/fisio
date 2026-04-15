@@ -112,12 +112,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) throw new Error("Failed to switch clinic");
       const data = await res.json();
+
       localStorage.setItem("fisiogest_token", data.token);
       if (data.clinicId) {
         localStorage.setItem("fisiogest_clinic_id", String(data.clinicId));
       } else {
         localStorage.removeItem("fisiogest_clinic_id");
       }
+
+      setToken(data.token);
+      setClinicId(data.clinicId ?? null);
+
       setLocation("/dashboard");
     } catch (err) {
       console.error("Failed to switch clinic", err);
@@ -156,12 +161,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-
-export function useAuth(): AuthContextType {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
-}
-

@@ -2,7 +2,8 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthProvider } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useEffect } from "react";
 import type { Permission } from "@/lib/permissions";
@@ -111,7 +112,7 @@ function PermissionRoute({
         <h1 className="text-2xl font-bold text-foreground">Acesso Negado</h1>
         <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
         <button
-          onClick={() => window.location.href = "/dashboard"}
+          onClick={() => setLocation("/dashboard")}
           className="mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           Voltar ao Dashboard

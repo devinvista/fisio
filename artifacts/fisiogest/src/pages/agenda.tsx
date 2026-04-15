@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useLayoutEffect } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/use-auth";
 import {
   useListAppointments,
   useListPatients,
@@ -996,7 +996,7 @@ export default function Agenda() {
 
       {/* ── Modals ────────────────────────────────────────────────────────── */}
       <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-        <DialogContent className="sm:max-w-[520px] border-none shadow-2xl rounded-3xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[520px] border-none shadow-2xl rounded-3xl max-h-[92vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">
               {selectedSlot?.procedureId ? "Adicionar Paciente à Sessão" : "Agendar Consulta"}
@@ -1428,7 +1428,7 @@ function AppointmentDetailModal({
   return (
     <>
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className={cn("border-none shadow-2xl rounded-3xl", isGroupSession ? "sm:max-w-[520px]" : "sm:max-w-[480px]")}>
+      <DialogContent className={cn("border-none shadow-2xl rounded-3xl", isGroupSession ? "sm:max-w-[520px]" : "sm:max-w-[480px]")} aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className={cn("p-2.5 rounded-xl", isGroupSession ? "bg-violet-500" : cfg.bg)}>
@@ -2822,7 +2822,7 @@ function BlockEditDialog({
   return (
     <>
       <Dialog open onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-3xl">
+        <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-3xl" aria-describedby={undefined}>
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-slate-100">
@@ -2894,7 +2894,7 @@ function BlockEditDialog({
       {/* Choice dialog for recurring blocks */}
       {showGroupChoice && (
         <Dialog open onOpenChange={() => setShowGroupChoice(false)}>
-          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Editar bloqueio recorrente</DialogTitle>
             </DialogHeader>
@@ -3125,7 +3125,7 @@ function BlockedSlotModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[480px] border-none shadow-2xl rounded-3xl">
+        <DialogContent className="sm:max-w-[480px] border-none shadow-2xl rounded-3xl" aria-describedby={undefined}>
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-slate-100">
@@ -3329,7 +3329,7 @@ function BlockedSlotModal({
       {/* Delete group confirmation */}
       {deleteGroupId && (
         <Dialog open onOpenChange={() => setDeleteGroupId(null)}>
-          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Remover bloqueio recorrente</DialogTitle>
             </DialogHeader>
@@ -3349,7 +3349,7 @@ function BlockedSlotModal({
       {/* Edit blocked slot dialog */}
       {editSlot && (
         <Dialog open onOpenChange={() => setEditSlot(null)}>
-          <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-2xl">
+          <DialogContent className="sm:max-w-[400px] border-none shadow-2xl rounded-2xl" aria-describedby={undefined}>
             <DialogHeader>
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-slate-100">
@@ -3418,7 +3418,7 @@ function BlockedSlotModal({
       {/* Recurring series update choice dialog */}
       {editShowGroupChoice && editSlot && (
         <Dialog open onOpenChange={() => setEditShowGroupChoice(false)}>
-          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl">
+          <DialogContent className="sm:max-w-[380px] border-none shadow-2xl rounded-2xl" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Editar bloqueio recorrente</DialogTitle>
             </DialogHeader>

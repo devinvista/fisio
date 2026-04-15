@@ -10,6 +10,9 @@ FisioGest Pro é uma plataforma SaaS de gestão clínica completa para fisiotera
 - `/register` → Cadastro
 - `/dashboard` → Dashboard protegido (rota principal pós-login)
 - Após login bem-sucedido: redireciona para `/dashboard` (configurado em `auth-context.tsx`)
+- `/usuarios` e `/agendas` → redirecionam para `/configuracoes#usuarios` e `/configuracoes#agendas`
+
+> **Convenção de importação:** sempre importar `useAuth` de `@/lib/use-auth`. O `auth-context.tsx` exporta apenas `AuthProvider` e `AuthContext`.
 
 O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefatos (frontend + API + mockup-sandbox) servidos pelo proxy reverso compartilhado do Replit na porta 80.
 
@@ -43,6 +46,17 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefat
 - **Autorização**: RBAC com tabelas `user_roles`, `roles_permissions`; roles: admin, profissional, secretaria
 - **Gráficos**: Recharts
 - **Ícones**: Lucide React
+
+### Scheduler (jobs em background)
+
+| Job | Expressão CRON | Horário BRT | Função |
+|---|---|---|---|
+| Billing automático | `0 9 * * *` | 06:00 | `runBilling()` — cobranças recorrentes com tolerância de 3 dias |
+| Auto-confirmação | `*/15 * * * *` | a cada 15 min | `runAutoConfirmPolicies()` — confirma agendamentos dentro da janela configurada |
+| Fechamento do dia | `0 22 * * *` | 22:00 | `runEndOfDayPolicies()` — no-show + taxa de ausência + auto-conclusão |
+
+> O fechamento do dia só processa agendamentos do **dia corrente** para garantir tempo de ajustes manuais durante o expediente.
+> Implementado em `artifacts/api-server/src/scheduler.ts` + `services/policyService.ts`.
 
 ---
 
@@ -214,27 +228,34 @@ Para publicar o projeto no Replit (`.replit.app`):
 │   │   │   │   ├── register.tsx
 │   │   │   │   ├── landing.tsx         # Landing page pública
 │   │   │   │   ├── dashboard.tsx
-│   │   │   │   ├── agenda.tsx
+│   │   │   │   ├── agenda.tsx          # Calendário de agendamentos
 │   │   │   │   ├── procedimentos.tsx
 │   │   │   │   ├── pacotes.tsx
 │   │   │   │   ├── relatorios.tsx
 │   │   │   │   ├── clinicas.tsx
-│   │   │   │   ├── configuracoes.tsx
-│   │   │   │   ├── agendar.tsx
+│   │   │   │   ├── configuracoes.tsx   # Clínica + Usuários + Agendas (hash navigation)
+│   │   │   │   ├── agendar.tsx         # Portal público de agendamento
 │   │   │   │   ├── not-found.tsx
 │   │   │   │   ├── patients/
 │   │   │   │   │   ├── index.tsx       # Lista de pacientes + busca
 │   │   │   │   │   └── [id].tsx        # Prontuário completo (abas)
 │   │   │   │   └── financial/
 │   │   │   │       └── index.tsx       # Lançamentos, custos, DRE, despesas fixas
+│   │   │   │
+│   │   │   │   # Rotas /usuarios e /agendas redirecionam para /configuracoes#{hash}
 │   │   │   ├── components/
 │   │   │   │   ├── layout/app-layout.tsx
 │   │   │   │   ├── error-boundary.tsx
 │   │   │   │   ├── logo-mark.tsx       # SVG logo da marca
 │   │   │   │   └── ui/                 # Componentes shadcn/ui
 │   │   │   └── lib/
-│   │   │       ├── auth-context.tsx
-│   │   │       └── permissions.ts      # Definição de permissões RBAC
+│   │   │       ├── auth-context.tsx    # AuthProvider + AuthContext (sem useAuth)
+│   │   │       ├── use-auth.ts         # Hook useAuth() — importar sempre daqui
+│   │   │       ├── permissions.ts      # Definição de permissões RBAC
+│   │   │       ├── masks.ts            # maskCpf, maskPhone, maskCnpj
+│   │   │       └── utils.ts            # cn() e utilitários gerais
+│   │   ├── hooks/
+│   │   │   └── useAuthRedirect.ts      # Redireciona autenticados para /dashboard
 │   │   ├── index.html                  # lang="pt-BR"
 │   │   └── vite.config.ts              # proxy /api → 8080, port=$PORT, base=$BASE_PATH
 │   │
