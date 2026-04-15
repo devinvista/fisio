@@ -343,16 +343,23 @@ function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
     return sortDir === "asc" ? cmp : -cmp;
   });
 
-  const cols = "2fr 110px 140px 160px 120px 36px";
-
-  function HeaderCell({ field, label }: { field: SortField; label: string }) {
+  function HeaderCell({
+    field,
+    label,
+    className,
+  }: {
+    field: SortField;
+    label: string;
+    className?: string;
+  }) {
     const active = sortField === field;
     return (
       <button
         onClick={() => onSort(field)}
         className={cn(
           "flex items-center text-[11px] font-bold uppercase tracking-wider transition-colors select-none",
-          active ? "text-primary" : "text-slate-400 hover:text-slate-600"
+          active ? "text-primary" : "text-slate-400 hover:text-slate-600",
+          className
         )}
       >
         {label}
@@ -363,16 +370,16 @@ function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-      {/* Header */}
-      <div
-        className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5"
-        style={{ gridTemplateColumns: cols }}
-      >
+      {/* Header — responsive columns */}
+      <div className="grid items-center border-b border-slate-100 bg-slate-50/80 px-4 py-2.5
+        grid-cols-[1fr_36px]
+        sm:grid-cols-[1fr_140px_36px]
+        lg:grid-cols-[2fr_110px_140px_160px_120px_36px]">
         <HeaderCell field="name" label="Paciente" />
-        <HeaderCell field="birthDate" label="Nascimento" />
-        <HeaderCell field="phone" label="Telefone" />
-        <HeaderCell field="email" label="E-mail" />
-        <HeaderCell field="profession" label="Profissão" />
+        <HeaderCell field="birthDate" label="Nasc." className="hidden lg:flex" />
+        <HeaderCell field="phone" label="Telefone" className="hidden sm:flex" />
+        <HeaderCell field="email" label="E-mail" className="hidden lg:flex" />
+        <HeaderCell field="profession" label="Profissão" className="hidden lg:flex" />
         <span />
       </div>
 
@@ -387,23 +394,27 @@ function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
             <div
               className={cn(
                 "grid items-center px-4 py-3 hover:bg-primary/[0.03] transition-colors cursor-pointer group",
+                "grid-cols-[1fr_36px] sm:grid-cols-[1fr_140px_36px] lg:grid-cols-[2fr_110px_140px_160px_120px_36px]",
                 idx !== sorted.length - 1 && "border-b border-slate-100"
               )}
-              style={{ gridTemplateColumns: cols }}
             >
-              {/* Name + CPF */}
+              {/* Name + CPF — always visible */}
               <div className="flex items-center gap-3 min-w-0 pr-2">
                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
                   {initials}
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-slate-800 truncate">{patient.name}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">CPF: {displayCpf(patient.cpf)}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    CPF: {displayCpf(patient.cpf)}
+                    {/* On mobile show phone inline under name */}
+                    <span className="sm:hidden ml-2 text-slate-500">{patient.phone}</span>
+                  </p>
                 </div>
               </div>
 
-              {/* Birth date */}
-              <div>
+              {/* Birth date — lg+ only */}
+              <div className="hidden lg:block">
                 {dob ? (
                   <div>
                     <p className="text-xs text-slate-700">{dob}</p>
@@ -414,14 +425,14 @@ function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
                 )}
               </div>
 
-              {/* Phone */}
-              <div className="flex items-center gap-1.5">
+              {/* Phone — sm+ only */}
+              <div className="hidden sm:flex items-center gap-1.5">
                 <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                 <span className="text-xs text-slate-600 truncate">{patient.phone}</span>
               </div>
 
-              {/* Email */}
-              <div className="min-w-0 pr-2">
+              {/* Email — lg+ only */}
+              <div className="hidden lg:block min-w-0 pr-2">
                 {patient.email ? (
                   <div className="flex items-center gap-1.5">
                     <Mail className="w-3 h-3 text-slate-400 shrink-0" />
@@ -432,8 +443,8 @@ function ListView({ patients, sortField, sortDir, onSort }: ListViewProps) {
                 )}
               </div>
 
-              {/* Profession */}
-              <div>
+              {/* Profession — lg+ only */}
+              <div className="hidden lg:block">
                 {patient.profession ? (
                   <span className="text-xs text-slate-500 truncate block">{patient.profession}</span>
                 ) : (
