@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -58,6 +59,13 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const SIDEBAR_STORAGE_KEY = "fisiogest-sidebar-collapsed";
+
+const BOTTOM_NAV_PRIORITY: NavItem[] = [
+  { href: "/dashboard",    label: "Início",     icon: LayoutDashboard, permission: null },
+  { href: "/agenda",       label: "Agenda",     icon: CalendarDays,    permission: "appointments.read" },
+  { href: "/pacientes",    label: "Pacientes",  icon: Users,           permission: "patients.read" },
+  { href: "/financeiro",   label: "Financeiro", icon: Wallet,          permission: "financial.read" },
+];
 
 interface SidebarContentProps {
   user: { name?: string; roles?: string[] } | null;
@@ -260,6 +268,57 @@ function SidebarContent({
   );
 }
 
+interface BottomNavProps {
+  location: string;
+  hasPermission: (p: Permission) => boolean;
+  onOpenMenu: () => void;
+}
+
+function BottomNav({ location, hasPermission, onOpenMenu }: BottomNavProps) {
+  const visibleItems = BOTTOM_NAV_PRIORITY.filter((item) =>
+    item.permission === null || hasPermission(item.permission)
+  );
+
+  const isActive = (href: string) =>
+    location === href || (href !== "/" && location.startsWith(href));
+
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-[0_-1px_12px_rgba(0,0,0,0.08)]"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="flex items-stretch h-16">
+        {visibleItems.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors min-w-0
+                ${active ? "text-primary" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              <div className={`p-1.5 rounded-xl transition-all ${active ? "bg-primary/10" : ""}`}>
+                <item.icon className={`h-5 w-5 ${active ? "stroke-[2.5]" : "stroke-[1.8]"}`} />
+              </div>
+              <span className={`text-[10px] font-medium leading-none ${active ? "text-primary" : ""}`}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+        {/* "Mais" button opens the full sidebar sheet */}
+        <button
+          onClick={onOpenMenu}
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <div className="p-1.5 rounded-xl">
+            <MoreHorizontal className="h-5 w-5 stroke-[1.8]" />
+          </div>
+          <span className="text-[10px] font-medium leading-none">Mais</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 export function AppLayout({ children, title }: AppLayoutProps) {
   const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
   const [location] = useLocation();
@@ -354,11 +413,17 @@ export function AppLayout({ children, title }: AppLayoutProps) {
         </header>
 
         <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 relative">
-          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24 lg:pb-8">
             {children}
           </div>
         </main>
       </div>
+
+      <BottomNav
+        location={location}
+        hasPermission={hasPermission}
+        onOpenMenu={() => setMobileOpen(true)}
+      />
     </div>
   );
 }
