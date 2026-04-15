@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "KeIrPETYyCoD4gBbEKjit"
+uri = "file://fisiogest-hostinger.zip"
+type = "unspecified"
+title = "fisiogest-hostinger.zip — Pacote de produção"
