@@ -1,14 +1,19 @@
 /**
  * policyService — Políticas de agendamento por clínica
  *
- * Executa três regras por clínica:
- * 1. Auto-confirmação: agendamentos com status "agendado" que estão dentro
- *    da janela `autoConfirmHours` horas antes do horário marcado são
- *    automaticamente confirmados (confirmedBy = "sistema").
- * 2. No-show: agendamentos "agendado" ou "confirmado" cujo horário já passou
- *    são marcados como "faltou".
- * 3. Taxa de no-show: se `noShowFeeEnabled`, gera um lançamento financeiro
- *    de taxa de ausência para agendamentos marcados como "faltou" pelo policy.
+ * Duas funções de execução com frequências distintas:
+ *
+ * runAutoConfirmPolicies() — a cada 15 minutos
+ *   - Auto-confirmação: agendamentos com status "agendado" dentro da janela
+ *     `autoConfirmHours` antes do horário marcado são confirmados pelo sistema.
+ *
+ * runEndOfDayPolicies() — uma vez ao final do dia (22:00 BRT)
+ *   - No-show: agendamentos "agendado" ou "confirmado" do dia atual cujo horário
+ *     já passou são marcados como "faltou". Garante tempo para ajustes manuais.
+ *   - Taxa de no-show: se `noShowFeeEnabled`, gera lançamento financeiro de
+ *     ausência para cada no-show detectado.
+ *   - Auto-conclusão: agendamentos "compareceu" do dia atual cujo horário já
+ *     passou são finalizados como "concluido".
  */
 
 import { db } from "@workspace/db";
@@ -30,7 +35,9 @@ export interface PolicyRunResult {
   details: Array<{ clinicId: number; action: string; appointmentId?: number; error?: string }>;
 }
 
-export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
+// ── Auto-confirmação — executa a cada 15 minutos ───────────────────────────
+
+export async function runAutoConfirmPolicies(): Promise<PolicyRunResult> {
   const result: PolicyRunResult = {
     autoConfirmed: 0,
     autoCompleted: 0,
@@ -47,43 +54,72 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
 
   for (const clinic of clinics) {
     try {
-      // ── 1. AUTO-CONFIRM ──────────────────────────────────────────────────
-      if (clinic.autoConfirmHours && clinic.autoConfirmHours > 0) {
-        const toAutoConfirm = await db
-          .select({ id: appointmentsTable.id })
-          .from(appointmentsTable)
-          .where(
-            and(
-              eq(appointmentsTable.clinicId, clinic.id),
-              eq(appointmentsTable.status, "agendado"),
-              sql`(
-                (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.startTime})::timestamp
-                BETWEEN (NOW() AT TIME ZONE 'America/Sao_Paulo')
-                AND ((NOW() AT TIME ZONE 'America/Sao_Paulo') + INTERVAL '${sql.raw(String(clinic.autoConfirmHours))} hours')
-              )`
-            )
-          );
+      if (!clinic.autoConfirmHours || clinic.autoConfirmHours <= 0) continue;
 
-        for (const appt of toAutoConfirm) {
-          try {
-            await db
-              .update(appointmentsTable)
-              .set({
-                status: "confirmado",
-                confirmedBy: "sistema",
-                confirmedAt: new Date(),
-              })
-              .where(eq(appointmentsTable.id, appt.id));
-            result.autoConfirmed++;
-            result.details.push({ clinicId: clinic.id, action: "auto_confirmed", appointmentId: appt.id });
-          } catch (err: any) {
-            result.errors++;
-            result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
-          }
+      const toAutoConfirm = await db
+        .select({ id: appointmentsTable.id })
+        .from(appointmentsTable)
+        .where(
+          and(
+            eq(appointmentsTable.clinicId, clinic.id),
+            eq(appointmentsTable.status, "agendado"),
+            sql`(
+              (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.startTime})::timestamp
+              BETWEEN (NOW() AT TIME ZONE 'America/Sao_Paulo')
+              AND ((NOW() AT TIME ZONE 'America/Sao_Paulo') + INTERVAL '${sql.raw(String(clinic.autoConfirmHours))} hours')
+            )`
+          )
+        );
+
+      for (const appt of toAutoConfirm) {
+        try {
+          await db
+            .update(appointmentsTable)
+            .set({
+              status: "confirmado",
+              confirmedBy: "sistema",
+              confirmedAt: new Date(),
+            })
+            .where(eq(appointmentsTable.id, appt.id));
+          result.autoConfirmed++;
+          result.details.push({ clinicId: clinic.id, action: "auto_confirmed", appointmentId: appt.id });
+        } catch (err: any) {
+          result.errors++;
+          result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
         }
       }
+    } catch (err: any) {
+      result.errors++;
+      result.details.push({ clinicId: clinic.id, action: "clinic_error", error: String(err.message) });
+    }
+  }
 
-      // ── 2. NO-SHOW DETECTION ─────────────────────────────────────────────
+  return result;
+}
+
+// ── No-show + Auto-conclusão — executa ao final do dia (22:00 BRT) ─────────
+// Processa apenas agendamentos do dia atual, garantindo que a equipe tenha
+// o dia inteiro para preencher presenças e realizar ajustes manuais.
+
+export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
+  const result: PolicyRunResult = {
+    autoConfirmed: 0,
+    autoCompleted: 0,
+    noShowMarked: 0,
+    noShowFeesGenerated: 0,
+    errors: 0,
+    details: [],
+  };
+
+  const clinics = await db
+    .select()
+    .from(clinicsTable)
+    .where(eq(clinicsTable.isActive, true));
+
+  for (const clinic of clinics) {
+    try {
+      // ── NO-SHOW DETECTION ────────────────────────────────────────────────
+      // Apenas agendamentos de hoje cujo horário já passou
       const noShowCandidates = await db
         .select({
           id: appointmentsTable.id,
@@ -97,6 +133,7 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           and(
             eq(appointmentsTable.clinicId, clinic.id),
             inArray(appointmentsTable.status, ["agendado", "confirmado"]),
+            sql`${appointmentsTable.date} = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,
             sql`(
               (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.endTime})::timestamp
               < NOW() AT TIME ZONE 'America/Sao_Paulo'
@@ -113,7 +150,7 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           result.noShowMarked++;
           result.details.push({ clinicId: clinic.id, action: "no_show_marked", appointmentId: appt.id });
 
-          // ── 3. NO-SHOW FEE ───────────────────────────────────────────────
+          // ── NO-SHOW FEE ──────────────────────────────────────────────────
           if (clinic.noShowFeeEnabled && clinic.noShowFeeAmount) {
             const existing = await db
               .select({ id: financialRecordsTable.id })
@@ -160,7 +197,9 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
         }
       }
-      // ── 3. AUTO-COMPLETE: compareceu → concluido ─────────────────────────
+
+      // ── AUTO-COMPLETE: compareceu → concluido ────────────────────────────
+      // Apenas agendamentos de hoje com status "compareceu" cujo horário já passou
       const toAutoComplete = await db
         .select({ id: appointmentsTable.id })
         .from(appointmentsTable)
@@ -168,6 +207,7 @@ export async function runAppointmentPolicies(): Promise<PolicyRunResult> {
           and(
             eq(appointmentsTable.clinicId, clinic.id),
             eq(appointmentsTable.status, "compareceu"),
+            sql`${appointmentsTable.date} = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,
             sql`(
               (${appointmentsTable.date}::text || ' ' || ${appointmentsTable.endTime})::timestamp
               < NOW() AT TIME ZONE 'America/Sao_Paulo'

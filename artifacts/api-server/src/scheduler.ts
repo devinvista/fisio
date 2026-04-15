@@ -5,19 +5,25 @@
  * 1. Billing automático — diariamente às 06:00 BRT (09:00 UTC)
  *    Executa runBilling() com janela de tolerância de 3 dias.
  *
- * 2. Políticas de agendamento — a cada 15 minutos
- *    Executa runAppointmentPolicies():
- *    - Auto-confirmação: confirma agendamentos dentro da janela configurada
- *    - No-show: marca como "faltou" agendamentos cujo horário já passou
- *    - Taxa de no-show: gera lançamento financeiro de ausência se habilitado
+ * 2. Auto-confirmação — a cada 15 minutos
+ *    Executa runAutoConfirmPolicies():
+ *    - Confirma agendamentos dentro da janela configurada por clínica.
+ *
+ * 3. Fechamento do dia — diariamente às 22:00 BRT
+ *    Executa runEndOfDayPolicies():
+ *    - No-show: marca como "faltou" agendamentos do dia cujo horário já passou.
+ *    - Taxa de no-show: gera lançamento financeiro de ausência se habilitado.
+ *    - Auto-conclusão: finaliza agendamentos "compareceu" do dia como "concluido".
+ *    Roda apenas ao final do dia para dar tempo de preenchimentos e ajustes manuais.
  */
 
 import cron from "node-cron";
 import { runBilling } from "./services/billingService.js";
-import { runAppointmentPolicies } from "./services/policyService.js";
+import { runAutoConfirmPolicies, runEndOfDayPolicies } from "./services/policyService.js";
 
-const BILLING_CRON  = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
-const POLICIES_CRON = "*/15 * * * *"; // a cada 15 minutos
+const BILLING_CRON     = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
+const AUTO_CONFIRM_CRON = "*/15 * * * *"; // a cada 15 minutos
+const END_OF_DAY_CRON  = "0 22 * * *";   // 22:00 BRT diariamente
 
 export function startScheduler(): void {
   // ── Billing automático ─────────────────────────────────────────────────────
@@ -43,30 +49,53 @@ export function startScheduler(): void {
     console.log(`[scheduler] Billing automático agendado — ${BILLING_CRON} (06:00 BRT / 09:00 UTC)`);
   }
 
-  // ── Políticas de agendamento ───────────────────────────────────────────────
-  if (!cron.validate(POLICIES_CRON)) {
-    console.error("[scheduler] Expressão CRON de políticas inválida:", POLICIES_CRON);
+  // ── Auto-confirmação — a cada 15 minutos ───────────────────────────────────
+  if (!cron.validate(AUTO_CONFIRM_CRON)) {
+    console.error("[scheduler] Expressão CRON de auto-confirmação inválida:", AUTO_CONFIRM_CRON);
   } else {
-    cron.schedule(POLICIES_CRON, async () => {
-      console.log(`[scheduler] Executando políticas de agendamento — ${new Date().toISOString()}`);
+    cron.schedule(AUTO_CONFIRM_CRON, async () => {
       try {
-        const result = await runAppointmentPolicies();
-        console.log(
-          `[scheduler] Políticas concluídas: ` +
-          `${result.autoConfirmed} auto-confirmados, ` +
-          `${result.autoCompleted} auto-concluídos, ` +
-          `${result.noShowMarked} no-shows marcados, ` +
-          `${result.noShowFeesGenerated} taxas geradas, ` +
-          `${result.errors} erros`
-        );
+        const result = await runAutoConfirmPolicies();
+        if (result.autoConfirmed > 0 || result.errors > 0) {
+          console.log(
+            `[scheduler] Auto-confirmação: ${result.autoConfirmed} confirmados, ${result.errors} erros` +
+            ` — ${new Date().toISOString()}`
+          );
+        }
         if (result.errors > 0) {
-          console.error("[scheduler] Erros nas políticas:", result.details.filter(d => d.action.includes("error")));
+          console.error("[scheduler] Erros na auto-confirmação:", result.details.filter(d => d.action.includes("error")));
         }
       } catch (err) {
-        console.error("[scheduler] Falha crítica nas políticas de agendamento:", err);
+        console.error("[scheduler] Falha crítica na auto-confirmação:", err);
       }
     }, { timezone: "America/Sao_Paulo" });
 
-    console.log(`[scheduler] Políticas de agendamento agendadas — ${POLICIES_CRON} (a cada 15 minutos)`);
+    console.log(`[scheduler] Auto-confirmação agendada — ${AUTO_CONFIRM_CRON} (a cada 15 minutos)`);
+  }
+
+  // ── Fechamento do dia — 22:00 BRT ──────────────────────────────────────────
+  if (!cron.validate(END_OF_DAY_CRON)) {
+    console.error("[scheduler] Expressão CRON de fechamento do dia inválida:", END_OF_DAY_CRON);
+  } else {
+    cron.schedule(END_OF_DAY_CRON, async () => {
+      console.log(`[scheduler] Executando fechamento do dia — ${new Date().toISOString()}`);
+      try {
+        const result = await runEndOfDayPolicies();
+        console.log(
+          `[scheduler] Fechamento concluído: ` +
+          `${result.noShowMarked} no-shows marcados, ` +
+          `${result.noShowFeesGenerated} taxas geradas, ` +
+          `${result.autoCompleted} auto-concluídos, ` +
+          `${result.errors} erros`
+        );
+        if (result.errors > 0) {
+          console.error("[scheduler] Erros no fechamento do dia:", result.details.filter(d => d.action.includes("error")));
+        }
+      } catch (err) {
+        console.error("[scheduler] Falha crítica no fechamento do dia:", err);
+      }
+    }, { timezone: "America/Sao_Paulo" });
+
+    console.log(`[scheduler] Fechamento do dia agendado — ${END_OF_DAY_CRON} (22:00 BRT)`);
   }
 }
