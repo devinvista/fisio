@@ -8,7 +8,7 @@ import type { Role } from "@workspace/db";
 import { validateBody, optionalPositiveNumber } from "../lib/validate.js";
 import { z } from "zod/v4";
 
-const procedureCategoryEnum = z.enum(["Fisioterapia", "Estética", "Pilates", "Outro"]);
+const procedureCategoryEnum = z.enum(["Reabilitação", "Estética", "Pilates", "Outro"]);
 const procedureModalidadeEnum = z.enum(["individual", "dupla", "grupo"]);
 const procedureBillingTypeEnum = z.enum(["porSessao", "mensal"]);
 
