@@ -371,7 +371,7 @@ function ClinicaSection() {
           <CardDescription>Define o modelo jurídico e os campos de identificação exibidos nos documentos.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setFormData((p) => ({ ...p, type: "autonomo" }))}
@@ -486,7 +486,7 @@ function ClinicaSection() {
         </CardHeader>
         <CardContent className="space-y-4">
           {isAutonomo ? (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="clinic-cpf" className="flex items-center gap-1.5">
                   <Hash className="h-3.5 w-3.5" /> CPF do Profissional
@@ -524,7 +524,7 @@ function ClinicaSection() {
                   placeholder="00.000.000/0001-00"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="clinic-rt" className="flex items-center gap-1.5">
                     <UserCheck className="h-3.5 w-3.5" /> Responsável Técnico (RT)
@@ -560,7 +560,7 @@ function ClinicaSection() {
           <CardDescription>Aparecem no rodapé e cabeçalho dos documentos emitidos.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="clinic-phone" className="flex items-center gap-1.5">
                 <Phone className="h-3.5 w-3.5" /> Telefone
@@ -947,10 +947,10 @@ function UsuariosSection() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>CPF</TableHead>
-              <TableHead>E-mail</TableHead>
+              <TableHead className="hidden md:table-cell">CPF</TableHead>
+              <TableHead className="hidden md:table-cell">E-mail</TableHead>
               <TableHead>Perfis</TableHead>
-              <TableHead>Cadastrado em</TableHead>
+              <TableHead className="hidden lg:table-cell">Cadastrado em</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -979,16 +979,19 @@ function UsuariosSection() {
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                         {u.name.charAt(0).toUpperCase()}
                       </div>
-                      <span>{u.name}</span>
-                      {u.id === currentUser?.id && (
-                        <span className="text-xs text-muted-foreground">(você)</span>
-                      )}
+                      <div className="min-w-0">
+                        <p className="truncate">{u.name}</p>
+                        {u.id === currentUser?.id && (
+                          <span className="text-xs text-muted-foreground">(você)</span>
+                        )}
+                        <p className="text-xs text-muted-foreground md:hidden truncate">{u.email ?? ""}</p>
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-sm">
+                  <TableCell className="text-muted-foreground font-mono text-sm hidden md:table-cell">
                     {displayCpf(u.cpf)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground hidden md:table-cell">
                     {u.email ?? <span className="text-slate-300">—</span>}
                   </TableCell>
                   <TableCell>
@@ -1005,7 +1008,7 @@ function UsuariosSection() {
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="text-muted-foreground text-sm hidden lg:table-cell">
                     {new Date(u.createdAt).toLocaleDateString("pt-BR")}
                   </TableCell>
                   <TableCell className="text-right">
@@ -1752,10 +1755,11 @@ export default function Configuracoes() {
 
   return (
     <AppLayout title="Configurações">
-      <div className="flex gap-8">
-        {/* ── Left navigation ── */}
-        <aside className="w-56 shrink-0">
-          <nav className="space-y-1 sticky top-0">
+      <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+        {/* ── Navigation — horizontal tabs on mobile, sidebar on md+ ── */}
+        <aside className="md:w-56 md:shrink-0">
+          {/* Mobile: scrollable pill tabs */}
+          <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0 md:sticky md:top-0 scrollbar-none">
             {visibleSections.map((section) => {
               const Icon = section.icon;
               const isActive = currentSection?.id === section.id;
@@ -1764,7 +1768,8 @@ export default function Configuracoes() {
                   key={section.id}
                   onClick={() => navigate(section.id)}
                   className={`
-                    w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all
+                    shrink-0 flex items-center gap-2 px-3 py-2 md:py-2.5 rounded-xl text-left transition-all
+                    md:w-full
                     ${
                       isActive
                         ? "bg-primary/10 text-primary font-medium"
@@ -1775,10 +1780,10 @@ export default function Configuracoes() {
                   <Icon
                     className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : ""}`}
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm leading-tight truncate">{section.label}</div>
+                  <div className="min-w-0">
+                    <div className="text-sm leading-tight whitespace-nowrap md:whitespace-normal md:truncate">{section.label}</div>
                     <div
-                      className={`text-xs leading-tight truncate mt-0.5 ${
+                      className={`text-xs leading-tight truncate mt-0.5 hidden md:block ${
                         isActive ? "text-primary/70" : "text-muted-foreground/70"
                       }`}
                     >
@@ -1786,7 +1791,7 @@ export default function Configuracoes() {
                     </div>
                   </div>
                   {isActive && (
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary hidden md:block" />
                   )}
                 </button>
               );
@@ -1794,8 +1799,9 @@ export default function Configuracoes() {
           </nav>
         </aside>
 
-        {/* ── Vertical divider ── */}
-        <div className="w-px bg-border shrink-0" />
+        {/* ── Divider — vertical on desktop, horizontal on mobile ── */}
+        <div className="hidden md:block w-px bg-border shrink-0" />
+        <div className="md:hidden h-px bg-border" />
 
         {/* ── Content area ── */}
         <div className="flex-1 min-w-0">
