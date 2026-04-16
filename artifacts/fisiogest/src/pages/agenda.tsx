@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useLayoutEffect } from "react";
+import { apiFetch } from "@/lib/api";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/lib/use-auth";
 import {
@@ -158,13 +159,13 @@ export default function Agenda() {
 
   const { data: schedules = [] } = useQuery<ScheduleOption[]>({
     queryKey: ["schedules"],
-    queryFn: () => fetch("/api/schedules").then((r) => r.json()),
+    queryFn: () => apiFetch("/api/schedules").then((r) => r.json()),
     staleTime: 60_000,
   });
 
   const { data: calendarProfessionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
     queryKey: ["professionals"],
-    queryFn: () => fetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
+    queryFn: () => apiFetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
     staleTime: 60_000,
     enabled: canFilterByProfessional,
     select: (data) => data.filter((u) => u.roles.includes("profissional")),
@@ -317,7 +318,7 @@ export default function Agenda() {
     queryFn: async () => {
       const params = new URLSearchParams({ startDate: startDateStr, endDate: endDateStr });
       if (selectedScheduleId) params.set("scheduleId", String(selectedScheduleId));
-      const res = await fetch(`/api/blocked-slots?${params}`, { credentials: "include" });
+      const res = await apiFetch(`/api/blocked-slots?${params}`, { credentials: "include" });
       return res.json();
     },
     staleTime: 30_000,
@@ -1380,7 +1381,7 @@ function AppointmentDetailModal({
     setRescheduleBusy(true);
     try {
       const token = localStorage.getItem("fisiogest_token");
-      const res = await fetch(`/api/appointments/${appointment.id}/reschedule`, {
+      const res = await apiFetch(`/api/appointments/${appointment.id}/reschedule`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(rescheduleForm),
@@ -1892,7 +1893,7 @@ function CreateAppointmentForm({
 
   const { data: professionals = [] } = useQuery<{ id: number; name: string; roles: string[] }[]>({
     queryKey: ["professionals"],
-    queryFn: () => fetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
+    queryFn: () => apiFetch("/api/users/professionals", { credentials: "include" }).then((r) => r.json()),
     staleTime: 60_000,
     enabled: canSelectProfessional,
     select: (data) => data.filter((u) => u.roles.includes("profissional")),
@@ -1954,7 +1955,7 @@ function CreateAppointmentForm({
   const { data: treatmentPlan } = useQuery<TreatmentPlan | null>({
     queryKey: ["treatment-plan", formData.patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/medical-records/${formData.patientId}/treatment-plan`, { credentials: "include" });
+      const res = await apiFetch(`/api/medical-records/${formData.patientId}/treatment-plan`, { credentials: "include" });
       if (res.status === 404) return null;
       return res.json();
     },
@@ -1965,7 +1966,7 @@ function CreateAppointmentForm({
   const { data: planProcedures = [] } = useQuery<PlanProcedureForAgenda[]>({
     queryKey: ["treatment-plan-procedures-agenda", treatmentPlan?.id],
     queryFn: () =>
-      fetch(`/api/treatment-plans/${treatmentPlan!.id}/procedures`, { credentials: "include" }).then((r) => r.json()),
+      apiFetch(`/api/treatment-plans/${treatmentPlan!.id}/procedures`).then((r) => r.json()),
     enabled: !!treatmentPlan?.id && treatmentPlan.status === "ativo",
     staleTime: 60_000,
     select: (data) =>
@@ -1975,9 +1976,8 @@ function CreateAppointmentForm({
   const { data: lastAppointments } = useQuery<{ procedureId: number | null }[]>({
     queryKey: ["last-appointments", formData.patientId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/appointments?patientId=${formData.patientId}`,
-        { credentials: "include" }
+      const res = await apiFetch(
+        `/api/appointments?patientId=${formData.patientId}`
       );
       return res.json();
     },
@@ -2010,7 +2010,7 @@ function CreateAppointmentForm({
         params.set("clinicStart", clinicStart || "07:00");
         params.set("clinicEnd", clinicEnd || "20:00");
       }
-      const res = await fetch(`/api/appointments/available-slots?${params}`, {
+      const res = await apiFetch(`/api/appointments/available-slots?${params}`, {
         credentials: "include",
       });
       return res.json();
@@ -2070,7 +2070,7 @@ function CreateAppointmentForm({
       }
       setRecurPending(true);
       try {
-        const res = await fetch("/api/appointments/recurring", {
+        const res = await apiFetch("/api/appointments/recurring", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -2809,7 +2809,7 @@ function BlockEditDialog({
     }
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/blocked-slots/${block.id}`, {
+      const res = await apiFetch(`/api/blocked-slots/${block.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3004,7 +3004,7 @@ function BlockedSlotModal({
     queryFn: async () => {
       const params = new URLSearchParams({ date: form.date });
       if (resolvedScheduleId) params.set("scheduleId", String(resolvedScheduleId));
-      const res = await fetch(`/api/blocked-slots?${params}`, { credentials: "include" });
+      const res = await apiFetch(`/api/blocked-slots?${params}`, { credentials: "include" });
       return res.json();
     },
     enabled: open,
@@ -3050,7 +3050,7 @@ function BlockedSlotModal({
         body.recurrenceEndDate = form.recurrenceEndDate;
         if (form.recurrenceType === "weekly") body.recurrenceDays = form.recurrenceDays;
       }
-      const res = await fetch("/api/blocked-slots", {
+      const res = await apiFetch("/api/blocked-slots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3089,7 +3089,7 @@ function BlockedSlotModal({
   const doDelete = async (id: number, group: boolean) => {
     try {
       const url = group ? `/api/blocked-slots/${id}?group=true` : `/api/blocked-slots/${id}`;
-      await fetch(url, { method: "DELETE", credentials: "include" });
+      await apiFetch(url, { method: "DELETE" });
       toast({ title: group ? "Série de bloqueios removida." : "Bloqueio removido." });
       refetchList();
       onSuccess();
@@ -3108,7 +3108,7 @@ function BlockedSlotModal({
     }
     setIsSavingEdit(true);
     try {
-      const res = await fetch(`/api/blocked-slots/${editSlot.id}`, {
+      const res = await apiFetch(`/api/blocked-slots/${editSlot.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

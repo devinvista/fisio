@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 import { maskCpf, maskPhone, maskCnpj, displayCpf } from "@/lib/masks";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -234,13 +235,13 @@ function formatDaysBadges(workingDays: string) {
 /* ─── API functions ─────────────────────────────────────────── */
 
 async function fetchCurrentClinic(): Promise<Clinic> {
-  const res = await fetch(`${API_BASE}/api/clinics/current`);
+  const res = await apiFetch(`${API_BASE}/api/clinics/current`);
   if (!res.ok) throw new Error("Falha ao carregar dados da clínica");
   return res.json();
 }
 
 async function updateCurrentClinic(data: Partial<Clinic>): Promise<Clinic> {
-  const res = await fetch(`${API_BASE}/api/clinics/current`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/current`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -253,7 +254,7 @@ async function updateCurrentClinic(data: Partial<Clinic>): Promise<Clinic> {
 }
 
 async function fetchUsers(): Promise<SystemUser[]> {
-  const res = await fetch("/api/users");
+  const res = await apiFetch("/api/users");
   if (!res.ok) throw new Error("Falha ao carregar usuários");
   return res.json();
 }
@@ -780,7 +781,7 @@ function UsuariosSection() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof EMPTY_USER_FORM) => {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -815,7 +816,7 @@ function UsuariosSection() {
         password?: string;
       };
     }) => {
-      const res = await fetch(`/api/users/${id}`, {
+      const res = await apiFetch(`/api/users/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -838,7 +839,7 @@ function UsuariosSection() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/users/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message ?? "Erro ao excluir usuário");
@@ -1165,7 +1166,7 @@ function AgendasSection() {
 
   const { data: schedules = [], isLoading } = useQuery<Schedule[]>({
     queryKey: ["schedules"],
-    queryFn: () => fetch("/api/schedules").then((r) => r.json()),
+    queryFn: () => apiFetch("/api/schedules").then((r) => r.json()),
   });
 
   const { data: users = [] } = useQuery<SystemUser[]>({
@@ -1180,7 +1181,7 @@ function AgendasSection() {
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
-      fetch("/api/schedules", {
+      apiFetch("/api/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -1199,7 +1200,7 @@ function AgendasSection() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) =>
-      fetch(`/api/schedules/${id}`, {
+      apiFetch(`/api/schedules/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -1219,7 +1220,7 @@ function AgendasSection() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/api/schedules/${id}`, { method: "DELETE" }),
+      apiFetch(`/api/schedules/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["schedules"] });
       setDeleteTarget(null);
@@ -1231,7 +1232,7 @@ function AgendasSection() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
-      fetch(`/api/schedules/${id}`, {
+      apiFetch(`/api/schedules/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),

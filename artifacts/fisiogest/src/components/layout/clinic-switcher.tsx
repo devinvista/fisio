@@ -1,6 +1,7 @@
 import { Building2, ChevronDown, Check, Loader2, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,7 +28,7 @@ export function ClinicSwitcher() {
   const { data: allClinics = [], isLoading } = useQuery<ClinicItem[]>({
     queryKey: ["all-clinics-switcher"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/clinics`);
+      const res = await apiFetch(`${API_BASE}/api/clinics`);
       if (!res.ok) throw new Error("failed");
       return res.json();
     },
