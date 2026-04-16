@@ -707,6 +707,8 @@ function PlansTab() {
 
 // ─── Subscriptions Tab ────────────────────────────────────────────────────────
 
+type ClinicBasic = { id: number; name: string; email: string | null; isActive: boolean; createdAt: string };
+
 function SubscriptionsTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -724,6 +726,19 @@ function SubscriptionsTab() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPlan, setFilterPlan] = useState("all");
+  const [newSubOpen, setNewSubOpen] = useState(false);
+  const [newSubForm, setNewSubForm] = useState({
+    clinicId: "",
+    planId: "",
+    status: "trial",
+    paymentStatus: "pending",
+    amount: "",
+  });
+
+  const { data: allClinics = [] } = useQuery<ClinicBasic[]>({
+    queryKey: ["all-clinics"],
+    queryFn: () => fetchJSON(api("/clinics")),
+  });
 
   const { data: subs = [], isLoading } = useQuery<SubRow[]>({
     queryKey: ["clinic-subscriptions"],
@@ -733,6 +748,42 @@ function SubscriptionsTab() {
   const { data: plans = [] } = useQuery<Plan[]>({
     queryKey: ["plans"],
     queryFn: () => fetchJSON(api("/plans")),
+  });
+
+  // Clinics that already have a subscription
+  const subsClinicIds = useMemo(() => new Set(subs.map((s) => s.sub.clinicId)), [subs]);
+  const clinicsWithoutSub = useMemo(() => allClinics.filter((c) => !subsClinicIds.has(c.id)), [allClinics, subsClinicIds]);
+
+  const createSubMutation = useMutation({
+    mutationFn: async () => {
+      if (!newSubForm.clinicId || !newSubForm.planId) throw new Error("Selecione clínica e plano");
+      const selectedPlan = plans.find((p) => String(p.id) === newSubForm.planId);
+      const payload = {
+        clinicId: Number(newSubForm.clinicId),
+        planId: Number(newSubForm.planId),
+        status: newSubForm.status,
+        paymentStatus: newSubForm.paymentStatus,
+        amount: newSubForm.amount ? Number(newSubForm.amount) : selectedPlan ? Number(selectedPlan.price) : undefined,
+      };
+      const res = await fetch(api("/clinic-subscriptions"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Erro ao criar assinatura");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clinic-subscriptions"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
+      toast({ title: "Assinatura criada com sucesso!" });
+      setNewSubOpen(false);
+      setNewSubForm({ clinicId: "", planId: "", status: "trial", paymentStatus: "pending", amount: "" });
+    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const updateMutation = useMutation({
@@ -817,6 +868,12 @@ function SubscriptionsTab() {
     } catch { return false; }
   });
 
+  // auto-fill amount when plan changes in new sub form
+  const handleNewSubPlanChange = (planId: string) => {
+    const plan = plans.find((p) => String(p.id) === planId);
+    setNewSubForm((f) => ({ ...f, planId, amount: plan ? plan.price : "" }));
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -824,11 +881,55 @@ function SubscriptionsTab() {
           <h2 className="text-lg font-bold text-slate-900">Assinaturas das Clínicas</h2>
           <p className="text-sm text-slate-500 mt-0.5">Acompanhe e gerencie o status de cada clínica</p>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-extrabold text-slate-900 tabular-nums">{subs.length}</p>
-          <p className="text-xs text-slate-400">total de clínicas</p>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-2xl font-extrabold text-slate-900 tabular-nums">{subs.length}</p>
+            <p className="text-xs text-slate-400">com assinatura</p>
+          </div>
+          <Button onClick={() => setNewSubOpen(true)} className="rounded-xl gap-2">
+            <Plus className="w-4 h-4" /> Nova Assinatura
+          </Button>
         </div>
       </div>
+
+      {/* Clinics without subscription alert */}
+      {clinicsWithoutSub.length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <Building2 className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-indigo-800">
+                {clinicsWithoutSub.length} clínica(s) sem plano vinculado
+              </p>
+              <p className="text-xs text-indigo-600 mt-0.5 mb-2">
+                {clinicsWithoutSub.map((c) => c.name).join(", ")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {clinicsWithoutSub.map((clinic) => (
+                  <button
+                    key={clinic.id}
+                    onClick={() => {
+                      const defaultPlan = plans[0];
+                      setNewSubForm({
+                        clinicId: String(clinic.id),
+                        planId: defaultPlan ? String(defaultPlan.id) : "",
+                        status: "trial",
+                        paymentStatus: "pending",
+                        amount: defaultPlan ? defaultPlan.price : "",
+                      });
+                      setNewSubOpen(true);
+                    }}
+                    className="text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {clinic.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Trial expiring soon alert */}
       {trialExpiringSoon.length > 0 && (
@@ -1025,6 +1126,125 @@ function SubscriptionsTab() {
           )}
         </div>
       )}
+
+      {/* New subscription dialog */}
+      <Dialog open={newSubOpen} onOpenChange={(o) => { if (!o) setNewSubOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova Assinatura</DialogTitle>
+            <DialogDescription>Vincule um plano a uma clínica manualmente</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Clínica</Label>
+              <Select value={newSubForm.clinicId} onValueChange={(v) => setNewSubForm((f) => ({ ...f, clinicId: v }))}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a clínica" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allClinics.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      <div className="flex items-center gap-2">
+                        {!subsClinicIds.has(c.id) && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Sem plano</span>
+                        )}
+                        {c.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Plano</Label>
+              <Select value={newSubForm.planId} onValueChange={handleNewSubPlanChange}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione o plano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map((p) => {
+                    const tier = getTierConfig(p.name);
+                    const TierIcon = tier.icon;
+                    return (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        <div className="flex items-center gap-2">
+                          <TierIcon className="w-3.5 h-3.5" style={{ color: tier.color }} />
+                          {p.displayName} — {fmtCurrency(p.price)}/mês
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={newSubForm.status} onValueChange={(v) => setNewSubForm((f) => ({ ...f, status: v }))}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="trial">Trial</SelectItem>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="suspended">Suspenso</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Pagamento</Label>
+                <Select value={newSubForm.paymentStatus} onValueChange={(v) => setNewSubForm((f) => ({ ...f, paymentStatus: v }))}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="paid">Pago</SelectItem>
+                    <SelectItem value="free">Grátis</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Valor cobrado (R$)</Label>
+              <Input
+                type="number" min={0} step={0.01}
+                value={newSubForm.amount}
+                onChange={(e) => setNewSubForm((f) => ({ ...f, amount: e.target.value }))}
+                placeholder="Preenchido automaticamente pelo plano"
+                className="rounded-xl"
+              />
+            </div>
+
+            {newSubForm.planId && (
+              <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600">
+                {(() => {
+                  const plan = plans.find((p) => String(p.id) === newSubForm.planId);
+                  if (!plan) return null;
+                  return (
+                    <span>
+                      Trial de <strong>{plan.trialDays} dias</strong> será iniciado hoje.
+                      O plano <strong>{plan.displayName}</strong> custa {fmtCurrency(plan.price)}/mês após o período de trial.
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewSubOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => createSubMutation.mutate()}
+              disabled={createSubMutation.isPending || !newSubForm.clinicId || !newSubForm.planId}
+            >
+              {createSubMutation.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "Criar Assinatura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit subscription dialog */}
       <Dialog open={editSub !== null} onOpenChange={(o) => { if (!o) setEditSub(null); }}>

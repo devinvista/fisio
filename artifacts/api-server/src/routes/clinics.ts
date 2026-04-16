@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clinicsTable, usersTable, userRolesTable } from "@workspace/db";
+import { subscriptionPlansTable, clinicSubscriptionsTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requireSuperAdmin, requirePermission } from "../middleware/rbac.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../middleware/auth.js";
+import { todayBRT } from "../lib/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -26,27 +28,58 @@ router.get("/", requireSuperAdmin(), async (_req, res) => {
 
 router.post("/", requireSuperAdmin(), async (req: AuthRequest, res) => {
   try {
-    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl } = req.body;
+    const { name, type, cnpj, cpf, crefito, responsibleTechnical, phone, email, address, website, logoUrl, planId } = req.body;
     if (!name) {
       res.status(400).json({ error: "Bad Request", message: "Nome é obrigatório" });
       return;
     }
-    const [clinic] = await db
-      .insert(clinicsTable)
-      .values({
-        name,
-        type: type || "clinica",
-        cnpj: cnpj?.replace(/\D/g, "") || null,
-        cpf: cpf?.replace(/\D/g, "") || null,
-        crefito: crefito || null,
-        responsibleTechnical: responsibleTechnical || null,
-        phone,
-        email,
-        address,
-        website: website || null,
-        logoUrl: logoUrl || null,
-      })
-      .returning();
+
+    // Find the plan to assign (use planId if provided, otherwise first active plan)
+    let selectedPlan = null;
+    if (planId) {
+      const [p] = await db.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, Number(planId))).limit(1);
+      selectedPlan = p ?? null;
+    } else {
+      const plans = await db.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.isActive, true)).orderBy(asc(subscriptionPlansTable.sortOrder)).limit(1);
+      selectedPlan = plans[0] ?? null;
+    }
+
+    const clinic = await db.transaction(async (tx) => {
+      const [clinic] = await tx
+        .insert(clinicsTable)
+        .values({
+          name,
+          type: type || "clinica",
+          cnpj: cnpj?.replace(/\D/g, "") || null,
+          cpf: cpf?.replace(/\D/g, "") || null,
+          crefito: crefito || null,
+          responsibleTechnical: responsibleTechnical || null,
+          phone,
+          email,
+          address,
+          website: website || null,
+          logoUrl: logoUrl || null,
+        })
+        .returning();
+
+      if (selectedPlan) {
+        const today = todayBRT();
+        const trialEnd = new Date(today);
+        trialEnd.setDate(trialEnd.getDate() + (selectedPlan.trialDays ?? 30));
+        await tx.insert(clinicSubscriptionsTable).values({
+          clinicId: clinic.id,
+          planId: selectedPlan.id,
+          status: "trial",
+          trialStartDate: today,
+          trialEndDate: trialEnd.toISOString().split("T")[0],
+          amount: selectedPlan.price,
+          paymentStatus: "pending",
+        });
+      }
+
+      return clinic;
+    });
+
     res.status(201).json(clinic);
   } catch (err) {
     console.error(err);
