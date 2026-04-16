@@ -1,5 +1,6 @@
 import { pgTable, serial, text, integer, numeric, boolean, timestamp, date, jsonb } from "drizzle-orm/pg-core";
 import { clinicsTable } from "./clinics";
+import { usersTable } from "./users";
 
 export const subscriptionPlansTable = pgTable("subscription_plans", {
   id: serial("id").primaryKey(),
@@ -41,7 +42,26 @@ export const clinicSubscriptionsTable = pgTable("clinic_subscriptions", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const clinicPaymentHistoryTable = pgTable("clinic_payment_history", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id")
+    .notNull()
+    .references(() => clinicsTable.id, { onDelete: "cascade" }),
+  subscriptionId: integer("subscription_id").references(() => clinicSubscriptionsTable.id, {
+    onDelete: "set null",
+  }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  method: text("method").notNull().default("manual"),
+  referenceMonth: text("reference_month"),
+  paidAt: timestamp("paid_at").notNull().defaultNow(),
+  notes: text("notes"),
+  recordedBy: integer("recorded_by").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type SubscriptionPlan = typeof subscriptionPlansTable.$inferSelect;
 export type InsertSubscriptionPlan = typeof subscriptionPlansTable.$inferInsert;
 export type ClinicSubscription = typeof clinicSubscriptionsTable.$inferSelect;
 export type InsertClinicSubscription = typeof clinicSubscriptionsTable.$inferInsert;
+export type ClinicPaymentHistory = typeof clinicPaymentHistoryTable.$inferSelect;
+export type InsertClinicPaymentHistory = typeof clinicPaymentHistoryTable.$inferInsert;

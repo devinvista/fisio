@@ -56,6 +56,10 @@ import {
   BadgeDollarSign,
   Users,
   BarChart3,
+  Receipt,
+  DollarSign,
+  CalendarDays,
+  Banknote,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -77,6 +81,7 @@ const TABS = [
   { id: "planos", label: "Planos", icon: Package },
   { id: "assinaturas", label: "Assinaturas", icon: CreditCard },
   { id: "clinicas", label: "Clínicas", icon: Building2 },
+  { id: "pagamentos", label: "Pagamentos", icon: Receipt },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -1788,6 +1793,496 @@ function ClinicsTab() {
   );
 }
 
+// ─── Payments Tab ─────────────────────────────────────────────────────────────
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  manual: "Manual",
+  pix: "PIX",
+  credit_card: "Cartão de Crédito",
+  boleto: "Boleto",
+  transfer: "Transferência",
+  other: "Outro",
+};
+
+type PaymentRow = {
+  payment: {
+    id: number;
+    clinicId: number;
+    subscriptionId: number | null;
+    amount: string;
+    method: string;
+    referenceMonth: string | null;
+    paidAt: string;
+    notes: string | null;
+    recordedBy: number | null;
+    createdAt: string;
+  };
+  clinic: { id: number; name: string; email: string } | null;
+  recorder: { id: number; name: string } | null;
+  plan: { id: number; displayName: string } | null;
+};
+
+type PaymentStats = {
+  totalAllTime: number;
+  totalThisMonth: number;
+  totalPayments: number;
+  referenceMonth: string;
+};
+
+function PaymentsTab() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [showDialog, setShowDialog] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const { data: payments = [], isLoading: paymentsLoading } = useQuery<PaymentRow[]>({
+    queryKey: ["payment-history"],
+    queryFn: () => fetchJSON(api("/payment-history")),
+  });
+
+  const { data: stats, isLoading: statsLoading } = useQuery<PaymentStats>({
+    queryKey: ["payment-history-stats"],
+    queryFn: () => fetchJSON(api("/payment-history/stats")),
+  });
+
+  const { data: subs = [] } = useQuery<SubRow[]>({
+    queryKey: ["clinic-subscriptions"],
+    queryFn: () => fetchJSON(api("/clinic-subscriptions")),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiFetch(api(`/payment-history/${id}`), { method: "DELETE" });
+      if (!res.ok) throw new Error("Falha ao remover pagamento");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payment-history"] });
+      qc.invalidateQueries({ queryKey: ["payment-history-stats"] });
+      toast({ title: "Pagamento removido" });
+      setDeleteId(null);
+    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
+  });
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return payments;
+    const q = search.toLowerCase();
+    return payments.filter(
+      (r) =>
+        r.clinic?.name?.toLowerCase().includes(q) ||
+        r.clinic?.email?.toLowerCase().includes(q) ||
+        r.payment.referenceMonth?.includes(q) ||
+        r.payment.method?.includes(q)
+    );
+  }, [payments, search]);
+
+  const fmtBRL = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  const fmtDate = (d: string) =>
+    format(new Date(d), "dd/MM/yyyy HH:mm", { locale: ptBR });
+
+  const fmtMonth = (m: string | null) => {
+    if (!m) return "—";
+    const [year, month] = m.split("-");
+    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("pt-BR", {
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Histórico de Pagamentos</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Todos os pagamentos recebidos das clínicas</p>
+        </div>
+        <Button
+          onClick={() => setShowDialog(true)}
+          size="sm"
+          className="rounded-xl gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Registrar Pagamento
+        </Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {statsLoading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-24 rounded-2xl bg-slate-100 animate-pulse" />
+          ))
+        ) : (
+          <>
+            <KpiCard
+              label="Recebido Este Mês"
+              value={fmtBRL(stats?.totalThisMonth ?? 0)}
+              icon={DollarSign}
+              color="#10b981"
+            />
+            <KpiCard
+              label="Total Histórico"
+              value={fmtBRL(stats?.totalAllTime ?? 0)}
+              icon={TrendingUp}
+              color="#6366f1"
+            />
+            <KpiCard
+              label="Pagamentos Registrados"
+              value={stats?.totalPayments ?? 0}
+              icon={Receipt}
+              color="#0ea5e9"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Input
+          placeholder="Buscar por clínica, método ou mês..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9 rounded-xl border-slate-200"
+        />
+      </div>
+
+      {/* Table */}
+      {paymentsLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-12 rounded-xl bg-slate-100 animate-pulse" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-slate-400">
+          <Banknote className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium text-slate-500">Nenhum pagamento registrado</p>
+          <p className="text-sm mt-1">Clique em "Registrar Pagamento" para começar.</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="font-semibold text-slate-700">Clínica</TableHead>
+                <TableHead className="font-semibold text-slate-700">Plano</TableHead>
+                <TableHead className="font-semibold text-slate-700">Mês Ref.</TableHead>
+                <TableHead className="font-semibold text-slate-700 text-right">Valor</TableHead>
+                <TableHead className="font-semibold text-slate-700">Método</TableHead>
+                <TableHead className="font-semibold text-slate-700">Data Pagamento</TableHead>
+                <TableHead className="font-semibold text-slate-700">Registrado por</TableHead>
+                <TableHead className="font-semibold text-slate-700">Obs.</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((row) => (
+                <TableRow key={row.payment.id} className="hover:bg-slate-50/50">
+                  <TableCell>
+                    <div>
+                      <p className="font-medium text-slate-800 text-sm">{row.clinic?.name ?? `#${row.payment.clinicId}`}</p>
+                      <p className="text-xs text-slate-400">{row.clinic?.email ?? ""}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-slate-600">{row.plan?.displayName ?? "—"}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-slate-600">{fmtMonth(row.payment.referenceMonth)}</span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-semibold text-emerald-700 text-sm">
+                      {fmtBRL(Number(row.payment.amount))}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                      {PAYMENT_METHOD_LABELS[row.payment.method] ?? row.payment.method}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-slate-600">{fmtDate(row.payment.paidAt)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-slate-500">{row.recorder?.name ?? "—"}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-slate-400 max-w-[120px] truncate block" title={row.payment.notes ?? ""}>
+                      {row.payment.notes || "—"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg h-7 w-7 p-0"
+                      onClick={() => setDeleteId(row.payment.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+            <p className="text-xs text-slate-400">
+              {filtered.length} de {payments.length} pagamentos
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Register Payment Dialog */}
+      <RegisterPaymentDialog
+        open={showDialog}
+        onClose={() => setShowDialog(false)}
+        subs={subs}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["payment-history"] });
+          qc.invalidateQueries({ queryKey: ["payment-history-stats"] });
+          qc.invalidateQueries({ queryKey: ["clinic-subscriptions"] });
+        }}
+      />
+
+      {/* Delete confirm dialog */}
+      <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
+            <DialogDescription>
+              Este registro será removido permanentemente do histórico de pagamentos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)} className="rounded-xl">
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteId !== null && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
+              className="rounded-xl"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Remover"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Register Payment Dialog ───────────────────────────────────────────────────
+
+function RegisterPaymentDialog({
+  open,
+  onClose,
+  subs,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  subs: SubRow[];
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [clinicId, setClinicId] = useState<string>("");
+  const [subscriptionId, setSubscriptionId] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [method, setMethod] = useState<string>("pix");
+  const [referenceMonth, setReferenceMonth] = useState<string>("");
+  const [paidAt, setPaidAt] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState<string>("");
+  const [updateStatus, setUpdateStatus] = useState<boolean>(true);
+
+  const clinicSub = subs.find((s) => String(s.sub.clinicId) === clinicId);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        clinicId: Number(clinicId),
+        amount: Number(amount),
+        method,
+        updateSubscriptionStatus: updateStatus,
+      };
+      if (subscriptionId) body.subscriptionId = Number(subscriptionId);
+      if (referenceMonth) body.referenceMonth = referenceMonth;
+      if (paidAt) body.paidAt = new Date(paidAt).toISOString();
+      if (notes.trim()) body.notes = notes.trim();
+
+      const res = await apiFetch(api("/payment-history"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Falha ao registrar pagamento");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Pagamento registrado com sucesso" });
+      onSuccess();
+      onClose();
+      setClinicId("");
+      setSubscriptionId("");
+      setAmount("");
+      setMethod("pix");
+      setReferenceMonth("");
+      setPaidAt(new Date().toISOString().slice(0, 10));
+      setNotes("");
+      setUpdateStatus(true);
+    },
+    onError: (err: any) =>
+      toast({ variant: "destructive", title: "Erro", description: err.message }),
+  });
+
+  const canSubmit = clinicId && amount && Number(amount) > 0 && !mutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="rounded-2xl max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Banknote className="w-5 h-5 text-indigo-600" />
+            Registrar Pagamento
+          </DialogTitle>
+          <DialogDescription>
+            Registre um pagamento recebido de uma clínica manualmente.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Clinic */}
+          <div className="space-y-1.5">
+            <Label>Clínica *</Label>
+            <Select value={clinicId} onValueChange={(v) => { setClinicId(v); setSubscriptionId(""); }}>
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder="Selecione a clínica" />
+              </SelectTrigger>
+              <SelectContent>
+                {subs.map((s) => (
+                  <SelectItem key={s.sub.clinicId} value={String(s.sub.clinicId)}>
+                    {s.clinic.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Subscription (auto-filled) */}
+          {clinicSub && (
+            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-sm text-indigo-700 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Plano <strong>{clinicSub.plan?.displayName ?? "—"}</strong> — {clinicSub.sub.status}
+              </span>
+            </div>
+          )}
+
+          {/* Amount + Method row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Valor (R$) *</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="0,00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Forma de pagamento</Label>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Reference month + paid at row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Mês de referência</Label>
+              <Input
+                type="month"
+                value={referenceMonth}
+                onChange={(e) => setReferenceMonth(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Data do pagamento</Label>
+              <Input
+                type="date"
+                value={paidAt}
+                onChange={(e) => setPaidAt(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label>Observações</Label>
+            <Textarea
+              placeholder="Número de comprovante, observações..."
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="rounded-xl resize-none"
+            />
+          </div>
+
+          {/* Update subscription status toggle */}
+          {clinicSub && (
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Atualizar status da assinatura</p>
+                <p className="text-xs text-slate-400">Marca a assinatura como "Pago" automaticamente</p>
+              </div>
+              <Switch checked={updateStatus} onCheckedChange={setUpdateStatus} />
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="rounded-xl">
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={!canSubmit}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            {mutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              "Registrar"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SuperAdmin() {
@@ -1830,6 +2325,7 @@ export default function SuperAdmin() {
         {activeTab === "planos" && <PlansTab />}
         {activeTab === "assinaturas" && <SubscriptionsTab />}
         {activeTab === "clinicas" && <ClinicsTab />}
+        {activeTab === "pagamentos" && <PaymentsTab />}
       </div>
     </AppLayout>
   );

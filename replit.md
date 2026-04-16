@@ -102,6 +102,20 @@ trial (ativo) → trial expirado → active/overdue → suspended (após 7 dias 
 - **Planos**: CRUD de planos com limites e features
 - **Assinaturas**: lista de todas as clínicas com ações rápidas (Ativar, Suspender, Pago, Reativar)
 - **Clínicas**: visão completa de todas as clínicas, seus planos e status — com busca e verificação manual
+- **Pagamentos**: histórico completo de pagamentos com KPIs, busca, registro manual e exclusão
+
+### Histórico de Pagamentos (`clinic_payment_history`)
+Tabela: `id`, `clinic_id`, `subscription_id`, `amount`, `method`, `reference_month`, `paid_at`, `notes`, `recorded_by`, `created_at`
+
+Métodos aceitos: `manual`, `pix`, `credit_card`, `boleto`, `transfer`, `other`
+
+| Endpoint | Método | Acesso | Descrição |
+|---|---|---|---|
+| `/api/payment-history` | GET | Superadmin | Todos os pagamentos com joins |
+| `/api/payment-history/stats` | GET | Superadmin | KPIs: total mês, total geral, contagem |
+| `/api/payment-history/clinic/:id` | GET | Superadmin | Pagamentos de uma clínica específica |
+| `/api/payment-history` | POST | Superadmin | Registra pagamento + opcionalmente atualiza `paymentStatus` da assinatura para `paid` |
+| `/api/payment-history/:id` | DELETE | Superadmin | Remove um registro de pagamento |
 
 ---
 

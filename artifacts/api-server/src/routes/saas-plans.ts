@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subscriptionPlansTable, clinicSubscriptionsTable, clinicsTable, patientsTable, usersTable, userRolesTable, schedulesTable } from "@workspace/db";
-import { eq, desc, asc, count, and } from "drizzle-orm";
+import { subscriptionPlansTable, clinicSubscriptionsTable, clinicsTable, patientsTable, usersTable, userRolesTable, schedulesTable, clinicPaymentHistoryTable } from "@workspace/db";
+import { eq, desc, asc, count, and, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requireSuperAdmin } from "../middleware/rbac.js";
 import { z } from "zod/v4";
@@ -555,6 +555,176 @@ router.get("/admin/clinics", requireSuperAdmin(), async (_req, res) => {
       .orderBy(asc(clinicsTable.name));
 
     res.json(clinics);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Payment History (superadmin) ─────────────────────────────────────────────
+
+const paymentSchema = z.object({
+  clinicId: z.number().int().positive(),
+  subscriptionId: z.number().int().positive().nullable().optional(),
+  amount: z.number().positive(),
+  method: z.enum(["manual", "pix", "credit_card", "boleto", "transfer", "other"]).default("manual"),
+  referenceMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
+  paidAt: z.string().nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+  updateSubscriptionStatus: z.boolean().optional().default(true),
+});
+
+router.get("/payment-history", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        payment: clinicPaymentHistoryTable,
+        clinic: {
+          id: clinicsTable.id,
+          name: clinicsTable.name,
+          email: clinicsTable.email,
+        },
+        recorder: {
+          id: usersTable.id,
+          name: usersTable.name,
+        },
+        plan: {
+          id: subscriptionPlansTable.id,
+          displayName: subscriptionPlansTable.displayName,
+        },
+      })
+      .from(clinicPaymentHistoryTable)
+      .leftJoin(clinicsTable, eq(clinicPaymentHistoryTable.clinicId, clinicsTable.id))
+      .leftJoin(usersTable, eq(clinicPaymentHistoryTable.recordedBy, usersTable.id))
+      .leftJoin(
+        clinicSubscriptionsTable,
+        eq(clinicPaymentHistoryTable.subscriptionId, clinicSubscriptionsTable.id)
+      )
+      .leftJoin(
+        subscriptionPlansTable,
+        eq(clinicSubscriptionsTable.planId, subscriptionPlansTable.id)
+      )
+      .orderBy(desc(clinicPaymentHistoryTable.paidAt));
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/payment-history/clinic/:clinicId", requireSuperAdmin(), async (req, res) => {
+  try {
+    const clinicId = Number(req.params.clinicId);
+    const rows = await db
+      .select({
+        payment: clinicPaymentHistoryTable,
+        recorder: {
+          id: usersTable.id,
+          name: usersTable.name,
+        },
+        plan: {
+          displayName: subscriptionPlansTable.displayName,
+        },
+      })
+      .from(clinicPaymentHistoryTable)
+      .leftJoin(usersTable, eq(clinicPaymentHistoryTable.recordedBy, usersTable.id))
+      .leftJoin(
+        clinicSubscriptionsTable,
+        eq(clinicPaymentHistoryTable.subscriptionId, clinicSubscriptionsTable.id)
+      )
+      .leftJoin(
+        subscriptionPlansTable,
+        eq(clinicSubscriptionsTable.planId, subscriptionPlansTable.id)
+      )
+      .where(eq(clinicPaymentHistoryTable.clinicId, clinicId))
+      .orderBy(desc(clinicPaymentHistoryTable.paidAt));
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/payment-history", requireSuperAdmin(), async (req: AuthRequest, res) => {
+  try {
+    const body = validateBody(paymentSchema, req.body, res);
+    if (!body) return;
+
+    const paidAt = body.paidAt ? new Date(body.paidAt) : new Date();
+
+    const [payment] = await db
+      .insert(clinicPaymentHistoryTable)
+      .values({
+        clinicId: body.clinicId,
+        subscriptionId: body.subscriptionId ?? null,
+        amount: String(body.amount),
+        method: body.method,
+        referenceMonth: body.referenceMonth ?? null,
+        paidAt,
+        notes: body.notes ?? null,
+        recordedBy: req.userId ?? null,
+      })
+      .returning();
+
+    if (body.updateSubscriptionStatus !== false && body.subscriptionId) {
+      await db
+        .update(clinicSubscriptionsTable)
+        .set({ paymentStatus: "paid", paidAt, updatedAt: new Date() })
+        .where(eq(clinicSubscriptionsTable.id, body.subscriptionId));
+    }
+
+    res.status(201).json(payment);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/payment-history/:id", requireSuperAdmin(), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await db.delete(clinicPaymentHistoryTable).where(eq(clinicPaymentHistoryTable.id, id));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Payment history summary stats ────────────────────────────────────────────
+
+router.get("/payment-history/stats", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const [totalRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${clinicPaymentHistoryTable.amount}), 0)` })
+      .from(clinicPaymentHistoryTable);
+
+    const [monthRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${clinicPaymentHistoryTable.amount}), 0)` })
+      .from(clinicPaymentHistoryTable)
+      .where(
+        and(
+          gte(clinicPaymentHistoryTable.paidAt, firstOfMonth),
+          lte(clinicPaymentHistoryTable.paidAt, lastOfMonth)
+        )
+      );
+
+    const [countRow] = await db
+      .select({ total: count() })
+      .from(clinicPaymentHistoryTable);
+
+    res.json({
+      totalAllTime: Number(totalRow?.total ?? 0),
+      totalThisMonth: Number(monthRow?.total ?? 0),
+      totalPayments: countRow?.total ?? 0,
+      referenceMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
