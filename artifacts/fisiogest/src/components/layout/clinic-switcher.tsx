@@ -1,6 +1,6 @@
 import { Building2, ChevronDown, Check, Loader2, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,6 +22,7 @@ interface ClinicItem {
 
 export function ClinicSwitcher() {
   const { clinicId, clinics, switchClinic, isSuperAdmin } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: allClinics = [], isLoading } = useQuery<ClinicItem[]>({
     queryKey: ["all-clinics-switcher"],
@@ -83,7 +84,12 @@ export function ClinicSwitcher() {
         {displayClinics.map((clinic) => (
           <DropdownMenuItem
             key={clinic.id}
-            onClick={() => clinic.id !== clinicId && switchClinic(clinic.id)}
+            onClick={async () => {
+              if (clinic.id !== clinicId) {
+                await switchClinic(clinic.id);
+                queryClient.clear();
+              }
+            }}
             className="gap-2 cursor-pointer"
           >
             <div className="h-6 w-6 rounded bg-primary/15 flex items-center justify-center shrink-0">
@@ -109,7 +115,7 @@ export function ClinicSwitcher() {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => switchClinic(0)}
+              onClick={async () => { await switchClinic(0); queryClient.clear(); }}
               className="gap-2 cursor-pointer text-muted-foreground"
             >
               <LogOut className="h-4 w-4" />

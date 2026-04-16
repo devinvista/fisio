@@ -60,13 +60,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { apiFetch } from "@/lib/api";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
 const api = (path: string) => `${API_BASE}/api${path}`;
 
 async function fetchJSON(url: string) {
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error("Erro ao carregar dados");
   return res.json();
 }
@@ -275,7 +276,7 @@ function PlansTab() {
 
   const seedMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(api("/plans/seed-defaults"), { method: "POST" });
+      const res = await apiFetch(api("/plans/seed-defaults"), { method: "POST" });
       if (!res.ok) throw new Error("Erro ao criar planos padrão");
       return res.json();
     },
@@ -303,7 +304,7 @@ function PlansTab() {
       };
       const url = editPlan ? api(`/plans/${editPlan.id}`) : api("/plans");
       const method = editPlan ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -328,7 +329,7 @@ function PlansTab() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(api(`/plans/${id}`), { method: "DELETE" });
+      const res = await apiFetch(api(`/plans/${id}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao excluir");
     },
     onSuccess: () => {
@@ -765,7 +766,7 @@ function SubscriptionsTab() {
         paymentStatus: newSubForm.paymentStatus,
         amount: newSubForm.amount ? Number(newSubForm.amount) : selectedPlan ? Number(selectedPlan.price) : undefined,
       };
-      const res = await fetch(api("/clinic-subscriptions"), {
+      const res = await apiFetch(api("/clinic-subscriptions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -799,7 +800,7 @@ function SubscriptionsTab() {
         currentPeriodEnd: subForm.currentPeriodEnd || undefined,
         notes: subForm.notes || undefined,
       };
-      const res = await fetch(api(`/clinic-subscriptions/${editSub.sub.id}`), {
+      const res = await apiFetch(api(`/clinic-subscriptions/${editSub.sub.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -821,7 +822,7 @@ function SubscriptionsTab() {
 
   const quickUpdateMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: object }) => {
-      const res = await fetch(api(`/clinic-subscriptions/${id}`), {
+      const res = await apiFetch(api(`/clinic-subscriptions/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

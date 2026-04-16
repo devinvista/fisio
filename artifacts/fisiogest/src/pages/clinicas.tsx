@@ -59,18 +59,19 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { maskCpf, maskPhone, maskCnpj } from "@/lib/masks";
+import { apiFetch } from "@/lib/api";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
 
 async function fetchClinics() {
-  const res = await fetch(`${API_BASE}/api/clinics`);
+  const res = await apiFetch(`${API_BASE}/api/clinics`);
   if (!res.ok) throw new Error("Failed to fetch clinics");
   return res.json();
 }
 
 async function createClinic(data: Record<string, string>) {
-  const res = await fetch(`${API_BASE}/api/clinics`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -83,7 +84,7 @@ async function createClinic(data: Record<string, string>) {
 }
 
 async function updateClinic(id: number, data: Record<string, unknown>) {
-  const res = await fetch(`${API_BASE}/api/clinics/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -93,18 +94,18 @@ async function updateClinic(id: number, data: Record<string, unknown>) {
 }
 
 async function deleteClinic(id: number) {
-  const res = await fetch(`${API_BASE}/api/clinics/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`${API_BASE}/api/clinics/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Erro ao excluir clínica");
 }
 
 async function fetchClinicUsers(clinicId: number) {
-  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users`);
+  const res = await apiFetch(`${API_BASE}/api/clinics/${clinicId}/users`);
   if (!res.ok) throw new Error("Falha ao buscar usuários");
   return res.json();
 }
 
 async function addUserToClinic(clinicId: number, data: Record<string, unknown>) {
-  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/${clinicId}/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -121,7 +122,7 @@ async function updateUserInClinic(
   userId: number,
   data: Record<string, unknown>
 ) {
-  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -134,14 +135,14 @@ async function updateUserInClinic(
 }
 
 async function removeUserFromClinic(clinicId: number, userId: number) {
-  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/${clinicId}/users/${userId}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Erro ao remover usuário");
 }
 
 async function impersonateClinic(clinicId: number) {
-  const res = await fetch(`${API_BASE}/api/clinics/${clinicId}/impersonate`, {
+  const res = await apiFetch(`${API_BASE}/api/clinics/${clinicId}/impersonate`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Erro ao acessar clínica");
