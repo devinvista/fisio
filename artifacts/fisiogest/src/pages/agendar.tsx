@@ -735,6 +735,8 @@ function StepDataHora({
 
   useEffect(() => {
     if (!selectedDate) return;
+    // Wait for schedules to finish loading before fetching slots
+    if (clinicId && loadingSchedules) return;
     // Wait for schedule selection when multiple exist
     if (clinicId && schedules.length > 1 && !selectedSchedule) return;
 
@@ -759,7 +761,7 @@ function StepDataHora({
       })
       .catch(() => setError("Erro de conexão ao buscar horários."))
       .finally(() => setLoadingSlots(false));
-  }, [selectedDate, procedure.id, clinicId, selectedSchedule]);
+  }, [selectedDate, procedure.id, clinicId, selectedSchedule, schedules.length, loadingSchedules]);
 
   return (
     <div>
@@ -786,7 +788,6 @@ function StepDataHora({
                   key={sched.id}
                   onClick={() => {
                     setSelectedSchedule(sched);
-                    setSelectedDate(null);
                     setSlots([]);
                     setSelectedTime(null);
                   }}
@@ -822,7 +823,7 @@ function StepDataHora({
       )}
 
       {/* Calendar strip — only show after schedule is selected (or no schedule needed) */}
-      {(schedules.length <= 1 || selectedSchedule) && (
+      {(!clinicId || !loadingSchedules) && (schedules.length <= 1 || selectedSchedule) && (
       <div className="mb-6">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Selecione a data</p>
         <div className="flex gap-2 overflow-x-auto pb-2">
