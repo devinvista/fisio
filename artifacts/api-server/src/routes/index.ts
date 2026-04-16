@@ -21,6 +21,7 @@ import patientPackagesRouter from "./patient-packages.js";
 import treatmentPlanProceduresRouter from "./treatment-plan-procedures.js";
 import patientJourneyRouter from "./patient-journey.js";
 import recurringExpensesRouter from "./recurring-expenses.js";
+import saasPlanRouter from "./saas-plans.js";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use("/dashboard", dashboardRouter);
 router.use("/storage", storageRouter);
 router.use("/audit-log", auditLogRouter);
 router.use("/recurring-expenses", recurringExpensesRouter);
+router.use("/", saasPlanRouter);
 
 export default router;

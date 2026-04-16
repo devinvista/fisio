@@ -101,7 +101,7 @@ export function PricingSection() {
         "Suporte por e-mail",
       ],
       cta: "Começar grátis",
-      ctaHref: "/register",
+      ctaHref: "/register?plano=essencial",
     },
     {
       plan: "Profissional",
@@ -117,7 +117,7 @@ export function PricingSection() {
         "Multi-procedimentos e pacotes",
       ],
       cta: "Assinar agora",
-      ctaHref: "/register",
+      ctaHref: "/register?plano=profissional",
       highlighted: true,
       badge: "Mais popular",
     },
@@ -134,8 +134,8 @@ export function PricingSection() {
         "Gerente de conta dedicado",
         "Treinamento personalizado",
       ],
-      cta: "Falar com vendas",
-      ctaHref: "mailto:contato@fisiogest.com.br",
+      cta: "Começar grátis",
+      ctaHref: "/register?plano=premium",
     },
   ];
 

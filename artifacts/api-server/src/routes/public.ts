@@ -9,9 +9,10 @@ import {
   clinicsTable,
   patientPackagesTable,
   schedulesTable,
+  subscriptionPlansTable,
 } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
-import { eq, and, sql, desc, or, isNull, gt } from "drizzle-orm";
+import { eq, and, sql, desc, or, isNull, gt, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -36,6 +37,22 @@ function minutesToTime(minutes: number): string {
   const m = minutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+
+// ── GET /api/public/plans ─────────────────────────────────────────────────────
+// Lista planos de assinatura ativos (sem autenticação)
+router.get("/plans", async (_req, res) => {
+  try {
+    const plans = await db
+      .select()
+      .from(subscriptionPlansTable)
+      .where(eq(subscriptionPlansTable.isActive, true))
+      .orderBy(asc(subscriptionPlansTable.price));
+    res.json(plans);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 // ── GET /api/public/patient-lookup ───────────────────────────────────────────
 // Busca paciente por CPF ou telefone (sem autenticação)

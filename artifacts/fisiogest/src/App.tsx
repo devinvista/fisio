@@ -22,6 +22,7 @@ import Relatorios from "./pages/relatorios";
 import Clinicas from "./pages/clinicas";
 import Configuracoes from "./pages/configuracoes";
 import Agendar from "./pages/agendar";
+import SuperAdmin from "./pages/superadmin";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -124,6 +125,20 @@ function PermissionRoute({
   return <Component />;
 }
 
+function SuperAdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { token, isLoading, isSuperAdmin } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) setLocation("/login");
+    if (!isLoading && token && !isSuperAdmin) setLocation("/dashboard");
+  }, [token, isLoading, isSuperAdmin, setLocation]);
+
+  if (isLoading) return <div className="min-h-screen bg-background flex items-center justify-center">Carregando...</div>;
+  if (!token || !isSuperAdmin) return null;
+  return <Component />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -165,6 +180,9 @@ function Router() {
       </Route>
       <Route path="/clinicas">
         {() => <PermissionRoute component={Clinicas} permission="clinics.manage" />}
+      </Route>
+      <Route path="/superadmin">
+        {() => <SuperAdminRoute component={SuperAdmin} />}
       </Route>
       <Route path="/agendar" component={Agendar} />
       <Route path="/agendar/:token" component={Agendar} />

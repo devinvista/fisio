@@ -6,7 +6,9 @@ import type { Role } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { validateBody } from "../lib/validate.js";
+import { todayBRT } from "../lib/dateUtils.js";
 import { z } from "zod/v4";
+import { subscriptionPlansTable, clinicSubscriptionsTable } from "@workspace/db";
 
 const registerSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(200),
@@ -15,6 +17,7 @@ const registerSchema = z.object({
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
   clinicName: z.string().min(1, "Nome da clínica é obrigatório").max(200),
   profileType: z.enum(["clinica", "autonomo"]).optional().default("clinica"),
+  planName: z.string().optional().default("essencial"),
 });
 
 const loginSchema = z.object({
@@ -82,7 +85,7 @@ router.post("/register", async (req, res) => {
   try {
     const body = validateBody(registerSchema, req.body, res);
     if (!body) return;
-    const { name, email, cpf, password, clinicName, profileType } = body;
+    const { name, email, cpf, password, clinicName, profileType, planName } = body;
 
     const normalizedCpf = normalizeCpf(cpf);
     if (normalizedCpf.length !== 11) {
@@ -114,6 +117,13 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const plan = await db
+      .select()
+      .from(subscriptionPlansTable)
+      .where(eq(subscriptionPlansTable.name, planName ?? "essencial"))
+      .limit(1);
+    const selectedPlan = plan[0] ?? null;
+
     const { clinic, user } = await db.transaction(async (tx) => {
       const [clinic] = await tx
         .insert(clinicsTable)
@@ -138,6 +148,21 @@ router.post("/register", async (req, res) => {
         rolesToInsert.push({ userId: user.id, clinicId: clinic.id, role: "profissional" });
       }
       await tx.insert(userRolesTable).values(rolesToInsert);
+
+      if (selectedPlan) {
+        const today = todayBRT();
+        const trialEnd = new Date(today);
+        trialEnd.setDate(trialEnd.getDate() + (selectedPlan.trialDays ?? 30));
+        await tx.insert(clinicSubscriptionsTable).values({
+          clinicId: clinic.id,
+          planId: selectedPlan.id,
+          status: "trial",
+          trialStartDate: today,
+          trialEndDate: trialEnd.toISOString().split("T")[0],
+          amount: selectedPlan.price,
+          paymentStatus: "pending",
+        });
+      }
 
       return { clinic, user };
     });

@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   MoreHorizontal,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -38,6 +39,7 @@ interface NavItem {
   permission: Permission | null;
   anyPermission?: Permission[];
   hideSuperAdmin?: boolean;
+  superAdminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -56,6 +58,7 @@ const NAV_ITEMS: NavItem[] = [
     anyPermission: ["settings.manage", "users.manage"],
   },
   { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
+  { href: "/superadmin", label: "SuperAdmin", icon: ShieldCheck, permission: null, superAdminOnly: true },
 ];
 
 const SIDEBAR_STORAGE_KEY = "fisiogest-sidebar-collapsed";
@@ -93,10 +96,12 @@ function SidebarContent({
   onNavigate,
 }: SidebarContentProps) {
   const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.superAdminOnly) return isSuperAdmin;
+    if (item.hideSuperAdmin && isSuperAdmin) return false;
     const hasAccess = item.anyPermission
       ? item.anyPermission.some((p) => hasPermission(p))
       : item.permission === null || hasPermission(item.permission);
-    return hasAccess && !(item.hideSuperAdmin && isSuperAdmin);
+    return hasAccess;
   });
 
   const roleLabels = ((user as any)?.roles ?? [])
