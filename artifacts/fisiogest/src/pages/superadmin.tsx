@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -39,23 +38,31 @@ import {
   Pencil,
   Trash2,
   Loader2,
-  Users,
   CheckCircle,
   Clock,
   AlertTriangle,
   XCircle,
   TrendingUp,
   Activity,
-  ChevronRight,
   Infinity,
+  Sparkles,
+  Zap,
+  Crown,
+  Search,
+  Filter,
+  Check,
+  RefreshCw,
+  ChevronDown,
+  BadgeDollarSign,
+  Users,
+  BarChart3,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
-
 const api = (path: string) => `${API_BASE}/api${path}`;
 
 async function fetchJSON(url: string) {
@@ -71,6 +78,39 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+// ─── Tier config ─────────────────────────────────────────────────────────────
+
+const TIER_CONFIG: Record<string, {
+  color: string; bg: string; border: string; gradient: string;
+  icon: React.ElementType; badge: string; badgeBg: string;
+}> = {
+  essencial: {
+    color: "#3b82f6", bg: "bg-blue-50", border: "border-blue-200",
+    gradient: "from-blue-500 to-blue-600",
+    icon: Zap, badge: "text-blue-700", badgeBg: "bg-blue-100",
+  },
+  profissional: {
+    color: "#8b5cf6", bg: "bg-violet-50", border: "border-violet-200",
+    gradient: "from-violet-500 to-violet-600",
+    icon: Sparkles, badge: "text-violet-700", badgeBg: "bg-violet-100",
+  },
+  premium: {
+    color: "#f59e0b", bg: "bg-amber-50", border: "border-amber-200",
+    gradient: "from-amber-400 to-amber-500",
+    icon: Crown, badge: "text-amber-700", badgeBg: "bg-amber-100",
+  },
+};
+
+function getTierConfig(name: string) {
+  return TIER_CONFIG[name] ?? {
+    color: "#6366f1", bg: "bg-indigo-50", border: "border-indigo-200",
+    gradient: "from-indigo-500 to-indigo-600",
+    icon: Package, badge: "text-indigo-700", badgeBg: "bg-indigo-100",
+  };
+}
+
+// ─── Status / Payment badges ──────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   trial:     { label: "Trial",     color: "text-blue-700",   bg: "bg-blue-50",   dot: "bg-blue-400"   },
@@ -105,6 +145,26 @@ function PaymentBadge({ status }: { status: string }) {
   );
 }
 
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+function fmtDate(d?: string | null) {
+  if (!d) return "—";
+  try { return format(parseISO(d), "dd/MM/yyyy", { locale: ptBR }); }
+  catch { return d; }
+}
+
+function fmtCurrency(v?: string | number | null) {
+  if (v == null) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
+}
+
+function limitLabel(v: number | null | undefined) {
+  if (v == null) return <Infinity className="w-4 h-4 text-slate-400 inline-block" />;
+  return v;
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
 function KpiCard({ label, value, sub, icon: Icon, color }: {
   label: string; value: string | number; sub?: string; icon: React.ElementType; color: string;
 }) {
@@ -125,23 +185,7 @@ function KpiCard({ label, value, sub, icon: Icon, color }: {
   );
 }
 
-function fmtDate(d?: string | null) {
-  if (!d) return "—";
-  try { return format(parseISO(d), "dd/MM/yyyy", { locale: ptBR }); }
-  catch { return d; }
-}
-
-function fmtCurrency(v?: string | number | null) {
-  if (v == null) return "—";
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v));
-}
-
-function limitLabel(v: number | null | undefined) {
-  if (v == null) return <Infinity className="w-4 h-4 text-slate-400 inline-block" />;
-  return v;
-}
-
-// ─── Plans Tab ────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Plan = {
   id: number;
@@ -159,17 +203,52 @@ type Plan = {
   sortOrder: number;
 };
 
-const EMPTY_PLAN: Omit<Plan, "id" | "name"> & { name: string } = {
+type PlanStats = {
+  planId: number;
+  planName: string;
+  planDisplayName: string;
+  price: string;
+  total: number;
+  active: number;
+  trial: number;
+  suspended: number;
+  cancelled: number;
+  mrr: number;
+};
+
+type SubRow = {
+  sub: {
+    id: number;
+    clinicId: number;
+    planId: number;
+    status: string;
+    trialStartDate: string | null;
+    trialEndDate: string | null;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+    amount: string | null;
+    paymentStatus: string;
+    paidAt: string | null;
+    notes: string | null;
+    createdAt: string;
+  };
+  clinic: { id: number; name: string; email: string | null; isActive: boolean; createdAt: string } | null;
+  plan: Plan | null;
+};
+
+// ─── Plans Tab ────────────────────────────────────────────────────────────────
+
+const EMPTY_PLAN = {
   name: "",
   displayName: "",
   description: "",
   price: "0",
-  maxProfessionals: 1,
-  maxPatients: null,
-  maxSchedules: null,
-  maxUsers: null,
+  maxProfessionals: 1 as number | null,
+  maxPatients: null as number | null,
+  maxSchedules: null as number | null,
+  maxUsers: null as number | null,
   trialDays: 30,
-  features: [],
+  features: [] as string[],
   isActive: true,
   sortOrder: 0,
 };
@@ -182,10 +261,37 @@ function PlansTab() {
   const [form, setForm] = useState<typeof EMPTY_PLAN>(EMPTY_PLAN);
   const [featuresText, setFeaturesText] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [view, setView] = useState<"cards" | "table">("cards");
 
   const { data: plans = [], isLoading } = useQuery<Plan[]>({
     queryKey: ["plans"],
     queryFn: () => fetchJSON(api("/plans")),
+  });
+
+  const { data: planStats = [] } = useQuery<PlanStats[]>({
+    queryKey: ["plans-stats"],
+    queryFn: () => fetchJSON(api("/plans/stats")),
+  });
+
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api("/plans/seed-defaults"), { method: "POST" });
+      if (!res.ok) throw new Error("Erro ao criar planos padrão");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["plans"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
+      const created = data.results.filter((r: any) => r.action === "created").length;
+      const skipped = data.results.filter((r: any) => r.action === "skipped").length;
+      toast({
+        title: "Planos padrão configurados!",
+        description: created > 0
+          ? `${created} plano(s) criado(s), ${skipped} já existia(m).`
+          : "Todos os planos já existiam.",
+      });
+    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const saveMutation = useMutation({
@@ -210,15 +316,14 @@ function PlansTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plans"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
       toast({ title: editPlan ? "Plano atualizado!" : "Plano criado!" });
       setEditPlan(null);
       setCreating(false);
       setForm(EMPTY_PLAN);
       setFeaturesText("");
     },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Erro", description: err.message });
-    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
 
   const deleteMutation = useMutation({
@@ -228,6 +333,7 @@ function PlansTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plans"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
       toast({ title: "Plano excluído" });
       setDeleteId(null);
     },
@@ -249,23 +355,179 @@ function PlansTab() {
 
   const isOpen = creating || editPlan !== null;
 
+  function getStatsForPlan(planId: number) {
+    return planStats.find((s) => s.planId === planId);
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Planos de Adesão</h2>
           <p className="text-sm text-slate-500 mt-0.5">Gerencie preços, limites e recursos de cada plano</p>
         </div>
-        <Button onClick={openCreate} className="rounded-xl gap-2">
-          <Plus className="w-4 h-4" /> Novo Plano
-        </Button>
+        <div className="flex items-center gap-2">
+          {plans.length === 0 && (
+            <Button
+              variant="outline"
+              onClick={() => seedMutation.mutate()}
+              disabled={seedMutation.isPending}
+              className="rounded-xl gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            >
+              {seedMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Criar Planos Padrão
+            </Button>
+          )}
+          {plans.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => seedMutation.mutate()}
+              disabled={seedMutation.isPending}
+              className="rounded-xl gap-1.5 text-slate-500 text-xs"
+              title="Sincronizar planos padrão"
+            >
+              {seedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Sync Padrão
+            </Button>
+          )}
+          <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+            <button
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${view === "cards" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              onClick={() => setView("cards")}
+            >Cards</button>
+            <button
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${view === "table" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              onClick={() => setView("table")}
+            >Tabela</button>
+          </div>
+          <Button onClick={openCreate} className="rounded-xl gap-2">
+            <Plus className="w-4 h-4" /> Novo Plano
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-20 rounded-2xl bg-slate-100 animate-pulse" />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => <div key={i} className="h-64 rounded-2xl bg-slate-100 animate-pulse" />)}
+        </div>
+      ) : plans.length === 0 ? (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
+          <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Package className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h3 className="text-base font-bold text-slate-700 mb-1">Nenhum plano cadastrado</h3>
+          <p className="text-sm text-slate-400 mb-6">
+            Clique em "Criar Planos Padrão" para gerar os planos Essencial, Profissional e Premium automaticamente.
+          </p>
+          <Button
+            onClick={() => seedMutation.mutate()}
+            disabled={seedMutation.isPending}
+            className="rounded-xl gap-2"
+          >
+            {seedMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Criar Planos Padrão
+          </Button>
+        </div>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {plans.map((plan) => {
+            const tier = getTierConfig(plan.name);
+            const TierIcon = tier.icon;
+            const stats = getStatsForPlan(plan.id);
+            return (
+              <div
+                key={plan.id}
+                className={`bg-white rounded-2xl border-2 ${tier.border} shadow-sm overflow-hidden flex flex-col`}
+              >
+                {/* Header */}
+                <div className={`bg-gradient-to-br ${tier.gradient} p-5 text-white`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                        <TierIcon className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-lg leading-tight">{plan.displayName}</p>
+                        <p className="text-white/70 text-xs">{plan.description}</p>
+                      </div>
+                    </div>
+                    <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${plan.isActive ? "bg-white/20 text-white" : "bg-black/20 text-white/60"}`}>
+                      {plan.isActive ? "Ativo" : "Inativo"}
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <span className="text-3xl font-extrabold">{fmtCurrency(plan.price)}</span>
+                    <span className="text-white/70 text-sm ml-1">/mês</span>
+                  </div>
+                  <p className="text-white/60 text-xs mt-0.5">{plan.trialDays} dias de trial grátis</p>
+                </div>
+
+                {/* Stats row */}
+                {stats && (
+                  <div className={`${tier.bg} px-5 py-3 flex items-center justify-between border-b ${tier.border}`}>
+                    <div className="text-center">
+                      <p className="text-xs text-slate-500">Total</p>
+                      <p className="text-sm font-bold text-slate-800">{stats.total}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-slate-500">Ativos</p>
+                      <p className="text-sm font-bold text-green-700">{stats.active}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-slate-500">Trial</p>
+                      <p className="text-sm font-bold text-blue-700">{stats.trial}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-slate-500">MRR</p>
+                      <p className="text-sm font-bold text-slate-800">{fmtCurrency(stats.mrr)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Limits */}
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Limites</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    {[
+                      ["Profissionais", plan.maxProfessionals],
+                      ["Pacientes", plan.maxPatients],
+                      ["Usuários", plan.maxUsers],
+                      ["Agendas", plan.maxSchedules],
+                    ].map(([label, val]) => (
+                      <div key={label as string} className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{label as string}</span>
+                        <span className="text-xs font-bold text-slate-800">{limitLabel(val as number | null)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Features */}
+                <div className="px-5 py-3 flex-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Recursos</p>
+                  <ul className="space-y-1.5">
+                    {(plan.features ?? []).map((f, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: tier.color }} />
+                        <span className="text-xs text-slate-600">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Actions */}
+                <div className="px-5 py-3 border-t border-slate-100 flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 rounded-xl text-xs gap-1.5" onClick={() => openEdit(plan)}>
+                    <Pencil className="w-3.5 h-3.5" /> Editar
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-400 hover:text-red-600" onClick={() => setDeleteId(plan.id)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -276,49 +538,61 @@ function PlansTab() {
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Preço/mês</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Profissionais</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Pacientes</TableHead>
-                <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Agendas</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Usuários</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Trial</TableHead>
+                <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Assinantes</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Status</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {plans.map((plan) => (
-                <TableRow key={plan.id} className="border-b border-slate-50 hover:bg-slate-50/60">
-                  <TableCell>
-                    <div>
-                      <p className="font-semibold text-slate-800">{plan.displayName}</p>
-                      <p className="text-xs text-slate-400">{plan.description}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold text-slate-800">
-                    {fmtCurrency(plan.price)}
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxProfessionals)}</TableCell>
-                  <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxPatients)}</TableCell>
-                  <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxSchedules)}</TableCell>
-                  <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxUsers)}</TableCell>
-                  <TableCell className="text-center text-sm text-slate-600">{plan.trialDays}d</TableCell>
-                  <TableCell className="text-center">
-                    {plan.isActive ? (
-                      <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Ativo</span>
-                    ) : (
-                      <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Inativo</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 justify-end">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => openEdit(plan)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-500 hover:text-red-700" onClick={() => setDeleteId(plan.id)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {plans.map((plan) => {
+                const tier = getTierConfig(plan.name);
+                const TierIcon = tier.icon;
+                const stats = getStatsForPlan(plan.id);
+                return (
+                  <TableRow key={plan.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: tier.color + "18" }}>
+                          <TierIcon className="w-4 h-4" style={{ color: tier.color }} />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800">{plan.displayName}</p>
+                          <p className="text-xs text-slate-400">{plan.description}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold text-slate-800">{fmtCurrency(plan.price)}</TableCell>
+                    <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxProfessionals)}</TableCell>
+                    <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxPatients)}</TableCell>
+                    <TableCell className="text-center text-sm text-slate-600">{limitLabel(plan.maxUsers)}</TableCell>
+                    <TableCell className="text-center text-sm text-slate-600">{plan.trialDays}d</TableCell>
+                    <TableCell className="text-center">
+                      {stats ? (
+                        <span className="text-sm font-bold text-slate-700">{stats.total}</span>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {plan.isActive ? (
+                        <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Ativo</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Inativo</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => openEdit(plan)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-500 hover:text-red-700" onClick={() => setDeleteId(plan.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -331,7 +605,6 @@ function PlansTab() {
             <DialogTitle>{editPlan ? "Editar Plano" : "Novo Plano"}</DialogTitle>
             <DialogDescription>Configure os limites e recursos do plano</DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -349,12 +622,10 @@ function PlansTab() {
                 <Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="Essencial" className="rounded-xl" />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label>Descrição curta</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Para profissionais autônomos" className="rounded-xl" />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Preço mensal (R$)</Label>
@@ -365,7 +636,6 @@ function PlansTab() {
                 <Input type="number" min={0} value={form.trialDays} onChange={(e) => setForm({ ...form, trialDays: Number(e.target.value) })} className="rounded-xl" />
               </div>
             </div>
-
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest pt-2">Limites (vazio = ilimitado)</p>
             <div className="grid grid-cols-2 gap-4">
               {([
@@ -387,7 +657,6 @@ function PlansTab() {
                 </div>
               ))}
             </div>
-
             <div className="space-y-1.5">
               <Label>Recursos (um por linha)</Label>
               <Textarea
@@ -398,7 +667,6 @@ function PlansTab() {
                 className="rounded-xl text-sm"
               />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Ordem de exibição</Label>
@@ -410,7 +678,6 @@ function PlansTab() {
               </div>
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCreating(false); setEditPlan(null); }}>Cancelar</Button>
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
@@ -420,7 +687,6 @@ function PlansTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm */}
       <Dialog open={deleteId !== null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -441,40 +707,11 @@ function PlansTab() {
 
 // ─── Subscriptions Tab ────────────────────────────────────────────────────────
 
-type SubRow = {
-  sub: {
-    id: number;
-    clinicId: number;
-    planId: number;
-    status: string;
-    trialStartDate: string | null;
-    trialEndDate: string | null;
-    currentPeriodStart: string | null;
-    currentPeriodEnd: string | null;
-    amount: string | null;
-    paymentStatus: string;
-    paidAt: string | null;
-    notes: string | null;
-    createdAt: string;
-  };
-  clinic: { id: number; name: string; email: string | null; isActive: boolean; createdAt: string } | null;
-  plan: Plan | null;
-};
-
 function SubscriptionsTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [editSub, setEditSub] = useState<SubRow | null>(null);
-  const [subForm, setSubForm] = useState<{
-    status: string;
-    planId: string;
-    paymentStatus: string;
-    amount: string;
-    trialEndDate: string;
-    currentPeriodStart: string;
-    currentPeriodEnd: string;
-    notes: string;
-  }>({
+  const [subForm, setSubForm] = useState({
     status: "trial",
     planId: "",
     paymentStatus: "pending",
@@ -484,6 +721,9 @@ function SubscriptionsTab() {
     currentPeriodEnd: "",
     notes: "",
   });
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterPlan, setFilterPlan] = useState("all");
 
   const { data: subs = [], isLoading } = useQuery<SubRow[]>({
     queryKey: ["clinic-subscriptions"],
@@ -521,8 +761,27 @@ function SubscriptionsTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clinic-subscriptions"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
       toast({ title: "Assinatura atualizada!" });
       setEditSub(null);
+    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
+  });
+
+  const quickUpdateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: object }) => {
+      const res = await fetch(api(`/clinic-subscriptions/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Erro ao atualizar");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clinic-subscriptions"] });
+      qc.invalidateQueries({ queryKey: ["plans-stats"] });
+      toast({ title: "Assinatura atualizada!" });
     },
     onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
   });
@@ -541,24 +800,112 @@ function SubscriptionsTab() {
     });
   };
 
+  const filtered = useMemo(() => {
+    return subs.filter((row) => {
+      const nameMatch = !search || (row.clinic?.name ?? "").toLowerCase().includes(search.toLowerCase()) || (row.clinic?.email ?? "").toLowerCase().includes(search.toLowerCase());
+      const statusMatch = filterStatus === "all" || row.sub.status === filterStatus;
+      const planMatch = filterPlan === "all" || String(row.sub.planId) === filterPlan;
+      return nameMatch && statusMatch && planMatch;
+    });
+  }, [subs, search, filterStatus, filterPlan]);
+
+  const trialExpiringSoon = subs.filter((row) => {
+    if (row.sub.status !== "trial" || !row.sub.trialEndDate) return false;
+    try {
+      const days = differenceInDays(parseISO(row.sub.trialEndDate), new Date());
+      return days >= 0 && days <= 7;
+    } catch { return false; }
+  });
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">Assinaturas das Clínicas</h2>
-        <p className="text-sm text-slate-500 mt-0.5">Acompanhe o status e os pagamentos de cada clínica</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Assinaturas das Clínicas</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Acompanhe e gerencie o status de cada clínica</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-extrabold text-slate-900 tabular-nums">{subs.length}</p>
+          <p className="text-xs text-slate-400">total de clínicas</p>
+        </div>
+      </div>
+
+      {/* Trial expiring soon alert */}
+      {trialExpiringSoon.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-amber-800">
+              {trialExpiringSoon.length} trial(s) expirando nos próximos 7 dias
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              {trialExpiringSoon.map((r) => r.clinic?.name ?? "—").join(", ")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            placeholder="Buscar por clínica ou e-mail…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 rounded-xl"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="rounded-xl w-40">
+            <Filter className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="trial">Trial</SelectItem>
+            <SelectItem value="active">Ativo</SelectItem>
+            <SelectItem value="suspended">Suspenso</SelectItem>
+            <SelectItem value="cancelled">Cancelado</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterPlan} onValueChange={setFilterPlan}>
+          <SelectTrigger className="rounded-xl w-44">
+            <Package className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+            <SelectValue placeholder="Plano" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os planos</SelectItem>
+            {plans.map((p) => (
+              <SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(search || filterStatus !== "all" || filterPlan !== "all") && (
+          <button
+            onClick={() => { setSearch(""); setFilterStatus("all"); setFilterPlan("all"); }}
+            className="text-xs text-slate-500 hover:text-slate-700 underline"
+          >
+            Limpar filtros
+          </button>
+        )}
       </div>
 
       {isLoading ? (
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => <div key={i} className="h-16 rounded-2xl bg-slate-100 animate-pulse" />)}
         </div>
-      ) : subs.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
           <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <CreditCard className="w-6 h-6 text-slate-400" />
           </div>
-          <p className="text-sm font-semibold text-slate-500">Nenhuma assinatura encontrada</p>
-          <p className="text-xs text-slate-400 mt-1">Assinaturas são criadas automaticamente ao cadastrar uma clínica</p>
+          <p className="text-sm font-semibold text-slate-500">
+            {subs.length === 0 ? "Nenhuma assinatura encontrada" : "Nenhum resultado para os filtros aplicados"}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {subs.length === 0 ? "Assinaturas são criadas automaticamente ao cadastrar uma clínica" : "Tente mudar os filtros de busca"}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -572,58 +919,122 @@ function SubscriptionsTab() {
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Valor</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Pagamento</TableHead>
                 <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cadastro</TableHead>
-                <TableHead />
+                <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {subs.map((row) => (
-                <TableRow key={row.sub.id} className="border-b border-slate-50 hover:bg-slate-50/60">
-                  <TableCell>
-                    <div>
-                      <p className="font-semibold text-slate-800 text-sm">{row.clinic?.name ?? "—"}</p>
-                      <p className="text-xs text-slate-400">{row.clinic?.email ?? ""}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm font-medium text-slate-700">{row.plan?.displayName ?? "—"}</span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <StatusBadge status={row.sub.status} />
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-600">
-                    {fmtDate(row.sub.trialEndDate)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold text-slate-700">
-                    {fmtCurrency(row.sub.amount)}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <PaymentBadge status={row.sub.paymentStatus} />
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-500">
-                    {fmtDate(row.sub.createdAt?.split("T")[0])}
-                  </TableCell>
-                  <TableCell>
-                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => openEdit(row)}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.map((row) => {
+                const tier = getTierConfig(row.plan?.name ?? "");
+                const TierIcon = tier.icon;
+                const trialDaysLeft = row.sub.trialEndDate
+                  ? differenceInDays(parseISO(row.sub.trialEndDate), new Date())
+                  : null;
+                return (
+                  <TableRow key={row.sub.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                    <TableCell>
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">{row.clinic?.name ?? "—"}</p>
+                        <p className="text-xs text-slate-400">{row.clinic?.email ?? ""}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {row.plan ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: tier.color + "18" }}>
+                            <TierIcon className="w-3.5 h-3.5" style={{ color: tier.color }} />
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">{row.plan.displayName}</span>
+                        </div>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <StatusBadge status={row.sub.status} />
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="text-sm text-slate-600">{fmtDate(row.sub.trialEndDate)}</p>
+                        {trialDaysLeft !== null && row.sub.status === "trial" && (
+                          <p className={`text-xs font-semibold ${trialDaysLeft <= 3 ? "text-red-500" : trialDaysLeft <= 7 ? "text-amber-500" : "text-slate-400"}`}>
+                            {trialDaysLeft < 0 ? "Expirado" : `${trialDaysLeft}d restantes`}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold text-slate-700">
+                      {fmtCurrency(row.sub.amount)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <PaymentBadge status={row.sub.paymentStatus} />
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-500">
+                      {fmtDate(row.sub.createdAt?.split("T")[0])}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-center">
+                        {row.sub.status === "trial" && (
+                          <button
+                            onClick={() => quickUpdateMutation.mutate({ id: row.sub.id, payload: { status: "active", paymentStatus: "paid" } })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                            title="Ativar assinatura"
+                          >
+                            Ativar
+                          </button>
+                        )}
+                        {row.sub.status === "active" && row.sub.paymentStatus !== "paid" && (
+                          <button
+                            onClick={() => quickUpdateMutation.mutate({ id: row.sub.id, payload: { paymentStatus: "paid" } })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                            title="Marcar como pago"
+                          >
+                            Pago
+                          </button>
+                        )}
+                        {(row.sub.status === "active" || row.sub.status === "trial") && (
+                          <button
+                            onClick={() => quickUpdateMutation.mutate({ id: row.sub.id, payload: { status: "suspended" } })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                            title="Suspender"
+                          >
+                            Suspender
+                          </button>
+                        )}
+                        {row.sub.status === "suspended" && (
+                          <button
+                            onClick={() => quickUpdateMutation.mutate({ id: row.sub.id, payload: { status: "active" } })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                          >
+                            Reativar
+                          </button>
+                        )}
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(row)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
+          {filtered.length < subs.length && (
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+              <p className="text-xs text-slate-400">
+                Mostrando {filtered.length} de {subs.length} assinaturas
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Edit subscription dialog */}
       <Dialog open={editSub !== null} onOpenChange={(o) => { if (!o) setEditSub(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Assinatura</DialogTitle>
             <DialogDescription>
               {editSub?.clinic?.name} — altere plano, status e pagamento
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>Plano</Label>
@@ -632,13 +1043,21 @@ function SubscriptionsTab() {
                   <SelectValue placeholder="Selecione o plano" />
                 </SelectTrigger>
                 <SelectContent>
-                  {plans.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>
-                  ))}
+                  {plans.map((p) => {
+                    const tier = getTierConfig(p.name);
+                    const TierIcon = tier.icon;
+                    return (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        <div className="flex items-center gap-2">
+                          <TierIcon className="w-3.5 h-3.5" style={{ color: tier.color }} />
+                          {p.displayName} — {fmtCurrency(p.price)}/mês
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Status da Assinatura</Label>
@@ -654,7 +1073,6 @@ function SubscriptionsTab() {
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-1.5">
                 <Label>Status do Pagamento</Label>
                 <Select value={subForm.paymentStatus} onValueChange={(v) => setSubForm({ ...subForm, paymentStatus: v })}>
@@ -670,17 +1088,14 @@ function SubscriptionsTab() {
                 </Select>
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label>Valor cobrado (R$)</Label>
               <Input type="number" min={0} step={0.01} value={subForm.amount} onChange={(e) => setSubForm({ ...subForm, amount: e.target.value })} className="rounded-xl" />
             </div>
-
             <div className="space-y-1.5">
               <Label>Trial válido até</Label>
               <Input type="date" value={subForm.trialEndDate} onChange={(e) => setSubForm({ ...subForm, trialEndDate: e.target.value })} className="rounded-xl" />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Início do período</Label>
@@ -691,13 +1106,11 @@ function SubscriptionsTab() {
                 <Input type="date" value={subForm.currentPeriodEnd} onChange={(e) => setSubForm({ ...subForm, currentPeriodEnd: e.target.value })} className="rounded-xl" />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label>Observações</Label>
               <Textarea rows={3} value={subForm.notes} onChange={(e) => setSubForm({ ...subForm, notes: e.target.value })} className="rounded-xl text-sm" placeholder="Notas internas..." />
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditSub(null)}>Cancelar</Button>
             <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
@@ -713,10 +1126,17 @@ function SubscriptionsTab() {
 // ─── Dashboard / Painel Tab ───────────────────────────────────────────────────
 
 function PainelTab() {
-  const { data: subs = [], isLoading } = useQuery<SubRow[]>({
+  const { data: subs = [], isLoading: subsLoading } = useQuery<SubRow[]>({
     queryKey: ["clinic-subscriptions"],
     queryFn: () => fetchJSON(api("/clinic-subscriptions")),
   });
+
+  const { data: planStats = [], isLoading: statsLoading } = useQuery<PlanStats[]>({
+    queryKey: ["plans-stats"],
+    queryFn: () => fetchJSON(api("/plans/stats")),
+  });
+
+  const isLoading = subsLoading || statsLoading;
 
   const total = subs.length;
   const trial = subs.filter((s) => s.sub.status === "trial").length;
@@ -727,23 +1147,38 @@ function PainelTab() {
     .filter((s) => s.sub.status === "active" && s.sub.paymentStatus === "paid")
     .reduce((acc, s) => acc + Number(s.sub.amount ?? 0), 0);
 
+  const recentTrialExpiring = subs
+    .filter((row) => {
+      if (row.sub.status !== "trial" || !row.sub.trialEndDate) return false;
+      try {
+        const days = differenceInDays(parseISO(row.sub.trialEndDate), new Date());
+        return days >= 0 && days <= 14;
+      } catch { return false; }
+    })
+    .sort((a, b) => {
+      try {
+        return differenceInDays(parseISO(a.sub.trialEndDate!), new Date()) - differenceInDays(parseISO(b.sub.trialEndDate!), new Date());
+      } catch { return 0; }
+    });
+
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-24 rounded-2xl bg-slate-100 animate-pulse" />
-        ))}
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-24 rounded-2xl bg-slate-100 animate-pulse" />)}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h2 className="text-lg font-bold text-slate-900">Painel Geral</h2>
         <p className="text-sm text-slate-500 mt-0.5">Visão consolidada das clínicas e assinaturas</p>
       </div>
 
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <KpiCard label="Total de Clínicas" value={total} icon={Building2} color="#6366f1" />
         <KpiCard label="Em Trial" value={trial} sub="período gratuito" icon={Clock} color="#0ea5e9" />
@@ -753,9 +1188,119 @@ function PainelTab() {
         <KpiCard label="MRR (estimado)" value={fmtCurrency(mrr)} sub="mensalidades pagas ativas" icon={TrendingUp} color="#8b5cf6" />
       </div>
 
-      {/* Recent activity */}
+      {/* Per-plan breakdown */}
+      {planStats.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-slate-400" />
+            Distribuição por Plano
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {planStats.map((stat) => {
+              const tier = getTierConfig(stat.planName);
+              const TierIcon = tier.icon;
+              return (
+                <div key={stat.planId} className={`bg-white rounded-2xl border-2 ${tier.border} p-5 space-y-4`}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: tier.color + "18" }}>
+                      <TierIcon className="w-5 h-5" style={{ color: tier.color }} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800">{stat.planDisplayName}</p>
+                      <p className="text-xs text-slate-400">{fmtCurrency(stat.price)}/mês</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className={`rounded-xl p-3 ${tier.bg}`}>
+                      <p className="text-xs text-slate-500 mb-0.5">Total</p>
+                      <p className="text-xl font-extrabold" style={{ color: tier.color }}>{stat.total}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-green-50">
+                      <p className="text-xs text-slate-500 mb-0.5">Ativos</p>
+                      <p className="text-xl font-extrabold text-green-700">{stat.active}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-blue-50">
+                      <p className="text-xs text-slate-500 mb-0.5">Trial</p>
+                      <p className="text-xl font-extrabold text-blue-700">{stat.trial}</p>
+                    </div>
+                    <div className="rounded-xl p-3 bg-slate-50">
+                      <p className="text-xs text-slate-500 mb-0.5">MRR</p>
+                      <p className="text-sm font-extrabold text-slate-800">{fmtCurrency(stat.mrr)}</p>
+                    </div>
+                  </div>
+
+                  {stat.total > 0 && (
+                    <div>
+                      <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Conversão Trial → Ativo</span>
+                        <span>{stat.total > 0 ? Math.round((stat.active / stat.total) * 100) : 0}%</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${stat.total > 0 ? Math.round((stat.active / stat.total) * 100) : 0}%`,
+                            backgroundColor: tier.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Trials expiring soon */}
+      {recentTrialExpiring.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-500" />
+            Trials expirando em breve
+          </h3>
+          <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-amber-50/60 border-b border-amber-100">
+                  <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clínica</TableHead>
+                  <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Plano</TableHead>
+                  <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Trial expira</TableHead>
+                  <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Dias restantes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentTrialExpiring.map((row) => {
+                  const daysLeft = row.sub.trialEndDate
+                    ? differenceInDays(parseISO(row.sub.trialEndDate), new Date())
+                    : null;
+                  return (
+                    <TableRow key={row.sub.id} className="border-b border-amber-50 hover:bg-amber-50/40">
+                      <TableCell className="font-medium text-sm text-slate-800">{row.clinic?.name ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-slate-600">{row.plan?.displayName ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-slate-600">{fmtDate(row.sub.trialEndDate)}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${daysLeft !== null && daysLeft <= 3 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          {daysLeft !== null ? `${daysLeft}d` : "—"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent subscriptions */}
       <div>
-        <h3 className="text-sm font-bold text-slate-700 mb-3">Assinaturas recentes</h3>
+        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-slate-400" />
+          Assinaturas recentes
+        </h3>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <Table>
             <TableHeader>
@@ -768,7 +1313,7 @@ function PainelTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {subs.slice(0, 10).map((row) => (
+              {subs.slice(0, 8).map((row) => (
                 <TableRow key={row.sub.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                   <TableCell className="font-medium text-sm text-slate-800">{row.clinic?.name ?? "—"}</TableCell>
                   <TableCell className="text-sm text-slate-600">{row.plan?.displayName ?? "—"}</TableCell>

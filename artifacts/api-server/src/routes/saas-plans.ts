@@ -52,6 +52,80 @@ const updateSubscriptionSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
 });
 
+// ─── Default plans seed data ─────────────────────────────────────────────────
+
+const DEFAULT_PLANS = [
+  {
+    name: "essencial",
+    displayName: "Essencial",
+    description: "Para profissionais autônomos que estão começando",
+    price: "149.00",
+    maxProfessionals: 1,
+    maxPatients: 150,
+    maxSchedules: null,
+    maxUsers: 3,
+    trialDays: 14,
+    features: [
+      "1 profissional",
+      "Até 150 pacientes",
+      "Agenda completa",
+      "Prontuários digitais",
+      "Controle financeiro básico",
+      "Suporte por e-mail",
+    ],
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    name: "profissional",
+    displayName: "Profissional",
+    description: "Para clínicas em crescimento com múltiplos profissionais",
+    price: "299.00",
+    maxProfessionals: 5,
+    maxPatients: 600,
+    maxSchedules: null,
+    maxUsers: 10,
+    trialDays: 30,
+    features: [
+      "Até 5 profissionais",
+      "Até 600 pacientes",
+      "Agenda completa",
+      "Prontuários digitais",
+      "Controle financeiro completo",
+      "Relatórios avançados",
+      "Assinaturas de pacientes",
+      "Suporte prioritário",
+    ],
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    name: "premium",
+    displayName: "Premium",
+    description: "Para clínicas estabelecidas que precisam do máximo",
+    price: "499.00",
+    maxProfessionals: null,
+    maxPatients: null,
+    maxSchedules: null,
+    maxUsers: null,
+    trialDays: 30,
+    features: [
+      "Profissionais ilimitados",
+      "Pacientes ilimitados",
+      "Agenda completa",
+      "Prontuários digitais",
+      "Controle financeiro completo",
+      "Relatórios avançados",
+      "Assinaturas de pacientes",
+      "API de integração",
+      "White-label",
+      "Suporte dedicado",
+    ],
+    isActive: true,
+    sortOrder: 3,
+  },
+];
+
 // ─── Plans CRUD (superadmin only) ────────────────────────────────────────────
 
 router.get("/plans", requireSuperAdmin(), async (_req, res) => {
@@ -61,6 +135,78 @@ router.get("/plans", requireSuperAdmin(), async (_req, res) => {
       .from(subscriptionPlansTable)
       .orderBy(asc(subscriptionPlansTable.sortOrder));
     res.json(plans);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Seed default plans if they don't exist
+router.post("/plans/seed-defaults", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const results: { name: string; action: string }[] = [];
+
+    for (const plan of DEFAULT_PLANS) {
+      const existing = await db
+        .select()
+        .from(subscriptionPlansTable)
+        .where(eq(subscriptionPlansTable.name, plan.name))
+        .limit(1);
+
+      if (existing.length > 0) {
+        results.push({ name: plan.name, action: "skipped" });
+      } else {
+        await db.insert(subscriptionPlansTable).values(plan);
+        results.push({ name: plan.name, action: "created" });
+      }
+    }
+
+    res.json({ ok: true, results });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Per-plan stats for dashboard
+router.get("/plans/stats", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const plans = await db
+      .select()
+      .from(subscriptionPlansTable)
+      .orderBy(asc(subscriptionPlansTable.sortOrder));
+
+    const subs = await db
+      .select({
+        sub: clinicSubscriptionsTable,
+      })
+      .from(clinicSubscriptionsTable);
+
+    const stats = plans.map((plan) => {
+      const planSubs = subs.filter((s) => s.sub.planId === plan.id);
+      const active = planSubs.filter((s) => s.sub.status === "active").length;
+      const trial = planSubs.filter((s) => s.sub.status === "trial").length;
+      const suspended = planSubs.filter((s) => s.sub.status === "suspended").length;
+      const cancelled = planSubs.filter((s) => s.sub.status === "cancelled").length;
+      const mrr = planSubs
+        .filter((s) => s.sub.status === "active" && s.sub.paymentStatus === "paid")
+        .reduce((acc, s) => acc + Number(s.sub.amount ?? 0), 0);
+
+      return {
+        planId: plan.id,
+        planName: plan.name,
+        planDisplayName: plan.displayName,
+        price: plan.price,
+        total: planSubs.length,
+        active,
+        trial,
+        suspended,
+        cancelled,
+        mrr,
+      };
+    });
+
+    res.json(stats);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
