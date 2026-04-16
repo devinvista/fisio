@@ -626,13 +626,15 @@ router.post("/", requirePermission("appointments.create"), async (req: AuthReque
       })
       .returning();
 
+    const createActor = (req as AuthRequest).userName ?? `usuário #${req.userId}`;
     await logAudit({
       userId: req.userId,
+      userName: (req as AuthRequest).userName,
       patientId,
       action: "create",
       entityType: "appointment",
       entityId: appointment.id,
-      summary: `Agendamento criado: ${procedure.name} em ${date} às ${startTime}`,
+      summary: `Agendamento criado: ${procedure.name} em ${date} às ${startTime} (por ${createActor})`,
     });
 
     const details = await getWithDetails(appointment.id);
@@ -811,23 +813,26 @@ router.put("/:id", requirePermission("appointments.update"), async (req, res) =>
     }
 
     // ── Audit log ─────────────────────────────────────────────────────────
+    const auditActor = authReq.userName ?? `usuário #${authReq.userId}`;
     if (status && status !== oldStatus) {
       await logAudit({
         userId: authReq.userId,
+        userName: authReq.userName,
         patientId: currentAppt.patientId,
         action: "update",
         entityType: "appointment",
         entityId: id,
-        summary: `Status: ${oldStatus} → ${status}`,
+        summary: `Status: ${oldStatus} → ${status} (por ${auditActor})`,
       });
     } else if (Object.keys(updateFields).length > 0) {
       await logAudit({
         userId: authReq.userId,
+        userName: authReq.userName,
         patientId: currentAppt.patientId,
         action: "update",
         entityType: "appointment",
         entityId: id,
-        summary: `Agendamento atualizado`,
+        summary: `Agendamento atualizado (por ${auditActor})`,
       });
     }
 
@@ -978,13 +983,15 @@ router.post("/:id/reschedule", requirePermission("appointments.create"), async (
         )
       );
 
+    const rescheduleActor = req.userName ?? `usuário #${req.userId}`;
     await logAudit({
       userId: req.userId,
+      userName: req.userName,
       patientId: original.patientId,
       action: "update",
       entityType: "appointment",
       entityId: id,
-      summary: `Remarcado para ${date} às ${startTime} (novo ID: ${result.id})`,
+      summary: `Remarcado para ${date} às ${startTime} (novo ID: ${result.id}) (por ${rescheduleActor})`,
     });
 
     const newDetails = await getWithDetails(result.id);
@@ -1031,13 +1038,15 @@ router.post("/:id/complete", requirePermission("appointments.update"), async (re
 
     await applyBillingRules(id, "concluido", oldStatus, clinicId);
 
+    const completeActor = authReq.userName ?? `usuário #${authReq.userId}`;
     await logAudit({
       userId: authReq.userId,
+      userName: authReq.userName,
       patientId: details.patientId,
       action: "update",
       entityType: "appointment",
       entityId: id,
-      summary: `Status: ${oldStatus} → concluido`,
+      summary: `Status: ${oldStatus} → concluido (por ${completeActor})`,
     });
 
     const updatedDetails = await getWithDetails(appointment.id, clinicId);
