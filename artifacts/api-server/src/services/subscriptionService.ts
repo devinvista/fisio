@@ -77,11 +77,23 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
         }
 
         // 2. Assinatura ativa com período vencido → marcar como overdue
+        // Usa currentPeriodEnd se disponível; cai para trialEndDate quando o trial
+        // expirou sem pagamento e currentPeriodEnd ainda não foi definido.
         if (sub.status === "active" && sub.paymentStatus !== "paid" && sub.paymentStatus !== "free") {
-          if (sub.currentPeriodEnd && sub.currentPeriodEnd < today) {
+          const referenceDate = sub.currentPeriodEnd ?? sub.trialEndDate;
+          if (referenceDate && referenceDate < today) {
+            const updateFields: Partial<typeof clinicSubscriptionsTable.$inferInsert> = {
+              paymentStatus: "overdue",
+              updatedAt: new Date(),
+            };
+            // Se currentPeriodEnd estava nulo, ancorá-lo na data de referência para
+            // que o cálculo de carência (passo 3) funcione corretamente.
+            if (!sub.currentPeriodEnd && sub.trialEndDate) {
+              updateFields.currentPeriodEnd = sub.trialEndDate;
+            }
             await db
               .update(clinicSubscriptionsTable)
-              .set({ paymentStatus: "overdue", updatedAt: new Date() })
+              .set(updateFields)
               .where(eq(clinicSubscriptionsTable.id, sub.id));
 
             result.markedOverdue++;
@@ -91,21 +103,25 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
         }
 
         // 3. Overdue além do período de carência → suspender
-        if (sub.status === "active" && sub.paymentStatus === "overdue" && sub.currentPeriodEnd) {
-          const graceLimitDate = addDays(sub.currentPeriodEnd, GRACE_PERIOD_DAYS);
-          if (today > graceLimitDate) {
-            await db
-              .update(clinicSubscriptionsTable)
-              .set({ status: "suspended", updatedAt: new Date() })
-              .where(eq(clinicSubscriptionsTable.id, sub.id));
+        // currentPeriodEnd agora é sempre preenchido antes de chegar aqui (passo 2).
+        if (sub.status === "active" && sub.paymentStatus === "overdue") {
+          const referenceEnd = sub.currentPeriodEnd ?? sub.trialEndDate;
+          if (referenceEnd) {
+            const graceLimitDate = addDays(referenceEnd, GRACE_PERIOD_DAYS);
+            if (today > graceLimitDate) {
+              await db
+                .update(clinicSubscriptionsTable)
+                .set({ status: "suspended", updatedAt: new Date() })
+                .where(eq(clinicSubscriptionsTable.id, sub.id));
 
-            result.suspended++;
-            result.details.push({
-              clinicId,
-              clinicName,
-              action: "suspended",
-              reason: `Inadimplente há mais de ${GRACE_PERIOD_DAYS} dias após vencimento`,
-            });
+              result.suspended++;
+              result.details.push({
+                clinicId,
+                clinicName,
+                action: "suspended",
+                reason: `Inadimplente há mais de ${GRACE_PERIOD_DAYS} dias após vencimento`,
+              });
+            }
           }
         }
       } catch (err: any) {

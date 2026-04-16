@@ -154,9 +154,11 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
     const { name, cpf, email, password, roles } = body;
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles as Role[] : ["profissional"];
 
-    // Verificar limite do plano de usuários
+    // Verificar limites do plano (usuários e profissionais)
     if (req.clinicId && !req.isSuperAdmin) {
       const limits = await getPlanLimits(req.clinicId);
+
+      // Limite de usuários totais
       if (limits?.maxUsers != null) {
         const [{ total }] = await db
           .select({ total: count() })
@@ -169,7 +171,26 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
             resource: "users",
             limit: limits.maxUsers,
             current: Number(total),
-            message: `Limite de ${limits.maxUsers} usuários do seu plano atingido. Faça upgrade para continuar adicionando usuários.`,
+            message: `Limite de ${limits.maxUsers} usuário(s) do seu plano atingido. Faça upgrade para continuar adicionando usuários.`,
+          });
+          return;
+        }
+      }
+
+      // Limite de profissionais
+      if (limits?.maxProfessionals != null && roleList.includes("profissional")) {
+        const [{ total }] = await db
+          .select({ total: count() })
+          .from(userRolesTable)
+          .where(and(eq(userRolesTable.clinicId, req.clinicId), eq(userRolesTable.role, "profissional")));
+        if (Number(total) >= limits.maxProfessionals) {
+          res.status(403).json({
+            error: "Plan Limit Reached",
+            limitReached: true,
+            resource: "professionals",
+            limit: limits.maxProfessionals,
+            current: Number(total),
+            message: `Limite de ${limits.maxProfessionals} profissional(is) do seu plano atingido. Faça upgrade para adicionar mais profissionais.`,
           });
           return;
         }
@@ -276,6 +297,38 @@ router.put("/:id", requirePermission("users.manage"), async (req: AuthRequest, r
 
     if (Array.isArray(roles)) {
       const clinicId = req.clinicId ?? null;
+
+      // Verificar limite de profissionais ao atribuir role "profissional"
+      if (clinicId && !req.isSuperAdmin && (roles as string[]).includes("profissional")) {
+        // Checar se o usuário já tem a role "profissional" (nesse caso não consome nova vaga)
+        const [existingProRole] = await db
+          .select()
+          .from(userRolesTable)
+          .where(and(eq(userRolesTable.userId, id), eq(userRolesTable.clinicId, clinicId), eq(userRolesTable.role, "profissional")))
+          .limit(1);
+
+        if (!existingProRole) {
+          const limits = await getPlanLimits(clinicId);
+          if (limits?.maxProfessionals != null) {
+            const [{ total }] = await db
+              .select({ total: count() })
+              .from(userRolesTable)
+              .where(and(eq(userRolesTable.clinicId, clinicId), eq(userRolesTable.role, "profissional")));
+            if (Number(total) >= limits.maxProfessionals) {
+              res.status(403).json({
+                error: "Plan Limit Reached",
+                limitReached: true,
+                resource: "professionals",
+                limit: limits.maxProfessionals,
+                current: Number(total),
+                message: `Limite de ${limits.maxProfessionals} profissional(is) do seu plano atingido. Faça upgrade para adicionar mais profissionais.`,
+              });
+              return;
+            }
+          }
+        }
+      }
+
       if (clinicId) {
         await db.delete(userRolesTable).where(
           and(eq(userRolesTable.userId, id), eq(userRolesTable.clinicId, clinicId))

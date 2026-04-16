@@ -669,9 +669,38 @@ router.post("/payment-history", requireSuperAdmin(), async (req: AuthRequest, re
       .returning();
 
     if (body.updateSubscriptionStatus !== false && body.subscriptionId) {
+      // Buscar assinatura atual para calcular próximo período
+      const [currentSub] = await db
+        .select()
+        .from(clinicSubscriptionsTable)
+        .where(eq(clinicSubscriptionsTable.id, body.subscriptionId))
+        .limit(1);
+
+      const subUpdate: Partial<typeof clinicSubscriptionsTable.$inferInsert> = {
+        paymentStatus: "paid",
+        paidAt,
+        status: "active",
+        updatedAt: new Date(),
+      };
+
+      if (currentSub) {
+        // Referência para início do próximo período:
+        // usa currentPeriodEnd existente se disponível; senão usa trialEndDate; senão hoje.
+        const periodBase =
+          currentSub.currentPeriodEnd ??
+          currentSub.trialEndDate ??
+          todayBRT();
+
+        // Avançar o período 30 dias a partir da base calculada
+        const nextPeriodEnd = addDays(periodBase, 30);
+
+        subUpdate.currentPeriodStart = periodBase;
+        subUpdate.currentPeriodEnd = nextPeriodEnd;
+      }
+
       await db
         .update(clinicSubscriptionsTable)
-        .set({ paymentStatus: "paid", paidAt, updatedAt: new Date() })
+        .set(subUpdate)
         .where(eq(clinicSubscriptionsTable.id, body.subscriptionId));
     }
 
@@ -730,5 +759,11 @@ router.get("/payment-history/stats", requireSuperAdmin(), async (_req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
 
 export default router;
