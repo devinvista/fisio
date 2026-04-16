@@ -25,6 +25,7 @@ import {
   financialRecordsTable,
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { logAudit } from "../lib/auditLog.js";
 
 export interface PolicyRunResult {
   autoConfirmed: number;
@@ -57,7 +58,7 @@ export async function runAutoConfirmPolicies(): Promise<PolicyRunResult> {
       if (!clinic.autoConfirmHours || clinic.autoConfirmHours <= 0) continue;
 
       const toAutoConfirm = await db
-        .select({ id: appointmentsTable.id })
+        .select({ id: appointmentsTable.id, patientId: appointmentsTable.patientId })
         .from(appointmentsTable)
         .where(
           and(
@@ -83,6 +84,15 @@ export async function runAutoConfirmPolicies(): Promise<PolicyRunResult> {
             .where(eq(appointmentsTable.id, appt.id));
           result.autoConfirmed++;
           result.details.push({ clinicId: clinic.id, action: "auto_confirmed", appointmentId: appt.id });
+          await logAudit({
+            userId: null,
+            userName: "sistema",
+            patientId: appt.patientId,
+            action: "update",
+            entityType: "appointment",
+            entityId: appt.id,
+            summary: "Status: agendado → confirmado (auto-confirmação pelo sistema)",
+          });
         } catch (err: any) {
           result.errors++;
           result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
@@ -149,6 +159,15 @@ export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
             .where(eq(appointmentsTable.id, appt.id));
           result.noShowMarked++;
           result.details.push({ clinicId: clinic.id, action: "no_show_marked", appointmentId: appt.id });
+          await logAudit({
+            userId: null,
+            userName: "sistema",
+            patientId: appt.patientId,
+            action: "update",
+            entityType: "appointment",
+            entityId: appt.id,
+            summary: "Status: agendado/confirmado → faltou (fechamento automático do dia)",
+          });
 
           // ── NO-SHOW FEE ──────────────────────────────────────────────────
           if (clinic.noShowFeeEnabled && clinic.noShowFeeAmount) {
@@ -201,7 +220,7 @@ export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
       // ── AUTO-COMPLETE: compareceu → concluido ────────────────────────────
       // Apenas agendamentos de hoje com status "compareceu" cujo horário já passou
       const toAutoComplete = await db
-        .select({ id: appointmentsTable.id })
+        .select({ id: appointmentsTable.id, patientId: appointmentsTable.patientId })
         .from(appointmentsTable)
         .where(
           and(
@@ -223,6 +242,15 @@ export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
             .where(eq(appointmentsTable.id, appt.id));
           result.autoCompleted++;
           result.details.push({ clinicId: clinic.id, action: "auto_completed", appointmentId: appt.id });
+          await logAudit({
+            userId: null,
+            userName: "sistema",
+            patientId: appt.patientId,
+            action: "update",
+            entityType: "appointment",
+            entityId: appt.id,
+            summary: "Status: compareceu → concluido (auto-conclusão pelo sistema)",
+          });
         } catch (err: any) {
           result.errors++;
           result.details.push({ clinicId: clinic.id, action: "error", appointmentId: appt.id, error: String(err.message) });
