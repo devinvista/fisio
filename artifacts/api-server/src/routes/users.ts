@@ -3,9 +3,10 @@ import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { usersTable, userRolesTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, isNotNull, count } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireActiveSubscription, getPlanLimits } from "../middleware/subscription.js";
 import { validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
@@ -29,6 +30,7 @@ const updateUserSchema = z.object({
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireActiveSubscription());
 
 async function getUserWithRolesForClinic(userId: number, clinicId: number | null) {
   const [user] = await db
@@ -151,6 +153,28 @@ router.post("/", requirePermission("users.manage"), async (req: AuthRequest, res
     if (!body) return;
     const { name, cpf, email, password, roles } = body;
     const roleList: Role[] = Array.isArray(roles) && roles.length > 0 ? roles as Role[] : ["profissional"];
+
+    // Verificar limite do plano de usuários
+    if (req.clinicId && !req.isSuperAdmin) {
+      const limits = await getPlanLimits(req.clinicId);
+      if (limits?.maxUsers != null) {
+        const [{ total }] = await db
+          .select({ total: count() })
+          .from(userRolesTable)
+          .where(eq(userRolesTable.clinicId, req.clinicId));
+        if (Number(total) >= limits.maxUsers) {
+          res.status(403).json({
+            error: "Plan Limit Reached",
+            limitReached: true,
+            resource: "users",
+            limit: limits.maxUsers,
+            current: Number(total),
+            message: `Limite de ${limits.maxUsers} usuários do seu plano atingido. Faça upgrade para continuar adicionando usuários.`,
+          });
+          return;
+        }
+      }
+    }
 
     const normalizedCpf = cpf.replace(/\D/g, "");
     const existingCpf = await db

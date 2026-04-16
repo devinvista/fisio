@@ -20,10 +20,12 @@
 import cron from "node-cron";
 import { runBilling } from "./services/billingService.js";
 import { runAutoConfirmPolicies, runEndOfDayPolicies } from "./services/policyService.js";
+import { runSubscriptionCheck } from "./services/subscriptionService.js";
 
-const BILLING_CRON     = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
-const AUTO_CONFIRM_CRON = "*/15 * * * *"; // a cada 15 minutos
-const END_OF_DAY_CRON  = "0 22 * * *";   // 22:00 BRT diariamente
+const BILLING_CRON          = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
+const AUTO_CONFIRM_CRON     = "*/15 * * * *"; // a cada 15 minutos
+const END_OF_DAY_CRON       = "0 22 * * *";   // 22:00 BRT diariamente
+const SUBSCRIPTION_CHECK_CRON = "0 10 * * *"; // 07:00 BRT diariamente (verifica assinaturas)
 
 export function startScheduler(): void {
   // ── Billing automático ─────────────────────────────────────────────────────
@@ -97,5 +99,31 @@ export function startScheduler(): void {
     }, { timezone: "America/Sao_Paulo" });
 
     console.log(`[scheduler] Fechamento do dia agendado — ${END_OF_DAY_CRON} (22:00 BRT)`);
+  }
+
+  // ── Verificação de assinaturas das clínicas ─────────────────────────────────
+  if (!cron.validate(SUBSCRIPTION_CHECK_CRON)) {
+    console.error("[scheduler] Expressão CRON de verificação de assinaturas inválida:", SUBSCRIPTION_CHECK_CRON);
+  } else {
+    cron.schedule(SUBSCRIPTION_CHECK_CRON, async () => {
+      console.log(`[scheduler] Verificando assinaturas das clínicas — ${new Date().toISOString()}`);
+      try {
+        const result = await runSubscriptionCheck();
+        console.log(
+          `[scheduler] Verificação concluída: ` +
+          `${result.trialsExpired} trials expirados, ` +
+          `${result.markedOverdue} inadimplentes marcados, ` +
+          `${result.suspended} suspensas, ` +
+          `${result.errors} erros`
+        );
+        if (result.errors > 0) {
+          console.error("[scheduler] Erros na verificação:", result.details.filter(d => d.action === "error"));
+        }
+      } catch (err) {
+        console.error("[scheduler] Falha crítica na verificação de assinaturas:", err);
+      }
+    }, { timezone: "America/Sao_Paulo" });
+
+    console.log(`[scheduler] Verificação de assinaturas agendada — ${SUBSCRIPTION_CHECK_CRON} (07:00 BRT)`);
   }
 }

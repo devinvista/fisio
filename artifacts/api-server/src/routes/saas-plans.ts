@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subscriptionPlansTable, clinicSubscriptionsTable, clinicsTable } from "@workspace/db";
-import { eq, desc, asc } from "drizzle-orm";
+import { subscriptionPlansTable, clinicSubscriptionsTable, clinicsTable, patientsTable, usersTable, userRolesTable, schedulesTable } from "@workspace/db";
+import { eq, desc, asc, count, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requireSuperAdmin } from "../middleware/rbac.js";
 import { z } from "zod/v4";
 import { validateBody } from "../lib/validate.js";
 import { todayBRT } from "../lib/dateUtils.js";
+import { runSubscriptionCheck } from "../services/subscriptionService.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -446,6 +447,114 @@ router.get("/clinic-subscriptions/mine", async (req: AuthRequest, res) => {
       .limit(1);
 
     res.json(row ?? null);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Current clinic subscription limits & usage ─────────────────────────────
+
+router.get("/clinic-subscriptions/mine/limits", async (req: AuthRequest, res) => {
+  try {
+    const clinicId = req.clinicId;
+    if (!clinicId) {
+      res.json(null);
+      return;
+    }
+
+    const [row] = await db
+      .select({ sub: clinicSubscriptionsTable, plan: subscriptionPlansTable })
+      .from(clinicSubscriptionsTable)
+      .leftJoin(subscriptionPlansTable, eq(clinicSubscriptionsTable.planId, subscriptionPlansTable.id))
+      .where(eq(clinicSubscriptionsTable.clinicId, clinicId))
+      .limit(1);
+
+    if (!row) {
+      res.json({ plan: null, limits: null, usage: null });
+      return;
+    }
+
+    const [patientsCount] = await db
+      .select({ total: count() })
+      .from(patientsTable)
+      .where(eq(patientsTable.clinicId, clinicId));
+
+    const [usersCount] = await db
+      .select({ total: count() })
+      .from(userRolesTable)
+      .where(eq(userRolesTable.clinicId, clinicId));
+
+    const [schedulesCount] = await db
+      .select({ total: count() })
+      .from(schedulesTable)
+      .where(and(eq(schedulesTable.clinicId, clinicId), eq(schedulesTable.isActive, true)));
+
+    res.json({
+      sub: {
+        id: row.sub.id,
+        status: row.sub.status,
+        paymentStatus: row.sub.paymentStatus,
+        trialEndDate: row.sub.trialEndDate,
+        currentPeriodEnd: row.sub.currentPeriodEnd,
+      },
+      plan: row.plan
+        ? {
+            id: row.plan.id,
+            name: row.plan.name,
+            displayName: row.plan.displayName,
+            price: row.plan.price,
+            features: row.plan.features,
+          }
+        : null,
+      limits: row.plan
+        ? {
+            maxProfessionals: row.plan.maxProfessionals,
+            maxPatients: row.plan.maxPatients,
+            maxSchedules: row.plan.maxSchedules,
+            maxUsers: row.plan.maxUsers,
+          }
+        : null,
+      usage: {
+        patients: patientsCount?.total ?? 0,
+        users: usersCount?.total ?? 0,
+        schedules: schedulesCount?.total ?? 0,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Manual subscription check (superadmin) ──────────────────────────────────
+
+router.post("/clinic-subscriptions/run-check", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const result = await runSubscriptionCheck();
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── All clinics (superadmin) — para aba Clínicas ────────────────────────────
+
+router.get("/admin/clinics", requireSuperAdmin(), async (_req, res) => {
+  try {
+    const clinics = await db
+      .select({
+        clinic: clinicsTable,
+        sub: clinicSubscriptionsTable,
+        plan: subscriptionPlansTable,
+      })
+      .from(clinicsTable)
+      .leftJoin(clinicSubscriptionsTable, eq(clinicSubscriptionsTable.clinicId, clinicsTable.id))
+      .leftJoin(subscriptionPlansTable, eq(clinicSubscriptionsTable.planId, subscriptionPlansTable.id))
+      .orderBy(asc(clinicsTable.name));
+
+    res.json(clinics);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });

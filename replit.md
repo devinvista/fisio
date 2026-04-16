@@ -54,9 +54,54 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefat
 | Billing automático | `0 9 * * *` | 06:00 | `runBilling()` — cobranças recorrentes com tolerância de 3 dias |
 | Auto-confirmação | `*/15 * * * *` | a cada 15 min | `runAutoConfirmPolicies()` — confirma agendamentos dentro da janela configurada |
 | Fechamento do dia | `0 22 * * *` | 22:00 | `runEndOfDayPolicies()` — no-show + taxa de ausência + auto-conclusão |
+| Verificação de assinaturas | `0 10 * * *` | 07:00 | `runSubscriptionCheck()` — trials expirados → overdue, suspende inadimplentes após 7 dias de carência |
 
 > O fechamento do dia só processa agendamentos do **dia corrente** para garantir tempo de ajustes manuais durante o expediente.
 > Implementado em `artifacts/api-server/src/scheduler.ts` + `services/policyService.ts`.
+
+---
+
+## Controle de Assinaturas SaaS (Superadmin)
+
+### Arquitetura
+- **Schema**: `subscription_plans` + `clinic_subscriptions` (`lib/db/src/schema/saas-plans.ts`)
+- **Middleware de bloqueio**: `artifacts/api-server/src/middleware/subscription.ts`
+  - `requireActiveSubscription()` — bloqueia clinicas com status `suspended` ou `cancelled` (HTTP 403 com `subscriptionBlocked: true`)
+  - `getPlanLimits(clinicId)` — retorna limites do plano para enforcement
+- **Serviço**: `artifacts/api-server/src/services/subscriptionService.ts`
+  - `runSubscriptionCheck()` — detecta trials expirados, marca `overdue`, suspende após 7 dias de carência
+
+### Limites enforçados automaticamente
+| Recurso | Onde verificado | Campo do plano |
+|---|---|---|
+| Pacientes | `POST /api/patients` | `maxPatients` |
+| Usuários | `POST /api/users` | `maxUsers` |
+| Agendas | `POST /api/schedules` | `maxSchedules` |
+
+### Endpoints adicionados
+| Método | Caminho | Acesso | Descrição |
+|---|---|---|---|
+| `GET` | `/api/clinic-subscriptions/mine/limits` | Clínica autenticada | Uso atual + limites do plano |
+| `POST` | `/api/clinic-subscriptions/run-check` | Superadmin | Executa verificação manual de assinaturas |
+| `GET` | `/api/admin/clinics` | Superadmin | Todas as clínicas com plano e assinatura |
+
+### Fluxo de status das assinaturas
+```
+trial (ativo) → trial expirado → active/overdue → suspended (após 7 dias de carência)
+                                                 ↑ ou ↓ (superadmin pode reativar)
+```
+
+### Banner de aviso no frontend
+- `app-layout.tsx` — exibe banner contextual conforme status:
+  - 🟡 Trial expira em ≤7 dias → aviso amarelo
+  - 🟠 Pagamento em atraso → aviso laranja
+  - 🔴 Suspenso/Cancelado → banner vermelho persistente (sem dismiss)
+
+### Painel Superadmin
+- **Painel**: KPIs + botão "Verificar Assinaturas" manual
+- **Planos**: CRUD de planos com limites e features
+- **Assinaturas**: lista de todas as clínicas com ações rápidas (Ativar, Suspender, Pago, Reativar)
+- **Clínicas**: visão completa de todas as clínicas, seus planos e status — com busca e verificação manual
 
 ---
 

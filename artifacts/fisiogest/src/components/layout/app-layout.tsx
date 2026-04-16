@@ -1,6 +1,8 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/use-auth";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -19,6 +21,10 @@ import {
   ChevronRight,
   MoreHorizontal,
   ShieldCheck,
+  AlertTriangle,
+  XCircle,
+  Clock,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -26,6 +32,107 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher";
 import { ROLE_LABELS } from "@/lib/permissions";
 import type { Permission, Role } from "@/lib/permissions";
+import { differenceInDays, parseISO } from "date-fns";
+
+const BASE = import.meta.env.BASE_URL ?? "/";
+const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
+const api = (path: string) => `${API_BASE}/api${path}`;
+
+type SubInfo = {
+  sub: { status: string; paymentStatus: string; trialEndDate: string | null; currentPeriodEnd: string | null };
+  plan: { displayName: string } | null;
+} | null;
+
+function SubscriptionBanner({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  const { data } = useQuery<SubInfo>({
+    queryKey: ["subscription-mine-banner"],
+    queryFn: async () => {
+      const res = await apiFetch(api("/clinic-subscriptions/mine"));
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !isSuperAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (!data || isSuperAdmin || dismissed) return null;
+
+  const { sub, plan } = data;
+
+  if (sub.status === "suspended") {
+    return (
+      <div className="flex items-center gap-3 bg-red-600 text-white px-4 py-2.5 text-sm font-medium">
+        <XCircle className="w-4 h-4 shrink-0" />
+        <span className="flex-1">
+          <strong>Assinatura suspensa.</strong> O acesso ao sistema foi bloqueado por inadimplência. Entre em contato com o suporte para regularizar.
+        </span>
+      </div>
+    );
+  }
+
+  if (sub.status === "cancelled") {
+    return (
+      <div className="flex items-center gap-3 bg-red-600 text-white px-4 py-2.5 text-sm font-medium">
+        <XCircle className="w-4 h-4 shrink-0" />
+        <span className="flex-1">
+          <strong>Assinatura cancelada.</strong> Entre em contato com o suporte para reativar o acesso.
+        </span>
+      </div>
+    );
+  }
+
+  if (sub.paymentStatus === "overdue") {
+    return (
+      <div className="flex items-center gap-3 bg-orange-500 text-white px-4 py-2.5 text-sm">
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+        <span className="flex-1">
+          <strong>Pagamento em atraso.</strong> Regularize sua assinatura {plan ? `(${plan.displayName})` : ""} para evitar a suspensão do acesso.
+        </span>
+        <button onClick={() => setDismissed(true)} className="ml-2 opacity-70 hover:opacity-100 transition-opacity">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (sub.status === "trial" && sub.trialEndDate) {
+    try {
+      const daysLeft = differenceInDays(parseISO(sub.trialEndDate), new Date());
+      if (daysLeft < 0) {
+        return (
+          <div className="flex items-center gap-3 bg-amber-500 text-white px-4 py-2.5 text-sm">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="flex-1">
+              <strong>Período de trial encerrado.</strong> Contrate um plano para continuar usando o sistema.
+            </span>
+            <button onClick={() => setDismissed(true)} className="ml-2 opacity-70 hover:opacity-100 transition-opacity">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      }
+      if (daysLeft <= 7) {
+        return (
+          <div className="flex items-center gap-3 bg-amber-400 text-amber-950 px-4 py-2 text-sm">
+            <Clock className="w-4 h-4 shrink-0" />
+            <span className="flex-1">
+              <strong>Trial encerra em {daysLeft === 0 ? "hoje" : `${daysLeft} dia${daysLeft !== 1 ? "s" : ""}`}.</strong> Contrate um plano para não perder o acesso.
+            </span>
+            <button onClick={() => setDismissed(true)} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -369,6 +476,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden relative min-w-0">
+        <SubscriptionBanner isSuperAdmin={isSuperAdmin} />
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-white/80 backdrop-blur-md px-4 md:px-6 shadow-sm z-10">
           <div className="flex items-center gap-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { schedulesTable, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireActiveSubscription, getPlanLimits } from "../middleware/subscription.js";
 import { validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
@@ -30,6 +31,7 @@ const updateScheduleSchema = createScheduleSchema.partial().extend({
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireActiveSubscription());
 
 async function getScheduleWithProfessional(id: number) {
   const result = await db
@@ -100,6 +102,28 @@ router.post("/", requirePermission("settings.manage"), async (req: AuthRequest, 
     if (!req.clinicId && !req.isSuperAdmin) {
       res.status(400).json({ error: "Bad Request", message: "clinicId não encontrado" });
       return;
+    }
+
+    // Verificar limite do plano de agendas
+    if (req.clinicId && !req.isSuperAdmin) {
+      const limits = await getPlanLimits(req.clinicId);
+      if (limits?.maxSchedules != null) {
+        const [{ total }] = await db
+          .select({ total: count() })
+          .from(schedulesTable)
+          .where(and(eq(schedulesTable.clinicId, req.clinicId), eq(schedulesTable.isActive, true)));
+        if (Number(total) >= limits.maxSchedules) {
+          res.status(403).json({
+            error: "Plan Limit Reached",
+            limitReached: true,
+            resource: "schedules",
+            limit: limits.maxSchedules,
+            current: Number(total),
+            message: `Limite de ${limits.maxSchedules} agendas do seu plano atingido. Faça upgrade para continuar.`,
+          });
+          return;
+        }
+      }
     }
 
     const [schedule] = await db

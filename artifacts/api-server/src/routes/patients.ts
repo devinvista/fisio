@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "@workspace/db";
-import { eq, ilike, or, and, sql, desc, isNull } from "drizzle-orm";
+import { eq, ilike, or, and, sql, desc, isNull, count } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireActiveSubscription, getPlanLimits } from "../middleware/subscription.js";
 import { logAudit } from "../lib/auditLog.js";
 import { parseIntParam, validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
@@ -68,6 +69,7 @@ function isDuplicateKeyError(err: any): boolean {
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireActiveSubscription());
 
 function clinicFilter(req: AuthRequest) {
   if (req.isSuperAdmin || !req.clinicId) return isNull(patientsTable.deletedAt);
@@ -136,6 +138,28 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
     if (!validateCpf(normalizedCpf)) {
       res.status(400).json({ error: "Bad Request", message: "CPF inválido. Verifique os dígitos informados." });
       return;
+    }
+
+    // Verificar limite do plano de pacientes
+    if (req.clinicId && !req.isSuperAdmin) {
+      const limits = await getPlanLimits(req.clinicId);
+      if (limits?.maxPatients != null) {
+        const [{ total }] = await db
+          .select({ total: count() })
+          .from(patientsTable)
+          .where(eq(patientsTable.clinicId, req.clinicId));
+        if (Number(total) >= limits.maxPatients) {
+          res.status(403).json({
+            error: "Plan Limit Reached",
+            limitReached: true,
+            resource: "patients",
+            limit: limits.maxPatients,
+            current: Number(total),
+            message: `Limite de ${limits.maxPatients} pacientes do seu plano atingido. Faça upgrade para continuar cadastrando.`,
+          });
+          return;
+        }
+      }
     }
 
     const [patient] = await db
