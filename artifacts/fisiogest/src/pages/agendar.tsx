@@ -131,6 +131,8 @@ interface PatientLookupResult {
     estimatedSessions: number | null;
     status: string;
   } | null;
+  activeClinicId?: number | null;
+  activeClinicName?: string | null;
   recommendedProcedureIds?: number[];
 }
 
@@ -515,10 +517,12 @@ function StepProcedimento({
   onSelect,
   foundPatient,
   onBack,
+  clinicId,
 }: {
   onSelect: (procedure: PublicProcedure) => void;
   foundPatient: PatientLookupResult | null;
   onBack?: () => void;
+  clinicId?: number | null;
 }) {
   const [procedures, setProcedures] = useState<PublicProcedure[]>([]);
   const [loading, setLoading] = useState(true);
@@ -527,7 +531,10 @@ function StepProcedimento({
   const [selectedProc, setSelectedProc] = useState<PublicProcedure | null>(null);
 
   useEffect(() => {
-    fetch(`${BASE}/api/public/procedures`)
+    const url = clinicId
+      ? `${BASE}/api/public/procedures?clinicId=${clinicId}`
+      : `${BASE}/api/public/procedures`;
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -538,7 +545,7 @@ function StepProcedimento({
       })
       .catch(() => setError("Não foi possível conectar ao servidor"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [clinicId]);
 
   const recommendedIds = foundPatient?.recommendedProcedureIds ?? [];
   const hasPlan = !!foundPatient?.activeTreatmentPlan;
@@ -610,7 +617,7 @@ function StepProcedimento({
             {hasPlan ? (
               <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1">
                 <ClipboardList className="w-3 h-3" />
-                Você tem um plano de tratamento ativo — procedimentos recomendados estão destacados abaixo.
+                Você tem um plano ativo{foundPatient.activeClinicName ? ` em ${foundPatient.activeClinicName}` : ""} — procedimentos recomendados estão destacados abaixo.
               </p>
             ) : (
               <p className="text-xs text-emerald-700 mt-0.5">
@@ -675,11 +682,13 @@ function StepDataHora({
   onSelect,
   onBack,
   submitting,
+  clinicId,
 }: {
   procedure: PublicProcedure;
   onSelect: (date: string, time: string) => void;
   onBack: () => void;
   submitting?: boolean;
+  clinicId?: number | null;
 }) {
   const today = startOfToday();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -698,7 +707,10 @@ function StepDataHora({
     setSelectedTime(null);
     setError(null);
 
-    fetch(`${BASE}/api/public/available-slots?date=${dateStr}&procedureId=${procedure.id}`)
+    const slotsUrl = clinicId
+      ? `${BASE}/api/public/available-slots?date=${dateStr}&procedureId=${procedure.id}&clinicId=${clinicId}`
+      : `${BASE}/api/public/available-slots?date=${dateStr}&procedureId=${procedure.id}`;
+    fetch(slotsUrl)
       .then((r) => r.json())
       .then((data) => {
         if (data.slots) {
@@ -709,7 +721,7 @@ function StepDataHora({
       })
       .catch(() => setError("Erro de conexão ao buscar horários."))
       .finally(() => setLoadingSlots(false));
-  }, [selectedDate, procedure.id]);
+  }, [selectedDate, procedure.id, clinicId]);
 
   return (
     <div>
@@ -1103,6 +1115,7 @@ export default function Agendar() {
   const [step, setStep] = useState(1);
   const [patientFormData, setPatientFormData] = useState<PatientFormData | null>(null);
   const [foundPatient, setFoundPatient] = useState<PatientLookupResult | null>(null);
+  const [activeClinicId, setActiveClinicId] = useState<number | null>(null);
   const [procedure, setProcedure] = useState<PublicProcedure | null>(null);
   const [patientName, setPatientName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1113,6 +1126,7 @@ export default function Agendar() {
   const handlePatientNext = (data: PatientFormData, patient: PatientLookupResult | null) => {
     setPatientFormData(data);
     setFoundPatient(patient);
+    setActiveClinicId(patient?.activeClinicId ?? null);
     setStep(2);
   };
 
@@ -1142,6 +1156,7 @@ export default function Agendar() {
           patientEmail: patientFormData.email || undefined,
           patientCpf: patientFormData.cpf || undefined,
           notes: patientFormData.notes || undefined,
+          clinicId: activeClinicId || undefined,
         }),
       });
 
@@ -1163,6 +1178,7 @@ export default function Agendar() {
   const handleNew = () => {
     setPatientFormData(null);
     setFoundPatient(null);
+    setActiveClinicId(null);
     setProcedure(null);
     setConfirmation(null);
     setSubmitError(null);
@@ -1233,6 +1249,7 @@ export default function Agendar() {
                   onSelect={handleProcedureSelect}
                   foundPatient={foundPatient}
                   onBack={() => setStep(1)}
+                  clinicId={activeClinicId}
                 />
               )}
 
@@ -1243,6 +1260,7 @@ export default function Agendar() {
                   onSelect={handleDateTimeSelect}
                   onBack={() => setStep(2)}
                   submitting={submitting}
+                  clinicId={activeClinicId}
                 />
               )}
 

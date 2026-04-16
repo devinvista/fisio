@@ -7,9 +7,10 @@ import {
   blockedSlotsTable,
   treatmentPlansTable,
   clinicsTable,
+  patientPackagesTable,
 } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, or, isNull, gt } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -108,6 +109,39 @@ router.get("/patient-lookup", async (req, res) => {
       .limit(1);
     const activePlan = plans[0] ?? null;
 
+    // Determine active clinic: from treatment plan first, then from active patient package
+    let activeClinicId: number | null = activePlan?.clinicId ?? null;
+
+    if (!activeClinicId) {
+      const today = todayBRT();
+      const activePackages = await db
+        .select({ clinicId: patientPackagesTable.clinicId })
+        .from(patientPackagesTable)
+        .where(
+          and(
+            eq(patientPackagesTable.patientId, patient.id),
+            sql`${patientPackagesTable.usedSessions} < ${patientPackagesTable.totalSessions}`,
+            or(
+              isNull(patientPackagesTable.expiryDate),
+              gt(patientPackagesTable.expiryDate, today)
+            )
+          )
+        )
+        .limit(1);
+      activeClinicId = activePackages[0]?.clinicId ?? null;
+    }
+
+    // Fetch clinic name if we have a clinic
+    let activeClinicName: string | null = null;
+    if (activeClinicId) {
+      const clinicRows = await db
+        .select({ name: clinicsTable.name })
+        .from(clinicsTable)
+        .where(eq(clinicsTable.id, activeClinicId))
+        .limit(1);
+      activeClinicName = clinicRows[0]?.name ?? null;
+    }
+
     // Most frequently used procedure IDs (from appointment history)
     const recentAppts = await db
       .select({ procedureId: appointmentsTable.procedureId })
@@ -148,6 +182,8 @@ router.get("/patient-lookup", async (req, res) => {
             status: activePlan.status,
           }
         : null,
+      activeClinicId,
+      activeClinicName,
       recommendedProcedureIds,
     });
   } catch (err) {
@@ -158,8 +194,22 @@ router.get("/patient-lookup", async (req, res) => {
 
 // ── GET /api/public/procedures ────────────────────────────────────────────────
 // Lista procedimentos disponíveis para agendamento online
-router.get("/procedures", async (_req, res) => {
+// Se clinicId for fornecido, retorna procedimentos globais + específicos daquela clínica
+router.get("/procedures", async (req, res) => {
   try {
+    const clinicId = req.query.clinicId ? parseInt(req.query.clinicId as string) : null;
+
+    const whereClause = clinicId
+      ? and(
+          eq(proceduresTable.onlineBookingEnabled, true),
+          eq(proceduresTable.isActive, true),
+          or(isNull(proceduresTable.clinicId), eq(proceduresTable.clinicId, clinicId))
+        )
+      : and(
+          eq(proceduresTable.onlineBookingEnabled, true),
+          eq(proceduresTable.isActive, true)
+        );
+
     const procedures = await db
       .select({
         id: proceduresTable.id,
@@ -171,7 +221,7 @@ router.get("/procedures", async (_req, res) => {
         maxCapacity: proceduresTable.maxCapacity,
       })
       .from(proceduresTable)
-      .where(eq(proceduresTable.onlineBookingEnabled, true))
+      .where(whereClause)
       .orderBy(proceduresTable.category, proceduresTable.name);
 
     res.json(procedures);
@@ -212,6 +262,19 @@ router.get("/available-slots", async (req, res) => {
     const duration = procedure.durationMinutes;
     const maxCap = procedure.maxCapacity ?? 1;
 
+    const clinicId = req.query.clinicId ? parseInt(req.query.clinicId as string) : null;
+
+    const apptWhereClause = clinicId
+      ? and(
+          eq(appointmentsTable.date, date as string),
+          sql`status NOT IN ('cancelado', 'faltou')`,
+          eq(appointmentsTable.clinicId, clinicId)
+        )
+      : and(
+          eq(appointmentsTable.date, date as string),
+          sql`status NOT IN ('cancelado', 'faltou')`
+        );
+
     const existingAppts = await db
       .select({
         id: appointmentsTable.id,
@@ -220,12 +283,7 @@ router.get("/available-slots", async (req, res) => {
         endTime: appointmentsTable.endTime,
       })
       .from(appointmentsTable)
-      .where(
-        and(
-          eq(appointmentsTable.date, date as string),
-          sql`status NOT IN ('cancelado', 'faltou')`
-        )
-      );
+      .where(apptWhereClause);
 
     const blockedSlots = await db
       .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })
@@ -296,7 +354,7 @@ router.get("/available-slots", async (req, res) => {
 // Cria um agendamento público (sem autenticação)
 router.post("/book", async (req, res) => {
   try {
-    const { procedureId, date, startTime, patientName, patientPhone, patientEmail, patientCpf, notes } = req.body;
+    const { procedureId, date, startTime, patientName, patientPhone, patientEmail, patientCpf, notes, clinicId } = req.body;
 
     if (!procedureId || !date || !startTime || !patientName || !patientPhone) {
       res.status(400).json({
@@ -443,6 +501,7 @@ router.post("/book", async (req, res) => {
         notes: notes || null,
         bookingToken,
         source: "online",
+        clinicId: clinicId ? parseInt(clinicId) : null,
       })
       .returning();
 
