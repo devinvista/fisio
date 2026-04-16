@@ -615,7 +615,7 @@ export default function Agenda() {
               blockedSlots={blockedSlots}
               onDayClick={(day) => { setCurrentDate(day); setMiniCalMonth(day); setView("day"); }}
               onNewAppointment={(dateStr) => { setSelectedSlot({ date: dateStr, time: "" }); setIsNewModalOpen(true); }}
-              selectedScheduleWorkingDays={selectedSchedule ? selectedSchedule.workingDays : null}
+              workingDayNumbers={workingDayNumbers}
             />
           )}
 
@@ -723,12 +723,14 @@ export default function Agenda() {
                       )}
                       style={{ height: activeTotalHours * SLOT_HEIGHT }}
                     >
-                      {/* Non-working day overlay for day view */}
+                      {/* Non-working day overlay for day view — blocks all interactions */}
                       {isNonWorkingDayCol && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none select-none">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 select-none cursor-not-allowed bg-slate-50/90">
                           <CalIcon className="w-10 h-10 text-slate-200 mb-3" />
                           <p className="text-sm font-semibold text-slate-400">
-                            {selectedSchedule?.name ?? "Agenda"} não opera neste dia
+                            {effectiveSchedules && effectiveSchedules.length === 1
+                              ? `${effectiveSchedules[0].name} não opera neste dia`
+                              : "Nenhuma agenda opera neste dia"}
                           </p>
                           <p className="text-xs text-slate-300 mt-1 capitalize">
                             {format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}
@@ -2632,14 +2634,14 @@ function MonthGrid({
   blockedSlots,
   onDayClick,
   onNewAppointment,
-  selectedScheduleWorkingDays,
+  workingDayNumbers,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   blockedSlots: BlockedSlot[];
   onDayClick: (day: Date) => void;
   onNewAppointment: (dateStr: string) => void;
-  selectedScheduleWorkingDays?: string | null;
+  workingDayNumbers: Set<number> | null;
 }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -2653,10 +2655,7 @@ function MonthGrid({
     d = addDays(d, 1);
   }
 
-  // Parse working days for the selected schedule (null = all days)
-  const scheduleWorkingDaySet: Set<number> | null = selectedScheduleWorkingDays
-    ? new Set(selectedScheduleWorkingDays.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n)))
-    : null;
+  // workingDayNumbers: null = no schedule restriction, Set = active schedule(s) working days
 
   const weekHeaders = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
@@ -2698,8 +2697,8 @@ function MonthGrid({
           const hasBlock = dayBlocked.length > 0;
           const visibleAppts = dayAppts.slice(0, 3);
           const overflow = dayAppts.length - 3;
-          // Check if this day is outside the selected schedule's working days
-          const isNonWorkingDay = scheduleWorkingDaySet !== null && !scheduleWorkingDaySet.has(getDay(day));
+          // Check if this day is outside the active schedule(s)' working days
+          const isNonWorkingDay = workingDayNumbers !== null && !workingDayNumbers.has(getDay(day));
 
           return (
             <div
