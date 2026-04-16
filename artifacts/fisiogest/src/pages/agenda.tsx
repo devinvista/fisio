@@ -272,7 +272,7 @@ export default function Agenda() {
     : null;
 
   const filteredAppointments = appointments
-    .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId || a.scheduleId == null)
+    .filter((a) => !selectedScheduleId || a.scheduleId === selectedScheduleId)
     .filter((a) => !selectedProfessionalId || a.professionalId === selectedProfessionalId)
     .filter((a) => showRemarcado || a.status !== "remarcado");
 
@@ -615,6 +615,7 @@ export default function Agenda() {
               blockedSlots={blockedSlots}
               onDayClick={(day) => { setCurrentDate(day); setMiniCalMonth(day); setView("day"); }}
               onNewAppointment={(dateStr) => { setSelectedSlot({ date: dateStr, time: "" }); setIsNewModalOpen(true); }}
+              selectedScheduleWorkingDays={selectedSchedule ? selectedSchedule.workingDays : null}
             />
           )}
 
@@ -710,15 +711,30 @@ export default function Agenda() {
 
                   const positioned = positionAppointments(dayAppts);
 
+                  const isNonWorkingDayCol = view === "day" && workingDayNumbers !== null && !workingDayNumbers.has(getDay(day));
+
                   return (
                     <div
                       key={di}
                       className={cn(
                         "border-r border-slate-200 last:border-r-0 relative",
-                        today && "bg-primary/[0.02]"
+                        today && !isNonWorkingDayCol && "bg-primary/[0.02]",
+                        isNonWorkingDayCol && "bg-slate-50"
                       )}
                       style={{ height: activeTotalHours * SLOT_HEIGHT }}
                     >
+                      {/* Non-working day overlay for day view */}
+                      {isNonWorkingDayCol && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none select-none">
+                          <CalIcon className="w-10 h-10 text-slate-200 mb-3" />
+                          <p className="text-sm font-semibold text-slate-400">
+                            {selectedSchedule?.name ?? "Agenda"} não opera neste dia
+                          </p>
+                          <p className="text-xs text-slate-300 mt-1 capitalize">
+                            {format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                          </p>
+                        </div>
+                      )}
                       {/* Hour rows — sub-slots match the schedule's slotDurationMinutes */}
                       {hours.map((h) => (
                         <div
@@ -2616,12 +2632,14 @@ function MonthGrid({
   blockedSlots,
   onDayClick,
   onNewAppointment,
+  selectedScheduleWorkingDays,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   blockedSlots: BlockedSlot[];
   onDayClick: (day: Date) => void;
   onNewAppointment: (dateStr: string) => void;
+  selectedScheduleWorkingDays?: string | null;
 }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -2634,6 +2652,11 @@ function MonthGrid({
     days.push(d);
     d = addDays(d, 1);
   }
+
+  // Parse working days for the selected schedule (null = all days)
+  const scheduleWorkingDaySet: Set<number> | null = selectedScheduleWorkingDays
+    ? new Set(selectedScheduleWorkingDays.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n)))
+    : null;
 
   const weekHeaders = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
@@ -2675,6 +2698,8 @@ function MonthGrid({
           const hasBlock = dayBlocked.length > 0;
           const visibleAppts = dayAppts.slice(0, 3);
           const overflow = dayAppts.length - 3;
+          // Check if this day is outside the selected schedule's working days
+          const isNonWorkingDay = scheduleWorkingDaySet !== null && !scheduleWorkingDaySet.has(getDay(day));
 
           return (
             <div
@@ -2682,11 +2707,12 @@ function MonthGrid({
               className={cn(
                 "border-r border-b border-slate-100 p-1.5 cursor-pointer group transition-colors",
                 !inMonth && "bg-slate-50/60",
-                today && "bg-primary/[0.03]",
-                hasBlock && inMonth && "bg-slate-100/80",
+                today && !isNonWorkingDay && "bg-primary/[0.03]",
+                hasBlock && inMonth && !isNonWorkingDay && "bg-slate-100/80",
+                isNonWorkingDay && inMonth && "bg-slate-100/50 opacity-60",
                 "hover:bg-slate-50"
               )}
-              onClick={() => inMonth && onDayClick(day)}
+              onClick={() => inMonth && !isNonWorkingDay && onDayClick(day)}
             >
               {/* Day number row */}
               <div className="flex items-center justify-between mb-1">
