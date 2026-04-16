@@ -8,6 +8,7 @@ import {
   treatmentPlansTable,
   clinicsTable,
   patientPackagesTable,
+  schedulesTable,
 } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
 import { eq, and, sql, desc, or, isNull, gt } from "drizzle-orm";
@@ -231,11 +232,49 @@ router.get("/procedures", async (req, res) => {
   }
 });
 
+// ── GET /api/public/schedules ─────────────────────────────────────────────────
+// Retorna agendas ativas de uma clínica para o agendamento online
+router.get("/schedules", async (req, res) => {
+  try {
+    const { clinicId } = req.query;
+    if (!clinicId) {
+      res.status(400).json({ error: "clinicId é obrigatório" });
+      return;
+    }
+
+    const schedules = await db
+      .select({
+        id: schedulesTable.id,
+        name: schedulesTable.name,
+        description: schedulesTable.description,
+        type: schedulesTable.type,
+        workingDays: schedulesTable.workingDays,
+        startTime: schedulesTable.startTime,
+        endTime: schedulesTable.endTime,
+        slotDurationMinutes: schedulesTable.slotDurationMinutes,
+        color: schedulesTable.color,
+      })
+      .from(schedulesTable)
+      .where(
+        and(
+          eq(schedulesTable.clinicId, parseInt(clinicId as string)),
+          eq(schedulesTable.isActive, true)
+        )
+      )
+      .orderBy(schedulesTable.name);
+
+    res.json(schedules);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // ── GET /api/public/available-slots ──────────────────────────────────────────
 // Retorna horários disponíveis para um procedimento e data
 router.get("/available-slots", async (req, res) => {
   try {
-    const { date, procedureId, clinicStart = "08:00", clinicEnd = "18:00" } = req.query;
+    const { date, procedureId } = req.query;
 
     if (!date || !procedureId) {
       res.status(400).json({ error: "date e procedureId são obrigatórios" });
@@ -257,14 +296,47 @@ router.get("/available-slots", async (req, res) => {
       return;
     }
 
-    const openMin = timeToMinutes(clinicStart as string);
-    const closeMin = timeToMinutes(clinicEnd as string);
     const duration = procedure.durationMinutes;
     const maxCap = procedure.maxCapacity ?? 1;
 
     const clinicId = req.query.clinicId ? parseInt(req.query.clinicId as string) : null;
+    const scheduleId = req.query.scheduleId ? parseInt(req.query.scheduleId as string) : null;
 
-    const apptWhereClause = clinicId
+    // Use schedule's working hours and slot duration if scheduleId provided
+    let openMin = timeToMinutes("08:00");
+    let closeMin = timeToMinutes("18:00");
+    let stepMinutes = 30;
+
+    if (scheduleId) {
+      const [schedule] = await db
+        .select()
+        .from(schedulesTable)
+        .where(eq(schedulesTable.id, scheduleId));
+
+      if (schedule) {
+        openMin = timeToMinutes(schedule.startTime);
+        closeMin = timeToMinutes(schedule.endTime);
+        stepMinutes = schedule.slotDurationMinutes;
+
+        // Check if the selected date is a working day for this schedule
+        const dateObj = new Date(date as string + "T12:00:00Z");
+        const dayOfWeek = dateObj.getUTCDay(); // 0=Sun,1=Mon,...,6=Sat
+        const workingDays = schedule.workingDays.split(",").map(Number);
+        if (!workingDays.includes(dayOfWeek)) {
+          res.json({ date, procedure: { id: procedure.id, name: procedure.name, durationMinutes: procedure.durationMinutes, price: procedure.price, maxCapacity: maxCap }, slots: [] });
+          return;
+        }
+      }
+    }
+
+    // Filter appointments by scheduleId (if provided) or clinicId
+    const apptWhereClause = scheduleId
+      ? and(
+          eq(appointmentsTable.date, date as string),
+          sql`status NOT IN ('cancelado', 'faltou')`,
+          eq(appointmentsTable.scheduleId, scheduleId)
+        )
+      : clinicId
       ? and(
           eq(appointmentsTable.date, date as string),
           sql`status NOT IN ('cancelado', 'faltou')`,
@@ -285,14 +357,22 @@ router.get("/available-slots", async (req, res) => {
       .from(appointmentsTable)
       .where(apptWhereClause);
 
+    // Filter blocked slots by scheduleId if provided
+    const blockedWhereClause = scheduleId
+      ? and(
+          eq(blockedSlotsTable.date, date as string),
+          eq(blockedSlotsTable.scheduleId, scheduleId)
+        )
+      : eq(blockedSlotsTable.date, date as string);
+
     const blockedSlots = await db
       .select({ startTime: blockedSlotsTable.startTime, endTime: blockedSlotsTable.endTime })
       .from(blockedSlotsTable)
-      .where(eq(blockedSlotsTable.date, date as string));
+      .where(blockedWhereClause);
 
     const slots: { time: string; available: boolean; spotsLeft: number }[] = [];
 
-    for (let start = openMin; start + duration <= closeMin; start += 30) {
+    for (let start = openMin; start + duration <= closeMin; start += stepMinutes) {
       const startTime = minutesToTime(start);
       const slotEnd = start + duration;
 
@@ -354,7 +434,7 @@ router.get("/available-slots", async (req, res) => {
 // Cria um agendamento público (sem autenticação)
 router.post("/book", async (req, res) => {
   try {
-    const { procedureId, date, startTime, patientName, patientPhone, patientEmail, patientCpf, notes, clinicId } = req.body;
+    const { procedureId, date, startTime, patientName, patientPhone, patientEmail, patientCpf, notes, clinicId, scheduleId } = req.body;
 
     if (!procedureId || !date || !startTime || !patientName || !patientPhone) {
       res.status(400).json({
@@ -502,6 +582,7 @@ router.post("/book", async (req, res) => {
         bookingToken,
         source: "online",
         clinicId: clinicId ? parseInt(clinicId) : null,
+        scheduleId: scheduleId ? parseInt(scheduleId) : null,
       })
       .returning();
 

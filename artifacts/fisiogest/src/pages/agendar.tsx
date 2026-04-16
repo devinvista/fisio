@@ -86,6 +86,18 @@ interface TimeSlot {
   spotsLeft: number;
 }
 
+interface PublicSchedule {
+  id: number;
+  name: string;
+  description?: string | null;
+  type: string;
+  workingDays: string;
+  startTime: string;
+  endTime: string;
+  slotDurationMinutes: number;
+  color: string;
+}
+
 interface BookingConfirmation {
   bookingToken: string;
   appointment: {
@@ -685,7 +697,7 @@ function StepDataHora({
   clinicId,
 }: {
   procedure: PublicProcedure;
-  onSelect: (date: string, time: string) => void;
+  onSelect: (date: string, time: string, scheduleId: number | null) => void;
   onBack: () => void;
   submitting?: boolean;
   clinicId?: number | null;
@@ -697,20 +709,46 @@ function StepDataHora({
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Schedule selection
+  const [schedules, setSchedules] = useState<PublicSchedule[]>([]);
+  const [selectedSchedule, setSelectedSchedule] = useState<PublicSchedule | null>(null);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+
+  // Fetch active schedules for the clinic
+  useEffect(() => {
+    if (!clinicId) return;
+    setLoadingSchedules(true);
+    fetch(`${BASE}/api/public/schedules?clinicId=${clinicId}`)
+      .then((r) => r.json())
+      .then((data: PublicSchedule[]) => {
+        if (Array.isArray(data)) {
+          setSchedules(data);
+          // Auto-select if only one schedule
+          if (data.length === 1) setSelectedSchedule(data[0]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSchedules(false));
+  }, [clinicId]);
+
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i + 1));
 
   useEffect(() => {
     if (!selectedDate) return;
+    // Wait for schedule selection when multiple exist
+    if (clinicId && schedules.length > 1 && !selectedSchedule) return;
+
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     setLoadingSlots(true);
     setSlots([]);
     setSelectedTime(null);
     setError(null);
 
-    const slotsUrl = clinicId
-      ? `${BASE}/api/public/available-slots?date=${dateStr}&procedureId=${procedure.id}&clinicId=${clinicId}`
-      : `${BASE}/api/public/available-slots?date=${dateStr}&procedureId=${procedure.id}`;
-    fetch(slotsUrl)
+    const params = new URLSearchParams({ date: dateStr, procedureId: String(procedure.id) });
+    if (clinicId) params.set("clinicId", String(clinicId));
+    if (selectedSchedule) params.set("scheduleId", String(selectedSchedule.id));
+
+    fetch(`${BASE}/api/public/available-slots?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.slots) {
@@ -721,7 +759,7 @@ function StepDataHora({
       })
       .catch(() => setError("Erro de conexão ao buscar horários."))
       .finally(() => setLoadingSlots(false));
-  }, [selectedDate, procedure.id, clinicId]);
+  }, [selectedDate, procedure.id, clinicId, selectedSchedule]);
 
   return (
     <div>
@@ -730,7 +768,61 @@ function StepDataHora({
         Procedimento: <strong className="text-primary">{procedure.name}</strong> — {procedure.durationMinutes} min
       </p>
 
-      {/* Calendar strip */}
+      {/* Schedule selector — only shown when clinic has multiple active schedules */}
+      {loadingSchedules && (
+        <div className="flex items-center gap-2 text-slate-400 text-sm mb-6">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Carregando agendas...</span>
+        </div>
+      )}
+      {!loadingSchedules && schedules.length > 1 && (
+        <div className="mb-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Escolha a agenda</p>
+          <div className="flex flex-col gap-2">
+            {schedules.map((sched) => {
+              const isSelected = selectedSchedule?.id === sched.id;
+              return (
+                <button
+                  key={sched.id}
+                  onClick={() => {
+                    setSelectedSchedule(sched);
+                    setSelectedDate(null);
+                    setSlots([]);
+                    setSelectedTime(null);
+                  }}
+                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
+                    isSelected
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : "border-slate-200 bg-white hover:border-primary/40"
+                  }`}
+                >
+                  <span
+                    className="mt-1 w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: sched.color || "#6366f1" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold text-sm ${isSelected ? "text-primary" : "text-slate-700"}`}>
+                      {sched.name}
+                    </p>
+                    {sched.description && (
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{sched.description}</p>
+                    )}
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {sched.startTime.slice(0, 5)} – {sched.endTime.slice(0, 5)} · {sched.slotDurationMinutes} min por slot
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Calendar strip — only show after schedule is selected (or no schedule needed) */}
+      {(schedules.length <= 1 || selectedSchedule) && (
       <div className="mb-6">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Selecione a data</p>
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -762,6 +854,7 @@ function StepDataHora({
           })}
         </div>
       </div>
+      )}
 
       {/* Time slots */}
       {selectedDate && (
@@ -816,7 +909,7 @@ function StepDataHora({
         </Button>
         <Button
           disabled={!selectedDate || !selectedTime || submitting}
-          onClick={() => selectedDate && selectedTime && onSelect(format(selectedDate, "yyyy-MM-dd"), selectedTime)}
+          onClick={() => selectedDate && selectedTime && onSelect(format(selectedDate, "yyyy-MM-dd"), selectedTime, selectedSchedule?.id ?? null)}
           className="rounded-xl h-11 px-8 gap-2"
         >
           {submitting ? (
@@ -1137,7 +1230,7 @@ export default function Agendar() {
   };
 
   // Step 3: Data e Hora — select date/time and submit booking
-  const handleDateTimeSelect = async (d: string, t: string) => {
+  const handleDateTimeSelect = async (d: string, t: string, scheduleId: number | null) => {
     if (!procedure || !patientFormData) return;
     setSubmitting(true);
     setSubmitError(null);
@@ -1157,6 +1250,7 @@ export default function Agendar() {
           patientCpf: patientFormData.cpf || undefined,
           notes: patientFormData.notes || undefined,
           clinicId: activeClinicId || undefined,
+          scheduleId: scheduleId ?? undefined,
         }),
       });
 
