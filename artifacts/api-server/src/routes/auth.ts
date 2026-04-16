@@ -14,6 +14,7 @@ const registerSchema = z.object({
   email: z.email("E-mail inválido").optional().nullable(),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
   clinicName: z.string().min(1, "Nome da clínica é obrigatório").max(200),
+  profileType: z.enum(["clinica", "autonomo"]).optional().default("clinica"),
 });
 
 const loginSchema = z.object({
@@ -81,7 +82,7 @@ router.post("/register", async (req, res) => {
   try {
     const body = validateBody(registerSchema, req.body, res);
     if (!body) return;
-    const { name, email, cpf, password, clinicName } = body;
+    const { name, email, cpf, password, clinicName, profileType } = body;
 
     const normalizedCpf = normalizeCpf(cpf);
     if (normalizedCpf.length !== 11) {
@@ -130,25 +131,32 @@ router.post("/register", async (req, res) => {
         })
         .returning();
 
-      await tx.insert(userRolesTable).values({ userId: user.id, clinicId: clinic.id, role: "admin" });
+      const rolesToInsert: { userId: number; clinicId: number; role: Role }[] = [
+        { userId: user.id, clinicId: clinic.id, role: "admin" },
+      ];
+      if (profileType === "autonomo") {
+        rolesToInsert.push({ userId: user.id, clinicId: clinic.id, role: "profissional" });
+      }
+      await tx.insert(userRolesTable).values(rolesToInsert);
 
       return { clinic, user };
     });
 
-    const token = generateToken(user.id, ["admin"], clinic.id, false, user.name);
+    const assignedRoles: Role[] = profileType === "autonomo" ? ["admin", "profissional"] : ["admin"];
+    const token = generateToken(user.id, assignedRoles, clinic.id, false, user.name);
     res.status(201).json({
       token,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        roles: ["admin"],
+        roles: assignedRoles,
         clinicId: clinic.id,
         isSuperAdmin: false,
         createdAt: user.createdAt,
       },
       clinic: { id: clinic.id, name: clinic.name },
-      clinics: [{ id: clinic.id, name: clinic.name, roles: ["admin"] }],
+      clinics: [{ id: clinic.id, name: clinic.name, roles: assignedRoles }],
     });
   } catch (err) {
     console.error(err);

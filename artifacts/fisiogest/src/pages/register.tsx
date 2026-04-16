@@ -5,19 +5,46 @@ import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, Loader2, ArrowLeft } from "lucide-react";
+import { Stethoscope, Loader2, ArrowLeft, Building2, UserRound, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { maskCpf } from "@/lib/masks";
+import { cn } from "@/lib/utils";
+
+type ProfileType = "clinica" | "autonomo";
+
+interface ProfileOption {
+  type: ProfileType;
+  icon: React.ElementType;
+  label: string;
+  description: string;
+  roles: string;
+}
+
+const PROFILE_OPTIONS: ProfileOption[] = [
+  {
+    type: "clinica",
+    icon: Building2,
+    label: "Clínica",
+    description: "Gestão de clínica com múltiplos profissionais e secretaria.",
+    roles: "Perfil: Administrador",
+  },
+  {
+    type: "autonomo",
+    icon: UserRound,
+    label: "Profissional Autônomo",
+    description: "Trabalha individualmente com acesso completo à agenda e prontuário.",
+    roles: "Perfil: Administrador + Profissional",
+  },
+];
 
 export default function Register() {
+  const [profileType, setProfileType] = useState<ProfileType>("clinica");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     cpf: "",
     password: "",
     clinicName: "",
-    role: "profissional" as const,
   });
 
   const registerMutation = useRegister();
@@ -27,7 +54,14 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     registerMutation.mutate(
-      { data: { ...formData, email: formData.email || undefined, clinicName: formData.clinicName || undefined } as any },
+      {
+        data: {
+          ...formData,
+          email: formData.email || undefined,
+          clinicName: formData.clinicName || undefined,
+          profileType,
+        } as any,
+      },
       {
         onSuccess: (res: any) => {
           toast({ title: "Conta criada!", description: "Bem-vindo ao FisioGest Pro." });
@@ -55,16 +89,77 @@ export default function Register() {
               </div>
               <span className="font-display font-bold text-2xl">FisioGest Pro</span>
             </div>
-            <h2 className="font-display text-3xl font-bold text-foreground mb-2">Criar Conta</h2>
-            <p className="text-muted-foreground">Preencha os dados abaixo para iniciar sua gestão clínica.</p>
+            <h2 className="font-display text-3xl font-bold text-foreground mb-1">Criar Conta</h2>
+            <p className="text-muted-foreground text-sm">Teste gratuito de 30 dias · Sem cartão de crédito</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
+            {/* Profile type selector */}
             <div className="space-y-2">
-              <Label htmlFor="clinicName">Nome da Clínica *</Label>
+              <Label>Tipo de Perfil</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {PROFILE_OPTIONS.map((option) => {
+                  const Icon = option.icon;
+                  const selected = profileType === option.type;
+                  return (
+                    <button
+                      key={option.type}
+                      type="button"
+                      onClick={() => setProfileType(option.type)}
+                      className={cn(
+                        "relative flex flex-col items-start gap-2 rounded-2xl border-2 p-4 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                        selected
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      )}
+                    >
+                      {selected && (
+                        <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                          <Check className="h-3 w-3 text-white" />
+                        </span>
+                      )}
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-xl",
+                          selected ? "bg-primary/15" : "bg-slate-100"
+                        )}
+                      >
+                        <Icon
+                          className={cn("h-5 w-5", selected ? "text-primary" : "text-slate-500")}
+                        />
+                      </div>
+                      <div>
+                        <p
+                          className={cn(
+                            "text-sm font-semibold leading-tight",
+                            selected ? "text-primary" : "text-slate-800"
+                          )}
+                        >
+                          {option.label}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-snug text-slate-500">{option.description}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          "mt-auto text-[10px] font-semibold uppercase tracking-wide",
+                          selected ? "text-primary/70" : "text-slate-400"
+                        )}
+                      >
+                        {option.roles}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="clinicName">
+                {profileType === "autonomo" ? "Nome do Consultório / Studio" : "Nome da Clínica"} *
+              </Label>
               <Input
                 id="clinicName"
-                placeholder="Ex: Clínica Fisio São Paulo"
+                placeholder={profileType === "autonomo" ? "Ex: Studio Pilates Maria" : "Ex: Clínica Fisio São Paulo"}
                 value={formData.clinicName}
                 onChange={(e) => setFormData({ ...formData, clinicName: e.target.value })}
                 required
@@ -74,7 +169,7 @@ export default function Register() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="name">Nome Completo</Label>
+              <Label htmlFor="name">Nome Completo *</Label>
               <Input
                 id="name"
                 placeholder="Dr. João Silva"
@@ -119,7 +214,7 @@ export default function Register() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password">Senha *</Label>
               <Input
                 id="password"
                 type="password"
@@ -133,29 +228,16 @@ export default function Register() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role">Perfil de Acesso</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(val: any) => setFormData({ ...formData, role: val })}
-              >
-                <SelectTrigger className="h-12 rounded-xl">
-                  <SelectValue placeholder="Selecione o perfil" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="profissional">Profissional (Fisio/Estética)</SelectItem>
-                  <SelectItem value="secretaria">Recepcionista</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             <Button
               type="submit"
               className="w-full h-12 rounded-xl text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all mt-4"
               disabled={registerMutation.isPending}
             >
-              {registerMutation.isPending ? <Loader2 className="animate-spin w-5 h-5" /> : "Criar Conta"}
+              {registerMutation.isPending ? (
+                <Loader2 className="animate-spin w-5 h-5" />
+              ) : (
+                "Criar conta grátis"
+              )}
             </Button>
           </form>
 

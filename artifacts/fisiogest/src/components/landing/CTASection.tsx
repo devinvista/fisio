@@ -18,7 +18,7 @@ export function CTASection() {
         <FadeIn>
           <div className="inline-flex items-center gap-2 bg-teal-500/10 border border-teal-500/20 text-teal-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-8">
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-            14 dias grátis · Sem cartão de crédito
+            30 dias grátis · Sem cartão de crédito
           </div>
           <h2
             id="cta-heading"
