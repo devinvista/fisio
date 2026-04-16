@@ -30,6 +30,16 @@ export function lastDayOfMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/**
+ * Adiciona N dias a uma data no formato "YYYY-MM-DD" e retorna "YYYY-MM-DD".
+ * Âncora no meio-dia UTC para evitar problemas de DST.
+ */
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 /** Retorna o range de datas de um mês em string "YYYY-MM-DD" */
 export function monthDateRangeBRT(
   year: number,

@@ -6,7 +6,7 @@ import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requireSuperAdmin } from "../middleware/rbac.js";
 import { z } from "zod/v4";
 import { validateBody } from "../lib/validate.js";
-import { todayBRT } from "../lib/dateUtils.js";
+import { todayBRT, addDays } from "../lib/dateUtils.js";
 import { runSubscriptionCheck } from "../services/subscriptionService.js";
 
 const router = Router();
@@ -759,11 +759,5 @@ router.get("/payment-history/stats", requireSuperAdmin(), async (_req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T12:00:00Z");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
-}
 
 export default router;

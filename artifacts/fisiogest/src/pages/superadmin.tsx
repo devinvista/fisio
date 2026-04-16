@@ -1377,7 +1377,7 @@ function PainelTab() {
       qc.invalidateQueries({ queryKey: ["plans-stats"] });
       toast({
         title: "Verificação concluída",
-        description: `${data.trialsExpired} trials expirados, ${data.markedOverdue} inadimplentes, ${data.suspended} suspensas.`,
+        description: `${data.trialsExpired} trials expirados, ${data.renewed ?? 0} períodos renovados, ${data.markedOverdue} inadimplentes, ${data.suspended} suspensas.`,
       });
     },
     onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
@@ -1606,7 +1606,7 @@ function ClinicsTab() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [checkResult, setCheckResult] = useState<null | {
-    trialsExpired: number; markedOverdue: number; suspended: number; errors: number;
+    trialsExpired: number; renewed: number; markedOverdue: number; suspended: number; errors: number;
   }>(null);
 
   const { data: rows = [], isLoading } = useQuery<ClinicRow[]>({
@@ -1626,7 +1626,7 @@ function ClinicsTab() {
       qc.invalidateQueries({ queryKey: ["clinic-subscriptions"] });
       toast({
         title: "Verificação concluída",
-        description: `${data.trialsExpired} trials expirados, ${data.markedOverdue} inadimplentes, ${data.suspended} suspensas.`,
+        description: `${data.trialsExpired} trials expirados, ${data.renewed ?? 0} períodos renovados, ${data.markedOverdue} inadimplentes, ${data.suspended} suspensas.`,
       });
     },
     onError: (err: any) => toast({ variant: "destructive", title: "Erro", description: err.message }),
@@ -1683,6 +1683,7 @@ function ClinicsTab() {
             Último resultado da verificação:
           </span>
           <span className="text-slate-700">{checkResult.trialsExpired} trials expirados</span>
+          <span className="text-green-700">{checkResult.renewed} períodos renovados</span>
           <span className="text-amber-700">{checkResult.markedOverdue} inadimplentes</span>
           <span className="text-red-700">{checkResult.suspended} suspensas</span>
           {checkResult.errors > 0 && <span className="text-red-600 font-semibold">{checkResult.errors} erros</span>}

@@ -2,19 +2,21 @@
  * subscriptionService — gerenciamento automático de assinaturas SaaS das clínicas
  *
  * Jobs:
- *  - runSubscriptionCheck(): detecta trials expirados, pagamentos vencidos,
- *    aplica período de carência e suspende clínicas inadimplentes.
+ *  - runSubscriptionCheck(): detecta trials expirados, renova períodos pagos,
+ *    marca pagamentos vencidos, aplica período de carência e suspende clínicas
+ *    inadimplentes.
  */
 
 import { db } from "@workspace/db";
 import { clinicSubscriptionsTable, subscriptionPlansTable, clinicsTable } from "@workspace/db";
-import { eq, and, lte, inArray } from "drizzle-orm";
-import { todayBRT } from "../lib/dateUtils.js";
+import { eq } from "drizzle-orm";
+import { todayBRT, addDays } from "../lib/dateUtils.js";
 
 const GRACE_PERIOD_DAYS = 7;
 
 export interface SubscriptionCheckResult {
   trialsExpired: number;
+  renewed: number;
   markedOverdue: number;
   suspended: number;
   errors: number;
@@ -24,6 +26,7 @@ export interface SubscriptionCheckResult {
 export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
   const result: SubscriptionCheckResult = {
     trialsExpired: 0,
+    renewed: 0,
     markedOverdue: 0,
     suspended: 0,
     errors: 0,
@@ -76,7 +79,39 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
           continue;
         }
 
-        // 2. Assinatura ativa com período vencido → marcar como overdue
+        // 2. Renovação automática: assinatura ativa + paga com período vencido
+        // Ao expirar current_period_end de uma assinatura já paga, avança automaticamente
+        // o período e marca o novo ciclo como "overdue" aguardando confirmação do próximo pagamento.
+        if (
+          sub.status === "active" &&
+          sub.paymentStatus === "paid" &&
+          sub.currentPeriodEnd &&
+          sub.currentPeriodEnd < today
+        ) {
+          const newPeriodStart = sub.currentPeriodEnd;
+          const newPeriodEnd = addDays(sub.currentPeriodEnd, 30);
+
+          await db
+            .update(clinicSubscriptionsTable)
+            .set({
+              currentPeriodStart: newPeriodStart,
+              currentPeriodEnd: newPeriodEnd,
+              paymentStatus: "overdue",
+              updatedAt: new Date(),
+            })
+            .where(eq(clinicSubscriptionsTable.id, sub.id));
+
+          result.renewed++;
+          result.details.push({
+            clinicId,
+            clinicName,
+            action: "period_renewed",
+            reason: `Período renovado automaticamente: ${newPeriodStart} → ${newPeriodEnd}`,
+          });
+          continue;
+        }
+
+        // 3. Assinatura ativa com período vencido → marcar como overdue
         // Usa currentPeriodEnd se disponível; cai para trialEndDate quando o trial
         // expirou sem pagamento e currentPeriodEnd ainda não foi definido.
         if (sub.status === "active" && sub.paymentStatus !== "paid" && sub.paymentStatus !== "free") {
@@ -87,7 +122,7 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
               updatedAt: new Date(),
             };
             // Se currentPeriodEnd estava nulo, ancorá-lo na data de referência para
-            // que o cálculo de carência (passo 3) funcione corretamente.
+            // que o cálculo de carência (passo 4) funcione corretamente.
             if (!sub.currentPeriodEnd && sub.trialEndDate) {
               updateFields.currentPeriodEnd = sub.trialEndDate;
             }
@@ -102,8 +137,8 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
           continue;
         }
 
-        // 3. Overdue além do período de carência → suspender
-        // currentPeriodEnd agora é sempre preenchido antes de chegar aqui (passo 2).
+        // 4. Overdue além do período de carência → suspender
+        // currentPeriodEnd agora é sempre preenchido antes de chegar aqui (passo 3).
         if (sub.status === "active" && sub.paymentStatus === "overdue") {
           const referenceEnd = sub.currentPeriodEnd ?? sub.trialEndDate;
           if (referenceEnd) {
@@ -135,10 +170,4 @@ export async function runSubscriptionCheck(): Promise<SubscriptionCheckResult> {
   }
 
   return result;
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T12:00:00Z");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
 }

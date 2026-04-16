@@ -112,6 +112,7 @@ export function startScheduler(): void {
         console.log(
           `[scheduler] Verificação concluída: ` +
           `${result.trialsExpired} trials expirados, ` +
+          `${result.renewed} períodos renovados, ` +
           `${result.markedOverdue} inadimplentes marcados, ` +
           `${result.suspended} suspensas, ` +
           `${result.errors} erros`
