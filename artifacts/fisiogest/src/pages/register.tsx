@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useRegister } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Stethoscope, Loader2, ArrowLeft, Building2, UserRound, Check, Package, ChevronRight } from "lucide-react";
+import { Stethoscope, Loader2, ArrowLeft, Building2, UserRound, Check, Package, ChevronRight, Tag, CheckCircle2, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { maskCpf } from "@/lib/masks";
 import { cn } from "@/lib/utils";
@@ -37,10 +37,10 @@ const PROFILE_OPTIONS: ProfileOption[] = [
   },
 ];
 
-const PLAN_INFO: Record<string, { displayName: string; price: string; description: string; color: string }> = {
-  essencial:    { displayName: "Essencial",    price: "R$ 89/mês",  description: "Para profissionais autônomos",    color: "#0ea5e9" },
-  profissional: { displayName: "Profissional", price: "R$ 179/mês", description: "Para clínicas em crescimento",     color: "#6366f1" },
-  premium:      { displayName: "Premium",      price: "R$ 349/mês", description: "Para redes e franquias",          color: "#8b5cf6" },
+const PLAN_INFO: Record<string, { displayName: string; price: string; priceNum: number; description: string; color: string }> = {
+  essencial:    { displayName: "Essencial",    price: "R$ 89/mês",  priceNum: 89,  description: "Para profissionais autônomos",    color: "#0ea5e9" },
+  profissional: { displayName: "Profissional", price: "R$ 179/mês", priceNum: 179, description: "Para clínicas em crescimento",     color: "#6366f1" },
+  premium:      { displayName: "Premium",      price: "R$ 349/mês", priceNum: 349, description: "Para redes e franquias",          color: "#8b5cf6" },
 };
 
 function getPlanFromUrl(): string {
@@ -48,6 +48,17 @@ function getPlanFromUrl(): string {
   const plano = params.get("plano");
   return plano && PLAN_INFO[plano] ? plano : "essencial";
 }
+
+function getCouponFromUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("cupom") ?? "";
+}
+
+type CouponState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "valid"; discountLabel: string; discountType: "percent" | "fixed"; discountValue: number; description: string }
+  | { status: "invalid"; message: string };
 
 export default function Register() {
   const [planName, setPlanName] = useState<string>(getPlanFromUrl);
@@ -61,12 +72,77 @@ export default function Register() {
     password: "",
     clinicName: "",
   });
+  const [couponCode, setCouponCode] = useState(getCouponFromUrl);
+  const [couponState, setCouponState] = useState<CouponState>({ status: "idle" });
+  const couponTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const registerMutation = useRegister();
   const { login } = useAuth();
   const { toast } = useToast();
 
   const plan = PLAN_INFO[planName] ?? PLAN_INFO.essencial;
+
+  // Validate coupon from URL on mount
+  useEffect(() => {
+    const initial = getCouponFromUrl();
+    if (initial) {
+      setCouponCode(initial);
+      validateCoupon(initial, planName);
+    }
+  }, []);
+
+  async function validateCoupon(code: string, pName: string) {
+    if (!code.trim()) {
+      setCouponState({ status: "idle" });
+      return;
+    }
+    setCouponState({ status: "loading" });
+    try {
+      const res = await fetch("/api/coupon-codes/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), planName: pName }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setCouponState({
+          status: "valid",
+          discountLabel: data.discountLabel,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
+          description: data.description,
+        });
+      } else {
+        setCouponState({ status: "invalid", message: data.error ?? "Cupom inválido" });
+      }
+    } catch {
+      setCouponState({ status: "invalid", message: "Erro ao validar cupom" });
+    }
+  }
+
+  function handleCouponChange(value: string) {
+    const upper = value.toUpperCase().replace(/[^A-Z0-9\-_]/g, "");
+    setCouponCode(upper);
+    setCouponState({ status: "idle" });
+    if (couponTimeout.current) clearTimeout(couponTimeout.current);
+    if (upper.length >= 3) {
+      couponTimeout.current = setTimeout(() => validateCoupon(upper, planName), 700);
+    }
+  }
+
+  function computeDiscountedPrice(): string | null {
+    if (couponState.status !== "valid") return null;
+    const base = plan.priceNum;
+    let final: number;
+    if (couponState.discountType === "percent") {
+      final = Math.max(0, base - (base * couponState.discountValue) / 100);
+    } else {
+      final = Math.max(0, base - couponState.discountValue);
+    }
+    return `R$ ${final.toFixed(0).replace(".", ",")}/mês`;
+  }
+
+  const discountedPrice = computeDiscountedPrice();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,11 +154,15 @@ export default function Register() {
           clinicName: formData.clinicName || undefined,
           profileType,
           planName,
+          couponCode: couponState.status === "valid" ? couponCode.trim() : undefined,
         } as any,
       },
       {
         onSuccess: (res: any) => {
-          toast({ title: "Conta criada!", description: "Bem-vindo ao FisioGest Pro." });
+          const couponMsg = couponState.status === "valid"
+            ? ` Cupom ${couponCode} aplicado!`
+            : "";
+          toast({ title: "Conta criada!", description: `Bem-vindo ao FisioGest Pro.${couponMsg}` });
           login(res.token, res.user, res.clinics);
         },
         onError: (err: any) => {
@@ -124,7 +204,16 @@ export default function Register() {
                   <p className="text-xs text-slate-500">{plan.description}</p>
                 </div>
               </div>
-              <span className="text-sm font-bold tabular-nums" style={{ color: plan.color }}>{plan.price}</span>
+              <div className="text-right">
+                {discountedPrice ? (
+                  <div>
+                    <span className="text-xs line-through text-slate-400 tabular-nums">{plan.price}</span>
+                    <span className="block text-sm font-bold tabular-nums text-emerald-600">{discountedPrice}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm font-bold tabular-nums" style={{ color: plan.color }}>{plan.price}</span>
+                )}
+              </div>
             </div>
 
             {/* Plan pills */}
@@ -137,6 +226,7 @@ export default function Register() {
                     setPlanName(key);
                     if (key === "essencial") setProfileType("autonomo");
                     else setProfileType("clinica");
+                    if (couponCode) validateCoupon(couponCode, key);
                   }}
                   className={cn(
                     "text-xs font-semibold px-3 py-1.5 rounded-full border transition-all",
@@ -273,6 +363,51 @@ export default function Register() {
                 autoComplete="new-password"
                 className="h-12 rounded-xl"
               />
+            </div>
+
+            {/* Coupon field */}
+            <div className="space-y-2">
+              <Label htmlFor="coupon" className="flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-slate-400" />
+                Cupom de desconto
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="coupon"
+                  placeholder="Ex: FISIO30 ou INDICA-SILVA"
+                  value={couponCode}
+                  onChange={(e) => handleCouponChange(e.target.value)}
+                  className={cn(
+                    "h-12 rounded-xl pr-10 font-mono uppercase tracking-widest text-sm",
+                    couponState.status === "valid" && "border-emerald-400 bg-emerald-50/50 focus-visible:ring-emerald-300",
+                    couponState.status === "invalid" && "border-red-400 bg-red-50/50 focus-visible:ring-red-300"
+                  )}
+                  autoComplete="off"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {couponState.status === "loading" && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                  {couponState.status === "valid" && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                  {couponState.status === "invalid" && <XCircle className="w-4 h-4 text-red-400" />}
+                </div>
+              </div>
+
+              {couponState.status === "valid" && (
+                <div className="flex items-start gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold">{couponState.discountLabel} aplicado!</span>
+                    {couponState.description && (
+                      <span className="text-emerald-600 block">{couponState.description}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {couponState.status === "invalid" && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> {couponState.message}
+                </p>
+              )}
             </div>
 
             <Button

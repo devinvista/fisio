@@ -104,6 +104,29 @@ trial (ativo) → trial expirado → active/overdue → suspended (após 7 dias 
 - **Clínicas**: visão completa de todas as clínicas, seus planos e status — com busca e verificação manual
 - **Pagamentos**: histórico completo de pagamentos com KPIs, busca, registro manual e exclusão
 
+### Sistema de Cupons (`coupons` + `coupon_uses`)
+
+Tabelas: `coupons` (id, code unique, type discount/referral, discountType percent/fixed, discountValue, maxUses, usedCount, expiresAt, isActive, applicablePlanNames jsonb, referrerClinicId, referrerBenefitType/Value, createdBy, notes) + `coupon_uses` (id, couponId, clinicId, subscriptionId, discountApplied, extraTrialDays)
+
+| Endpoint | Método | Acesso | Descrição |
+|---|---|---|---|
+| `/api/coupon-codes/validate` | POST | Público | Valida código antes do registro |
+| `/api/coupon-codes` | GET | Superadmin | Lista todos os cupons |
+| `/api/coupon-codes` | POST | Superadmin | Cria cupom |
+| `/api/coupon-codes/:id` | PUT | Superadmin | Atualiza cupom |
+| `/api/coupon-codes/:id` | DELETE | Superadmin | Remove/desativa cupom |
+
+**Fluxo de aplicação:**
+1. Usuário acessa `/register?cupom=CODIGO&plano=profissional`
+2. Campo de cupom é pré-preenchido + validado automaticamente via `POST /coupon-codes/validate`
+3. Desconto mostrado em tempo real no card do plano (preço original riscado + novo preço)
+4. No registro: desconto aplicado na `amount` da assinatura + dias de trial adicionais proporcionais
+5. Uso registrado em `coupon_uses`, `usedCount` incrementado
+
+**Link de indicação:** `https://<domínio>/register?cupom=<CODIGO>&plano=<plano>`
+
+**Superadmin:** Nova aba "Cupons" com CRUD completo, KPIs, toggle ativo/inativo, cópia de link com 1 clique.
+
 ### Histórico de Pagamentos (`clinic_payment_history`)
 Tabela: `id`, `clinic_id`, `subscription_id`, `amount`, `method`, `reference_month`, `paid_at`, `notes`, `recorded_by`, `created_at`
 

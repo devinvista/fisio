@@ -8,7 +8,7 @@ import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.j
 import { validateBody } from "../lib/validate.js";
 import { todayBRT } from "../lib/dateUtils.js";
 import { z } from "zod/v4";
-import { subscriptionPlansTable, clinicSubscriptionsTable } from "@workspace/db";
+import { subscriptionPlansTable, clinicSubscriptionsTable, couponsTable, couponUsesTable } from "@workspace/db";
 
 const registerSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(200),
@@ -18,6 +18,7 @@ const registerSchema = z.object({
   clinicName: z.string().min(1, "Nome da clínica é obrigatório").max(200),
   profileType: z.enum(["clinica", "autonomo"]).optional().default("clinica"),
   planName: z.string().optional().default("essencial"),
+  couponCode: z.string().optional().nullable(),
 });
 
 const loginSchema = z.object({
@@ -85,7 +86,7 @@ router.post("/register", async (req, res) => {
   try {
     const body = validateBody(registerSchema, req.body, res);
     if (!body) return;
-    const { name, email, cpf, password, clinicName, profileType, planName } = body;
+    const { name, email, cpf, password, clinicName, profileType, planName, couponCode } = body;
 
     const normalizedCpf = normalizeCpf(cpf);
     if (normalizedCpf.length !== 11) {
@@ -124,6 +125,27 @@ router.post("/register", async (req, res) => {
       .limit(1);
     const selectedPlan = plan[0] ?? null;
 
+    // Validate coupon if provided
+    let coupon: typeof couponsTable.$inferSelect | null = null;
+    if (couponCode) {
+      const [found] = await db
+        .select()
+        .from(couponsTable)
+        .where(eq(couponsTable.code, couponCode.toUpperCase().trim()))
+        .limit(1);
+      if (found && found.isActive) {
+        const notExpired = !found.expiresAt || new Date(found.expiresAt) >= new Date();
+        const notExhausted = found.maxUses === null || found.usedCount < found.maxUses;
+        const planAllowed =
+          !found.applicablePlanNames ||
+          (found.applicablePlanNames as string[]).length === 0 ||
+          (found.applicablePlanNames as string[]).includes(planName ?? "essencial");
+        if (notExpired && notExhausted && planAllowed) {
+          coupon = found;
+        }
+      }
+    }
+
     const { clinic, user } = await db.transaction(async (tx) => {
       const [clinic] = await tx
         .insert(clinicsTable)
@@ -151,17 +173,54 @@ router.post("/register", async (req, res) => {
 
       if (selectedPlan) {
         const today = todayBRT();
+        const baseDays = selectedPlan.trialDays ?? 30;
+
+        // Apply coupon: extend trial or reduce subscription price
+        let extraDays = 0;
+        let discountedAmount = Number(selectedPlan.price);
+        let discountApplied = 0;
+
+        if (coupon) {
+          if (coupon.discountType === "percent") {
+            const pct = Number(coupon.discountValue);
+            discountApplied = (discountedAmount * pct) / 100;
+            discountedAmount = Math.max(0, discountedAmount - discountApplied);
+            // Also give extra trial days proportional to discount
+            extraDays = Math.round((baseDays * pct) / 100);
+          } else {
+            discountApplied = Number(coupon.discountValue);
+            discountedAmount = Math.max(0, discountedAmount - discountApplied);
+            extraDays = Math.round((discountApplied / Number(selectedPlan.price)) * baseDays);
+          }
+        }
+
         const trialEnd = new Date(today);
-        trialEnd.setDate(trialEnd.getDate() + (selectedPlan.trialDays ?? 30));
-        await tx.insert(clinicSubscriptionsTable).values({
+        trialEnd.setDate(trialEnd.getDate() + baseDays + extraDays);
+
+        const [sub] = await tx.insert(clinicSubscriptionsTable).values({
           clinicId: clinic.id,
           planId: selectedPlan.id,
           status: "trial",
           trialStartDate: today,
           trialEndDate: trialEnd.toISOString().split("T")[0],
-          amount: selectedPlan.price,
+          amount: String(discountedAmount),
           paymentStatus: "pending",
-        });
+          notes: coupon ? `Cupom aplicado: ${coupon.code} (desconto: R$ ${discountApplied.toFixed(2)})` : null,
+        }).returning();
+
+        if (coupon) {
+          await tx.insert(couponUsesTable).values({
+            couponId: coupon.id,
+            clinicId: clinic.id,
+            subscriptionId: sub.id,
+            discountApplied: String(discountApplied),
+            extraTrialDays: extraDays,
+          });
+          await tx
+            .update(couponsTable)
+            .set({ usedCount: (coupon.usedCount ?? 0) + 1, updatedAt: new Date() })
+            .where(eq(couponsTable.id, coupon.id));
+        }
       }
 
       return { clinic, user };
