@@ -13,6 +13,15 @@ function looksLikeCpf(value: string): boolean {
   return /^\d/.test(value.trim()) && !value.includes("@");
 }
 
+function getLoginErrorMessage(err: any): string {
+  return (
+    err?.data?.message ||
+    err?.data?.error ||
+    err?.message?.replace(/^HTTP \d+ [^:]+:\s*/, "") ||
+    "Credenciais inválidas. Tente novamente."
+  );
+}
+
 export default function Login() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +53,7 @@ export default function Login() {
           toast({
             variant: "destructive",
             title: "Erro no login",
-            description: err?.message || "Credenciais inválidas. Tente novamente.",
+            description: getLoginErrorMessage(err),
           });
         },
       }

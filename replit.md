@@ -10,6 +10,7 @@ FisioGest Pro é uma plataforma SaaS de gestão clínica completa para fisiotera
 - `/register` → Cadastro
 - `/dashboard` → Dashboard protegido (rota principal pós-login)
 - Após login bem-sucedido: redireciona para `/dashboard` (configurado em `auth-context.tsx`)
+- Superadmin após login: redireciona para `/superadmin`
 - `/usuarios` e `/agendas` → redirecionam para `/configuracoes#usuarios` e `/configuracoes#agendas`
 
 > **Convenção de importação:** sempre importar `useAuth` de `@/lib/use-auth`. O `auth-context.tsx` exporta apenas `AuthProvider` e `AuthContext`.

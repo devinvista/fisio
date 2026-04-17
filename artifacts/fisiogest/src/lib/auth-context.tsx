@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setClinicId(clinicIdVal);
     setIsSuperAdmin(isSA);
     if (newClinics) setClinics(newClinics);
-    setLocation("/dashboard");
+    setLocation(isSA ? "/superadmin" : "/dashboard");
   };
 
   const logout = () => {
