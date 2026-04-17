@@ -75,7 +75,10 @@ interface ClinicInfo {
 
 async function fetchClinicForPrint(): Promise<ClinicInfo | null> {
   try {
-    const r = await fetch("/api/clinics/current", { credentials: "include" });
+    const token = localStorage.getItem("fisiogest_token");
+    const r = await fetch("/api/clinics/current", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!r.ok) return null;
     return await r.json();
   } catch {
@@ -821,7 +824,7 @@ function ExportProntuarioButton({ patientId, patient }: { patientId: number; pat
         fetch(`/api/patients/${patientId}/treatment-plan`, { headers }).then(r => r.ok ? r.json() : null),
         fetch(`/api/patients/${patientId}/evolutions`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`/api/patients/${patientId}/appointments`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`/api/patients/${patientId}/discharge`, { headers }).then(r => r.ok ? r.json() : null),
+        fetch(`/api/patients/${patientId}/discharge-summary`, { headers }).then(r => r.ok ? r.json() : null),
         fetchClinicForPrint(),
       ]);
 

@@ -2171,7 +2171,7 @@ function RegisterPaymentDialog({
               <SelectContent>
                 {subs.map((s) => (
                   <SelectItem key={s.sub.clinicId} value={String(s.sub.clinicId)}>
-                    {s.clinic.name}
+                    {s.clinic?.name ?? "(sem nome)"}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -2290,7 +2290,7 @@ export default function SuperAdmin() {
   const [activeTab, setActiveTab] = useState<TabId>("painel");
 
   return (
-    <AppLayout>
+    <AppLayout title="Painel SuperAdmin">
       <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
         {/* Page Header */}
         <div className="flex items-center gap-3">
