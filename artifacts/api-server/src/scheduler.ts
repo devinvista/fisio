@@ -19,13 +19,15 @@
 
 import cron from "node-cron";
 import { runBilling } from "./services/billingService.js";
+import { runConsolidatedBilling } from "./services/consolidatedBillingService.js";
 import { runAutoConfirmPolicies, runEndOfDayPolicies } from "./services/policyService.js";
 import { runSubscriptionCheck } from "./services/subscriptionService.js";
 
-const BILLING_CRON          = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
-const AUTO_CONFIRM_CRON     = "*/15 * * * *"; // a cada 15 minutos
-const END_OF_DAY_CRON       = "0 22 * * *";   // 22:00 BRT diariamente
-const SUBSCRIPTION_CHECK_CRON = "0 10 * * *"; // 07:00 BRT diariamente (verifica assinaturas)
+const BILLING_CRON              = "0 9 * * *";    // 09:00 UTC = 06:00 BRT diariamente
+const CONSOLIDATED_BILLING_CRON = "5 9 * * *";    // 09:05 UTC = 06:05 BRT (logo após billing mensal)
+const AUTO_CONFIRM_CRON         = "*/15 * * * *"; // a cada 15 minutos
+const END_OF_DAY_CRON           = "0 22 * * *";   // 22:00 BRT diariamente
+const SUBSCRIPTION_CHECK_CRON   = "0 10 * * *";   // 07:00 BRT diariamente (verifica assinaturas)
 
 export function startScheduler(): void {
   // ── Billing automático ─────────────────────────────────────────────────────
@@ -49,6 +51,26 @@ export function startScheduler(): void {
     }, { timezone: "America/Sao_Paulo" });
 
     console.log(`[scheduler] Billing automático agendado — ${BILLING_CRON} (06:00 BRT / 09:00 UTC)`);
+  }
+
+  // ── Fatura consolidada mensal ─────────────────────────────────────────────
+  if (!cron.validate(CONSOLIDATED_BILLING_CRON)) {
+    console.error("[scheduler] Expressão CRON de fatura consolidada inválida:", CONSOLIDATED_BILLING_CRON);
+  } else {
+    cron.schedule(CONSOLIDATED_BILLING_CRON, async () => {
+      console.log(`[scheduler] Executando faturamento consolidado — ${new Date().toISOString()}`);
+      try {
+        const result = await runConsolidatedBilling({ toleranceDays: 3, triggeredBy: "scheduler" });
+        console.log(
+          `[scheduler] Faturamento consolidado: ${result.generated} faturas geradas, ` +
+          `${result.skipped} puladas, ${result.empty} sem sessões, ${result.errors} erros`
+        );
+      } catch (err) {
+        console.error("[scheduler] Falha crítica no faturamento consolidado:", err);
+      }
+    }, { timezone: "America/Sao_Paulo" });
+
+    console.log(`[scheduler] Faturamento consolidado agendado — ${CONSOLIDATED_BILLING_CRON} (06:05 BRT)`);
   }
 
   // ── Auto-confirmação — a cada 15 minutos ───────────────────────────────────

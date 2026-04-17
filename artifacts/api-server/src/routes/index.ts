@@ -23,6 +23,7 @@ import patientJourneyRouter from "./patient-journey.js";
 import recurringExpensesRouter from "./recurring-expenses.js";
 import saasPlanRouter from "./saas-plans.js";
 import couponsRouter from "./coupons.js";
+import patientWalletRouter, { walletListRouter } from "./patient-wallet.js";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,8 @@ router.use("/patients", patientsRouter);
 router.use("/patients/:patientId", medicalRecordsRouter);
 router.use("/patients/:patientId", patientJourneyRouter);
 router.use("/patients/:patientId/packages", patientPackagesRouter);
+router.use("/patients/:patientId", patientWalletRouter);
+router.use("/", walletListRouter);
 router.use("/procedures", proceduresRouter);
 router.use("/packages", packagesRouter);
 router.use("/treatment-plans/:planId/procedures", treatmentPlanProceduresRouter);

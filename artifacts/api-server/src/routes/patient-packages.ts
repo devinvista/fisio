@@ -101,6 +101,25 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
 
     const { packageId, procedureId, name, totalSessions, sessionsPerWeek, startDate, expiryDate, price, paymentStatus, notes, unitMonthlyPrice, billingDay } = body;
 
+    // Resolve expiryDate: usa o fornecido, ou calcula de validityDays do template
+    let resolvedExpiryDate: string | null = expiryDate || null;
+
+    let pkg: typeof packagesTable.$inferSelect | undefined;
+    if (packageId) {
+      const [found] = await db
+        .select()
+        .from(packagesTable)
+        .where(eq(packagesTable.id, Number(packageId)))
+        .limit(1);
+      pkg = found;
+    }
+
+    if (!resolvedExpiryDate && pkg?.validityDays) {
+      const start = new Date(startDate + "T12:00:00Z");
+      start.setUTCDate(start.getUTCDate() + pkg.validityDays);
+      resolvedExpiryDate = start.toISOString().slice(0, 10);
+    }
+
     const [pp] = await db
       .insert(patientPackagesTable)
       .values({
@@ -112,7 +131,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
         usedSessions: 0,
         sessionsPerWeek: Number(sessionsPerWeek ?? 1),
         startDate,
-        expiryDate: expiryDate || null,
+        expiryDate: resolvedExpiryDate,
         price: String(price),
         paymentStatus: paymentStatus ?? "pendente",
         notes: notes || null,
@@ -120,38 +139,32 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       })
       .returning();
 
-    // Auto-create subscription for mensal packages
+    // Auto-create subscription for mensal and faturaConsolidada packages
     let subscription: typeof patientSubscriptionsTable.$inferSelect | null = null;
 
-    if (packageId) {
-      const [pkg] = await db
-        .select()
-        .from(packagesTable)
-        .where(eq(packagesTable.id, Number(packageId)))
-        .limit(1);
+    if (pkg && (pkg.packageType === "mensal" || pkg.packageType === "faturaConsolidada")) {
+      const monthlyAmount = unitMonthlyPrice ?? pkg.monthlyPrice ?? price;
+      const rawDay = billingDay ?? pkg.billingDay ?? new Date(startDate + "T12:00:00Z").getUTCDate();
+      const day = Math.max(1, Math.min(31, parseInt(String(rawDay))));
+      const subscriptionType = pkg.packageType === "faturaConsolidada" ? "faturaConsolidada" : "mensal";
 
-      if (pkg?.packageType === "mensal") {
-        const monthlyAmount = unitMonthlyPrice ?? pkg.monthlyPrice ?? price;
-        const rawDay = billingDay ?? pkg.billingDay ?? new Date(startDate + "T12:00:00Z").getUTCDate();
-        const day = Math.max(1, Math.min(31, parseInt(String(rawDay))));
+      const [sub] = await db
+        .insert(patientSubscriptionsTable)
+        .values({
+          patientId: resolvedPatientId,
+          procedureId: Number(procedureId),
+          startDate,
+          billingDay: day,
+          monthlyAmount: String(monthlyAmount),
+          status: "ativa",
+          subscriptionType,
+          clinicId: req.clinicId ?? null,
+          notes: `Gerada automaticamente a partir do pacote: ${name}`,
+        })
+        .returning();
 
-        const [sub] = await db
-          .insert(patientSubscriptionsTable)
-          .values({
-            patientId: resolvedPatientId,
-            procedureId: Number(procedureId),
-            startDate,
-            billingDay: day,
-            monthlyAmount: String(monthlyAmount),
-            status: "ativa",
-            clinicId: req.clinicId ?? null,
-            notes: `Gerada automaticamente a partir do pacote: ${name}`,
-          })
-          .returning();
-
-        subscription = sub;
-        console.log(`[patient-packages] Assinatura #${sub.id} criada automaticamente para pacote mensal "${name}" (paciente ${patientId})`);
-      }
+      subscription = sub;
+      console.log(`[patient-packages] Assinatura #${sub.id} (${subscriptionType}) criada automaticamente para pacote "${name}" (paciente ${resolvedPatientId})`);
     }
 
     res.status(201).json({ ...pp, subscription, subscriptionCreated: !!subscription });

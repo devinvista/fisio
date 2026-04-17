@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable, patientWalletTable, patientWalletTransactionsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -89,6 +89,12 @@ function minutesToTime(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 async function getWithDetails(id: number, clinicId?: number | null) {
   const conditions: any[] = [eq(appointmentsTable.id, id)];
   if (clinicId) conditions.push(eq(appointmentsTable.clinicId, clinicId));
@@ -125,6 +131,8 @@ async function applyBillingRules(
   const procedureId = details.procedureId;
   const patientName = details.patient?.name ?? "Paciente";
   const today = todayBRT();
+  const appointmentDate: string = (details as any).date ?? today;
+  const dueDatePorSessao = addDaysToDate(appointmentDate, 3);
 
   const confirmedStatuses = ["compareceu", "concluido"];
   const canceledStatuses = ["cancelado"];
@@ -149,10 +157,62 @@ async function applyBillingRules(
     }
   }
 
-  // ── BILLING: attendance → generate receivable or consume credit ────────────
+  // ── BILLING: attendance → billing logic by type ────────────────────────────
   if (confirmedStatuses.includes(newStatus) && !confirmedStatuses.includes(oldStatus)) {
+
+    // ── Priority 1: fatura consolidada subscription ────────────────────────
+    const consolidatedConditions: any[] = [
+      eq(patientSubscriptionsTable.patientId, patientId),
+      eq(patientSubscriptionsTable.procedureId, procedureId),
+      eq(patientSubscriptionsTable.status, "ativa"),
+      eq(patientSubscriptionsTable.subscriptionType, "faturaConsolidada"),
+    ];
+    if (resolvedClinicId) {
+      consolidatedConditions.push(eq(patientSubscriptionsTable.clinicId, resolvedClinicId));
+    }
+
+    const [consolidatedSub] = await db
+      .select()
+      .from(patientSubscriptionsTable)
+      .where(and(...consolidatedConditions))
+      .limit(1);
+
+    if (consolidatedSub) {
+      // Não cobra agora — acumula para a fatura mensal consolidada
+      const existingPendente = await db
+        .select({ id: financialRecordsTable.id })
+        .from(financialRecordsTable)
+        .where(
+          and(
+            eq(financialRecordsTable.appointmentId, appointmentId),
+            eq(financialRecordsTable.transactionType, "pendenteFatura")
+          )
+        )
+        .limit(1);
+
+      if (existingPendente.length === 0) {
+        await db.insert(financialRecordsTable).values({
+          type:            "receita",
+          amount:          effectivePrice,
+          description:     `[Aguardando fatura] ${procedure.name} - ${patientName}`,
+          category:        procedure.category,
+          appointmentId,
+          patientId,
+          procedureId,
+          transactionType: "pendenteFatura",
+          status:          "pendente",
+          dueDate:         appointmentDate,
+          subscriptionId:  consolidatedSub.id,
+          clinicId:        resolvedClinicId,
+        });
+      }
+      return;
+    }
+
+    // ── Priority 2: por sessão (crédito de sessão → carteira → a receber) ──
     if (billingType === "porSessao") {
       await db.transaction(async (tx) => {
+        // 2a. Verifica créditos de sessão
         const availableCredit = await tx
           .select()
           .from(sessionCreditsTable)
@@ -173,51 +233,102 @@ async function applyBillingRules(
             .where(eq(sessionCreditsTable.id, credit.id));
 
           await tx.insert(financialRecordsTable).values({
-            type: "receita",
-            amount: "0",
-            description: `Uso de crédito — ${procedure.name} - ${patientName}`,
-            category: procedure.category,
+            type:            "receita",
+            amount:          "0",
+            description:     `Uso de crédito — ${procedure.name} - ${patientName}`,
+            category:        procedure.category,
             appointmentId,
             patientId,
             procedureId,
             transactionType: "usoCredito",
-            status: "pago",
-            dueDate: today,
-            clinicId: resolvedClinicId,
+            status:          "pago",
+            dueDate:         today,
+            clinicId:        resolvedClinicId,
           });
-        } else {
-          const existing = await tx
+          return;
+        }
+
+        // 2b. Verifica carteira de crédito (R$)
+        if (resolvedClinicId) {
+          const [wallet] = await tx
             .select()
-            .from(financialRecordsTable)
+            .from(patientWalletTable)
             .where(
               and(
-                eq(financialRecordsTable.appointmentId, appointmentId),
-                eq(financialRecordsTable.transactionType, "creditoAReceber")
+                eq(patientWalletTable.patientId, patientId),
+                eq(patientWalletTable.clinicId, resolvedClinicId)
               )
             )
             .limit(1);
 
-          if (existing.length === 0) {
-            await tx.insert(financialRecordsTable).values({
-              type: "receita",
-              amount: effectivePrice,
-              description: `${procedure.name} - ${patientName}`,
-              category: procedure.category,
+          if (wallet && Number(wallet.balance) >= Number(effectivePrice)) {
+            const newBalance = (Number(wallet.balance) - Number(effectivePrice)).toFixed(2);
+
+            await tx
+              .update(patientWalletTable)
+              .set({ balance: newBalance, updatedAt: new Date() })
+              .where(eq(patientWalletTable.id, wallet.id));
+
+            const [fr] = await tx.insert(financialRecordsTable).values({
+              type:            "receita",
+              amount:          effectivePrice,
+              description:     `Débito carteira — ${procedure.name} - ${patientName}`,
+              category:        procedure.category,
               appointmentId,
               patientId,
               procedureId,
-              transactionType: "creditoAReceber",
-              status: "pendente",
-              dueDate: today,
-              clinicId: resolvedClinicId,
+              transactionType: "usoCarteira",
+              status:          "pago",
+              dueDate:         today,
+              clinicId:        resolvedClinicId,
+            }).returning();
+
+            await tx.insert(patientWalletTransactionsTable).values({
+              walletId:          wallet.id,
+              patientId,
+              clinicId:          resolvedClinicId,
+              amount:            `-${effectivePrice}`,
+              type:              "debito",
+              description:       `Sessão: ${procedure.name} — consulta #${appointmentId}`,
+              appointmentId,
+              financialRecordId: fr.id,
             });
+            return;
           }
+        }
+
+        // 2c. Gera lançamento a receber com vencimento 3 dias após a sessão
+        const existing = await tx
+          .select()
+          .from(financialRecordsTable)
+          .where(
+            and(
+              eq(financialRecordsTable.appointmentId, appointmentId),
+              eq(financialRecordsTable.transactionType, "creditoAReceber")
+            )
+          )
+          .limit(1);
+
+        if (existing.length === 0) {
+          await tx.insert(financialRecordsTable).values({
+            type:            "receita",
+            amount:          effectivePrice,
+            description:     `${procedure.name} - ${patientName}`,
+            category:        procedure.category,
+            appointmentId,
+            patientId,
+            procedureId,
+            transactionType: "creditoAReceber",
+            status:          "pendente",
+            dueDate:         dueDatePorSessao,
+            clinicId:        resolvedClinicId,
+          });
         }
       });
     }
   }
 
-  // ── ROLLBACK: compareceu/concluido → cancelado → cancel pending receivable ──
+  // ── ROLLBACK: compareceu/concluido → cancelado → cancela lançamentos pendentes
   if (canceledStatuses.includes(newStatus) && confirmedStatuses.includes(oldStatus)) {
     await db
       .update(financialRecordsTable)
@@ -225,10 +336,61 @@ async function applyBillingRules(
       .where(
         and(
           eq(financialRecordsTable.appointmentId, appointmentId),
-          eq(financialRecordsTable.transactionType, "creditoAReceber"),
+          sql`${financialRecordsTable.transactionType} IN ('creditoAReceber', 'pendenteFatura')`,
           eq(financialRecordsTable.status, "pendente")
         )
       );
+
+    // Estorna uso de carteira se aplicável
+    const walletUsage = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(
+        and(
+          eq(financialRecordsTable.appointmentId, appointmentId),
+          eq(financialRecordsTable.transactionType, "usoCarteira"),
+          eq(financialRecordsTable.status, "pago")
+        )
+      )
+      .limit(1);
+
+    if (walletUsage.length > 0 && resolvedClinicId) {
+      const fr = walletUsage[0];
+      const [wallet] = await db
+        .select()
+        .from(patientWalletTable)
+        .where(
+          and(
+            eq(patientWalletTable.patientId, patientId),
+            eq(patientWalletTable.clinicId, resolvedClinicId)
+          )
+        )
+        .limit(1);
+
+      if (wallet) {
+        const restoredBalance = (Number(wallet.balance) + Number(fr.amount)).toFixed(2);
+        await db
+          .update(patientWalletTable)
+          .set({ balance: restoredBalance, updatedAt: new Date() })
+          .where(eq(patientWalletTable.id, wallet.id));
+
+        await db.insert(patientWalletTransactionsTable).values({
+          walletId:          wallet.id,
+          patientId,
+          clinicId:          resolvedClinicId,
+          amount:            String(fr.amount),
+          type:              "estorno",
+          description:       `Estorno de cancelamento — consulta #${appointmentId}`,
+          appointmentId,
+          financialRecordId: fr.id,
+        });
+
+        await db
+          .update(financialRecordsTable)
+          .set({ status: "estornado" })
+          .where(eq(financialRecordsTable.id, fr.id));
+      }
+    }
   }
 
   // ── BILLING: cancellation on monthly plan → generate session credit ─────────
@@ -248,17 +410,17 @@ async function applyBillingRules(
           });
 
         await tx.insert(financialRecordsTable).values({
-          type: "receita",
-          amount: "0",
-          description: `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
-          category: procedure.category,
+          type:            "receita",
+          amount:          "0",
+          description:     `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
+          category:        procedure.category,
           appointmentId,
           patientId,
           procedureId,
           transactionType: "creditoSessao",
-          status: "pago",
-          dueDate: today,
-          clinicId: resolvedClinicId,
+          status:          "pago",
+          dueDate:         today,
+          clinicId:        resolvedClinicId,
         });
       });
     }

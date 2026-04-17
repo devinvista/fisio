@@ -51,7 +51,8 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefat
 
 | Job | Expressão CRON | Horário BRT | Função |
 |---|---|---|---|
-| Billing automático | `0 9 * * *` | 06:00 | `runBilling()` — cobranças recorrentes com tolerância de 3 dias |
+| Billing automático | `0 9 * * *` | 06:00 | `runBilling()` — cobranças recorrentes mensais com tolerância de 3 dias |
+| Fatura consolidada | `5 9 * * *` | 06:05 | `runConsolidatedBilling()` — gera faturas mensais únicas para assinaturas tipo `faturaConsolidada` |
 | Auto-confirmação | `*/15 * * * *` | a cada 15 min | `runAutoConfirmPolicies()` — confirma agendamentos dentro da janela configurada |
 | Fechamento do dia | `0 22 * * *` | 22:00 | `runEndOfDayPolicies()` — no-show + taxa de ausência + auto-conclusão |
 | Verificação de assinaturas | `0 10 * * *` | 07:00 | `runSubscriptionCheck()` — trials expirados → overdue, suspende inadimplentes após 7 dias de carência |
@@ -656,6 +657,10 @@ A página do prontuário (`artifacts/fisiogest/src/pages/patients/[id].tsx`) imp
 | Destaque de inadimplência com aging (dias em atraso) | ✅ |
 | Coluna de forma de pagamento na tabela | ✅ |
 | Billing automático de assinaturas | ✅ |
+| Vencimento automático de pacotes (`expiryDate` via `validityDays`) | ✅ |
+| Alerta de vencimento próximo/expirado no prontuário | ✅ |
+| Fatura consolidada mensal (`faturaConsolidada`) | ✅ |
+| Carteira de crédito em R$ por paciente | ✅ |
 | Aba Custo por Procedimento | ✅ |
 | Aba Orçado vs Realizado | ✅ |
 | Aba DRE Mensal | ✅ |

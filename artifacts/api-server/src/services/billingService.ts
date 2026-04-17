@@ -108,9 +108,13 @@ export async function runBilling(options: {
   const whereClause = clinicId
     ? and(
         eq(patientSubscriptionsTable.status, "ativa"),
+        eq(patientSubscriptionsTable.subscriptionType, "mensal"),
         eq(patientSubscriptionsTable.clinicId, clinicId)
       )
-    : eq(patientSubscriptionsTable.status, "ativa");
+    : and(
+        eq(patientSubscriptionsTable.status, "ativa"),
+        eq(patientSubscriptionsTable.subscriptionType, "mensal")
+      );
 
   const activeSubscriptions = await db
     .select({

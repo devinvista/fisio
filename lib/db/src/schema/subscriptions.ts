@@ -16,6 +16,7 @@ export const patientSubscriptionsTable = pgTable("patient_subscriptions", {
   notes: text("notes"),
   cancelledAt: timestamp("cancelled_at"),
   nextBillingDate: date("next_billing_date"),
+  subscriptionType: text("subscription_type").notNull().default("mensal"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
