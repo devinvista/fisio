@@ -22,6 +22,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Table,
   TableBody,
   TableCell,
@@ -2339,10 +2352,17 @@ function CouponsTab() {
   const [deleteTarget, setDeleteTarget] = useState<CouponRow | null>(null);
   const [form, setForm] = useState({ ...EMPTY_COUPON });
   const [copying, setCopying] = useState<number | null>(null);
+  const [clinicComboOpen, setClinicComboOpen] = useState(false);
 
   const { data: coupons = [], isLoading } = useQuery<CouponRow[]>({
     queryKey: ["coupon-codes"],
     queryFn: () => fetchJSON(api("/coupon-codes")),
+  });
+
+  const { data: activeClinics = [] } = useQuery<ClinicBasic[]>({
+    queryKey: ["all-clinics"],
+    queryFn: () => fetchJSON(api("/clinics")),
+    select: (data) => data.filter((c) => c.isActive),
   });
 
   const filtered = useMemo(() => {
@@ -2809,14 +2829,56 @@ function CouponsTab() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">ID da clínica indicadora</Label>
-                  <Input
-                    type="number"
-                    placeholder="ID da clínica"
-                    value={form.referrerClinicId}
-                    onChange={(e) => setForm({ ...form, referrerClinicId: e.target.value })}
-                    className="rounded-xl bg-white"
-                  />
+                  <Label className="text-xs">Clínica indicadora</Label>
+                  <Popover open={clinicComboOpen} onOpenChange={setClinicComboOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-xl border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <span className={form.referrerClinicId ? "text-foreground" : "text-muted-foreground"}>
+                          {form.referrerClinicId
+                            ? (activeClinics.find((c) => String(c.id) === form.referrerClinicId)?.name ?? `ID ${form.referrerClinicId}`)
+                            : "Selecione uma clínica..."}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Pesquisar clínica..." />
+                        <CommandList>
+                          <CommandEmpty>Nenhuma clínica encontrada.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value=""
+                              onSelect={() => {
+                                setForm({ ...form, referrerClinicId: "" });
+                                setClinicComboOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${!form.referrerClinicId ? "opacity-100" : "opacity-0"}`} />
+                              <span className="text-muted-foreground italic">Nenhuma</span>
+                            </CommandItem>
+                            {activeClinics.map((clinic) => (
+                              <CommandItem
+                                key={clinic.id}
+                                value={`${clinic.name} ${clinic.id}`}
+                                onSelect={() => {
+                                  setForm({ ...form, referrerClinicId: String(clinic.id) });
+                                  setClinicComboOpen(false);
+                                }}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${form.referrerClinicId === String(clinic.id) ? "opacity-100" : "opacity-0"}`} />
+                                <span>{clinic.name}</span>
+                                <span className="ml-auto text-xs text-muted-foreground">#{clinic.id}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             )}
