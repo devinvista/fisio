@@ -535,9 +535,25 @@ interface ProntuarioData {
     profession?: string | null; emergencyContact?: string | null; notes?: string | null;
   };
   anamnesis?: {
-    mainComplaint?: string; diseaseHistory?: string; medicalHistory?: string;
-    medications?: string; allergies?: string; familyHistory?: string;
-    lifestyle?: string; painScale?: number; updatedAt?: string;
+    templateType?: string | null;
+    mainComplaint?: string | null; diseaseHistory?: string | null; medicalHistory?: string | null;
+    medications?: string | null; allergies?: string | null; familyHistory?: string | null;
+    lifestyle?: string | null; painScale?: number | null; updatedAt?: string;
+    occupation?: string | null; laterality?: string | null; cid10?: string | null;
+    painLocation?: string | null; painAggravatingFactors?: string | null; painRelievingFactors?: string | null;
+    functionalImpact?: string | null; patientGoals?: string | null; previousTreatments?: string | null;
+    tobaccoAlcohol?: string | null;
+    phototype?: string | null; skinType?: string | null; skinConditions?: string | null;
+    sunExposure?: string | null; sunProtector?: string | null; currentSkincareRoutine?: string | null;
+    previousAestheticTreatments?: string | null; aestheticReactions?: string | null;
+    facialSurgeries?: string | null; sensitizingMedications?: string | null;
+    skinContraindications?: string | null; aestheticGoalDetails?: string | null;
+    mainBodyConcern?: string | null; bodyConcernRegions?: string | null;
+    celluliteGrade?: string | null; bodyWeight?: string | null; bodyHeight?: string | null;
+    bodyMeasurements?: string | null; physicalActivityLevel?: string | null;
+    physicalActivityType?: string | null; waterIntake?: string | null; dietHabits?: string | null;
+    bodyMedicalConditions?: string | null; bodyContraindications?: string | null;
+    previousBodyTreatments?: string | null;
   } | null;
   evaluations?: Array<{
     inspection?: string; posture?: string; rangeOfMotion?: string;
@@ -626,25 +642,145 @@ function generateFullProntuarioHTML(d: ProntuarioData): { html: string; css: str
   let anamnesisHtml = "";
   if (d.anamnesis) {
     const a = d.anamnesis;
+    const tmpl = a.templateType || "reabilitacao";
     const painColor = (a.painScale ?? 0) >= 7 ? "#dc2626" : (a.painScale ?? 0) >= 4 ? "#f97316" : "#16a34a";
+    const tmplLabels: Record<string, string> = {
+      reabilitacao: "Reabilitação / Fisioterapia",
+      esteticaFacial: "Estética Facial",
+      esteticaCorporal: "Estética Corporal",
+    };
+    const templateBadge = `<div style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:10px;font-weight:700;padding:2px 10px;border-radius:20px;margin-bottom:10px;letter-spacing:.5px;text-transform:uppercase">${tmplLabels[tmpl] || tmpl}</div>`;
+
+    let anamBody = "";
+
+    if (tmpl === "reabilitacao") {
+      anamBody = `
+        ${templateBadge}
+        <div class="ptwo-col">
+          ${textBlock("Profissão / Ocupação", a.occupation)}
+          ${textBlock("Lateralidade", a.laterality)}
+          ${textBlock("CID-10", a.cid10)}
+        </div>
+        ${textBlock("Queixa Principal (QP)", a.mainComplaint)}
+        ${textBlock("História da Doença Atual (HDA)", a.diseaseHistory)}
+        ${a.painScale != null ? `<div class="ppain-row">
+          <div class="plabel">Escala de Dor (EVA)</div>
+          <div class="ppain-bar-wrap">
+            <div class="ppain-bar"><div class="ppain-fill" style="width:${(a.painScale / 10) * 100}%;background:${painColor}"></div></div>
+            <span class="ppain-val" style="color:${painColor}">${a.painScale}/10 — ${a.painScale === 0 ? "Sem dor" : a.painScale <= 3 ? "Leve" : a.painScale <= 6 ? "Moderada" : a.painScale <= 9 ? "Intensa" : "Insuportável"}</span>
+          </div>
+        </div>` : ""}
+        <div class="ptwo-col">
+          ${textBlock("Localização e Irradiação da Dor", a.painLocation)}
+          ${textBlock("Fatores que Agravam", a.painAggravatingFactors)}
+          ${textBlock("Fatores que Aliviam", a.painRelievingFactors)}
+          ${textBlock("Impacto Funcional (AVDs)", a.functionalImpact)}
+        </div>
+        ${textBlock("Histórico Médico (HMP)", a.medicalHistory)}
+        ${textBlock("Tratamentos Anteriores", a.previousTreatments)}
+        <div class="ptwo-col">
+          ${textBlock("Medicamentos em Uso", a.medications)}
+          ${textBlock("Alergias", a.allergies)}
+          ${textBlock("Histórico Familiar", a.familyHistory)}
+          ${textBlock("Tabagismo / Etilismo", a.tobaccoAlcohol)}
+        </div>
+        ${textBlock("Estilo de Vida", a.lifestyle)}
+        ${textBlock("Objetivos e Expectativas", a.patientGoals)}
+      `;
+    } else if (tmpl === "esteticaFacial") {
+      const skinTypeLabels: Record<string, string> = { normal: "Normal", seca: "Seca", oleosa: "Oleosa", mista: "Mista", sensivel: "Sensível", acneica: "Acneica", desidratada: "Desidratada" };
+      const sunExpLabels: Record<string, string> = { alta: "Alta (trabalha ao ar livre)", moderada: "Moderada", baixa: "Baixa (ambiente fechado)" };
+      const sunProtLabels: Record<string, string> = { "diario": "Diário (FPS 30+)", "as-vezes": "Às vezes", "nao-usa": "Não usa" };
+      anamBody = `
+        ${templateBadge}
+        <div class="ptwo-col">
+          ${textBlock("Profissão / Ocupação", a.occupation)}
+          ${textBlock("CID-10", a.cid10)}
+        </div>
+        ${textBlock("Queixa Principal", a.mainComplaint)}
+        ${textBlock("Histórico do Problema", a.diseaseHistory)}
+        <div style="margin:12px 0;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9a3412;margin-bottom:8px">Análise de Pele</div>
+          <div class="ptwo-col">
+            ${textBlock("Tipo de Pele", a.skinType ? skinTypeLabels[a.skinType] || a.skinType : null)}
+            ${textBlock("Fototipo (Fitzpatrick)", a.phototype ? `Tipo ${a.phototype}` : null)}
+            ${textBlock("Exposição Solar", a.sunExposure ? sunExpLabels[a.sunExposure] || a.sunExposure : null)}
+            ${textBlock("Uso de Protetor Solar", a.sunProtector ? sunProtLabels[a.sunProtector] || a.sunProtector : null)}
+          </div>
+          ${a.skinConditions ? `<div class="ptextblock"><div class="ptlabel">Condições de Pele</div><div class="ptcontent">${a.skinConditions}</div></div>` : ""}
+          ${textBlock("Rotina de Skincare Atual", a.currentSkincareRoutine)}
+        </div>
+        ${textBlock("Tratamentos Estéticos Anteriores", a.previousAestheticTreatments)}
+        <div class="ptwo-col">
+          ${textBlock("Reações / Complicações", a.aestheticReactions)}
+          ${textBlock("Cirurgias Faciais", a.facialSurgeries)}
+          ${textBlock("Medicamentos Fotossensibilizantes", a.sensitizingMedications)}
+          ${textBlock("Alergias", a.allergies)}
+        </div>
+        ${a.skinContraindications ? `<div style="margin:8px 0;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#991b1b;margin-bottom:6px">⚠️ Contraindicações Marcadas</div><div style="font-size:12px;color:#7f1d1d">${a.skinContraindications}</div></div>` : ""}
+        ${textBlock("Outras Condições Médicas", a.medicalHistory)}
+        ${textBlock("O que deseja melhorar", a.aestheticGoalDetails)}
+        ${textBlock("Expectativas e Disponibilidade", a.patientGoals)}
+      `;
+    } else if (tmpl === "esteticaCorporal") {
+      const actLabels: Record<string, string> = { "sedentario": "Sedentário", "levemente-ativo": "Levemente ativo (1–2×/sem.)", "moderado": "Moderadamente ativo (3–4×/sem.)", "muito-ativo": "Muito ativo (5+×/sem.)" };
+      const waterLabels: Record<string, string> = { "menos-1L": "Menos de 1 L/dia", "1-1.5L": "1 a 1,5 L/dia", "1.5-2L": "1,5 a 2 L/dia", "mais-2L": "Mais de 2 L/dia" };
+      const cellLabels: Record<string, string> = { "0": "Grau 0 — Sem celulite", "I": "Grau I — Aparece ao apertar", "II": "Grau II — Visível em pé", "III": "Grau III — Depressões profundas", "IV": "Grau IV — Dolorosa à palpação" };
+      let bmiBlock = "";
+      if (a.bodyWeight && a.bodyHeight) {
+        const h = parseFloat(a.bodyHeight) / 100;
+        const w = parseFloat(a.bodyWeight);
+        if (!isNaN(h) && !isNaN(w) && h > 0) {
+          const bmi = (w / (h * h)).toFixed(1);
+          const cat = parseFloat(bmi) < 18.5 ? "Abaixo do peso" : parseFloat(bmi) < 25 ? "Peso normal" : parseFloat(bmi) < 30 ? "Sobrepeso" : "Obesidade";
+          bmiBlock = `<div class="ptextblock"><div class="ptlabel">IMC</div><div class="ptcontent"><strong>${bmi}</strong> — ${cat} (${a.bodyWeight} kg / ${a.bodyHeight} cm)</div></div>`;
+        }
+      }
+      anamBody = `
+        ${templateBadge}
+        <div class="ptwo-col">
+          ${textBlock("Profissão / Ocupação", a.occupation)}
+        </div>
+        ${textBlock("Queixa Principal", a.mainComplaint)}
+        ${textBlock("Histórico do Problema", a.diseaseHistory)}
+        <div style="margin:12px 0;padding:10px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:8px">Dados Corporais</div>
+          <div class="ptwo-col">
+            ${textBlock("Peso", a.bodyWeight ? `${a.bodyWeight} kg` : null)}
+            ${textBlock("Altura", a.bodyHeight ? `${a.bodyHeight} cm` : null)}
+          </div>
+          ${bmiBlock}
+          ${textBlock("Medidas (Perimetria)", a.bodyMeasurements)}
+          ${a.celluliteGrade ? textBlock("Grau de Celulite (Nürnberger-Müller)", cellLabels[a.celluliteGrade] || `Grau ${a.celluliteGrade}`) : ""}
+          ${a.mainBodyConcern ? `<div class="ptextblock"><div class="ptlabel">Principais Queixas</div><div class="ptcontent">${a.mainBodyConcern}</div></div>` : ""}
+          ${a.bodyConcernRegions ? `<div class="ptextblock"><div class="ptlabel">Regiões de Interesse</div><div class="ptcontent">${a.bodyConcernRegions}</div></div>` : ""}
+        </div>
+        <div style="margin:12px 0;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#14532d;margin-bottom:8px">Hábitos de Vida</div>
+          <div class="ptwo-col">
+            ${textBlock("Atividade Física", a.physicalActivityLevel ? actLabels[a.physicalActivityLevel] || a.physicalActivityLevel : null)}
+            ${textBlock("Tipo de Atividade", a.physicalActivityType)}
+            ${textBlock("Ingestão Hídrica", a.waterIntake ? waterLabels[a.waterIntake] || a.waterIntake : null)}
+            ${textBlock("Tabagismo / Etilismo", a.tobaccoAlcohol)}
+          </div>
+          ${textBlock("Hábitos Alimentares", a.dietHabits)}
+          ${textBlock("Sono e Estresse", a.lifestyle)}
+        </div>
+        ${a.bodyContraindications ? `<div style="margin:8px 0;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#991b1b;margin-bottom:6px">⚠️ Contraindicações Marcadas</div><div style="font-size:12px;color:#7f1d1d">${a.bodyContraindications}</div></div>` : ""}
+        <div class="ptwo-col">
+          ${textBlock("Condições Hormonais", a.bodyMedicalConditions)}
+          ${textBlock("Medicamentos em Uso", a.medications)}
+          ${textBlock("Alergias", a.allergies)}
+          ${textBlock("Tratamentos Corporais Anteriores", a.previousBodyTreatments)}
+        </div>
+        ${textBlock("Resultado Esperado", a.patientGoals)}
+        ${textBlock("Disponibilidade / Prazo", a.aestheticGoalDetails)}
+      `;
+    }
+
     anamnesisHtml = section("1. Ficha de Anamnese", "📋", `
       ${d.anamnesis.updatedAt ? `<p class="psec-meta">Atualizada em ${formatDateTime(d.anamnesis.updatedAt)}</p>` : ""}
-      ${textBlock("Queixa Principal (QP)", a.mainComplaint)}
-      ${textBlock("História da Doença Atual (HDA)", a.diseaseHistory)}
-      <div class="ptwo-col">
-        ${textBlock("Histórico Médico (HMP)", a.medicalHistory)}
-        ${textBlock("Medicamentos em Uso", a.medications)}
-        ${textBlock("Alergias", a.allergies)}
-        ${textBlock("Histórico Familiar", a.familyHistory)}
-      </div>
-      ${textBlock("Estilo de Vida", a.lifestyle)}
-      ${a.painScale !== undefined ? `<div class="ppain-row">
-        <div class="plabel">Escala de Dor (EVA)</div>
-        <div class="ppain-bar-wrap">
-          <div class="ppain-bar"><div class="ppain-fill" style="width:${(a.painScale / 10) * 100}%;background:${painColor}"></div></div>
-          <span class="ppain-val" style="color:${painColor}">${a.painScale}/10</span>
-        </div>
-      </div>` : ""}
+      ${anamBody}
     `);
   }
 
