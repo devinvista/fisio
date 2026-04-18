@@ -2,7 +2,6 @@ import { useParams, useLocation } from "wouter";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useGetPatient,
-  useGetAnamnesis,
   useCreateAnamnesis,
   useListEvaluations,
   useCreateEvaluation,
@@ -52,6 +51,9 @@ import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/use-auth";
 import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+} from "recharts";
 
 // ─── Print utilities ─────────────────────────────────────────────────────────
 
@@ -1499,13 +1501,169 @@ function hasInList(list: string, item: string): boolean {
   return list ? list.split(",").map(s => s.trim()).includes(item) : false;
 }
 
+// ─── Indicators Panel ────────────────────────────────────────────────────────
+
+function IndicatorsPanel({ patientId }: { patientId: number }) {
+  const token = localStorage.getItem("fisiogest_token");
+  const indicatorHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+  const { data: indicators, isLoading } = useQuery<{
+    eva: { date: string; value: number; source: string; label: string }[];
+    body: { weight?: string | null; height?: string | null; measurements?: string | null; celluliteGrade?: string | null; updatedAt: string } | null;
+    reab: { cid10?: string | null; painLocation?: string | null; functionalImpact?: string | null; updatedAt: string } | null;
+  }>({
+    queryKey: [`/api/patients/${patientId}/indicators`],
+    queryFn: () =>
+      fetch(`/api/patients/${patientId}/indicators`, {
+        headers: indicatorHeaders,
+      }).then(r => r.ok ? r.json() : { eva: [], body: null, reab: null }),
+    enabled: !!patientId,
+  });
+
+  if (isLoading) return null;
+  if (!indicators || indicators.eva.length === 0) return null;
+
+  const chartData = indicators.eva.map((p, i) => ({
+    idx: i + 1,
+    value: p.value,
+    date: format(new Date(p.date), "dd/MM/yy", { locale: ptBR }),
+    label: p.label,
+    source: p.source,
+  }));
+
+  const latest = indicators.eva[indicators.eva.length - 1];
+  const first = indicators.eva[0];
+  const trend = latest && first && indicators.eva.length > 1 ? latest.value - first.value : null;
+
+  const evaColor = (v: number) => v >= 7 ? "#dc2626" : v >= 4 ? "#f97316" : "#16a34a";
+  const latestColor = latest ? evaColor(latest.value) : "#64748b";
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center">
+            <TrendingUp className="w-4 h-4 text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-800">Histórico de Indicadores</p>
+            <p className="text-[11px] text-slate-400">{indicators.eva.length} registro(s) de dor (EVA)</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {latest && (
+            <div className="text-right">
+              <p className="text-[10px] text-slate-400 uppercase font-bold">EVA Atual</p>
+              <p className="text-xl font-bold" style={{ color: latestColor }}>{latest.value}/10</p>
+            </div>
+          )}
+          {trend !== null && (
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
+              trend < 0 ? "bg-green-50 text-green-700" : trend > 0 ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-600"
+            }`}>
+              {trend < 0 ? <TrendingDown className="w-3 h-3" /> : trend > 0 ? <TrendingUp className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
+              {trend < 0 ? `${Math.abs(trend)} pts melhora` : trend > 0 ? `${trend} pts piora` : "Estável"}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {indicators.eva.length >= 2 && (
+        <div className="h-[140px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 8, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+              <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+              <ReferenceLine y={7} stroke="#dc2626" strokeDasharray="4 4" strokeOpacity={0.4} />
+              <ReferenceLine y={4} stroke="#f97316" strokeDasharray="4 4" strokeOpacity={0.4} />
+              <Tooltip
+                contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                formatter={(v: number) => [`${v}/10`, "EVA"]}
+                labelFormatter={(l) => l}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={(props: any) => {
+                  const c = evaColor(props.payload.value);
+                  return <circle key={props.key} cx={props.cx} cy={props.cy} r={4} fill={c} stroke="#fff" strokeWidth={1.5} />;
+                }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {indicators.eva.length === 1 && (
+        <div className="flex items-center gap-2 text-xs text-slate-400 italic">
+          <Info className="w-3.5 h-3.5" />
+          Adicione mais evoluções com EVA para visualizar o gráfico de evolução da dor.
+        </div>
+      )}
+
+      {indicators.body && (indicators.body.weight || indicators.body.height) && (
+        <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-3">
+          {indicators.body.weight && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Scale className="w-3.5 h-3.5 text-violet-500" />
+              <span className="text-slate-500">Peso:</span>
+              <span className="font-semibold text-slate-700">{indicators.body.weight} kg</span>
+            </div>
+          )}
+          {indicators.body.height && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Ruler className="w-3.5 h-3.5 text-violet-500" />
+              <span className="text-slate-500">Altura:</span>
+              <span className="font-semibold text-slate-700">{indicators.body.height} cm</span>
+            </div>
+          )}
+          {indicators.body.weight && indicators.body.height && (() => {
+            const h = parseFloat(indicators.body!.height!) / 100;
+            const w = parseFloat(indicators.body!.weight!);
+            if (h > 0 && w > 0) {
+              const bmi = (w / (h * h)).toFixed(1);
+              const bmiNum = parseFloat(bmi);
+              const cat = bmiNum < 18.5 ? "Abaixo do peso" : bmiNum < 25 ? "Normal" : bmiNum < 30 ? "Sobrepeso" : "Obesidade";
+              return (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Activity className="w-3.5 h-3.5 text-violet-500" />
+                  <span className="text-slate-500">IMC:</span>
+                  <span className="font-semibold text-slate-700">{bmi} — {cat}</span>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Anamnesis Tab ───────────────────────────────────────────────────────────
+
 function AnamnesisTab({ patientId }: { patientId: number }) {
-  const { data, isLoading } = useGetAnamnesis(patientId);
+  const token = localStorage.getItem("fisiogest_token");
+  const authHeader: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const { data: allAnamnesis = [], isLoading, refetch: refetchAll } = useQuery<any[]>({
+    queryKey: [`/api/patients/${patientId}/anamnesis`, "all"],
+    queryFn: () =>
+      fetch(`/api/patients/${patientId}/anamnesis?all=true`, { headers: authHeader })
+        .then(r => r.ok ? r.json() : []),
+    enabled: !!patientId,
+  });
+
   const mutation = useCreateAnamnesis();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [template, setTemplate] = useState<AnamTemplate>("reabilitacao");
+
+  const filledTypes = new Set<string>(allAnamnesis.map((a: any) => a.templateType));
 
   const emptyForm = {
     // shared
@@ -1528,42 +1686,49 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
   const f = (k: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   const sv = (k: keyof typeof emptyForm) => (v: string) => setForm(p => ({ ...p, [k]: v }));
 
+  const populateFormFromRecord = (d: any) => {
+    setForm({
+      mainComplaint: d.mainComplaint || "", diseaseHistory: d.diseaseHistory || "",
+      medicalHistory: d.medicalHistory || "", medications: d.medications || "",
+      allergies: d.allergies || "", familyHistory: d.familyHistory || "",
+      lifestyle: d.lifestyle || "", painScale: d.painScale ?? 0,
+      occupation: d.occupation || "", laterality: d.laterality || "",
+      cid10: d.cid10 || "", painLocation: d.painLocation || "",
+      painAggravatingFactors: d.painAggravatingFactors || "",
+      painRelievingFactors: d.painRelievingFactors || "",
+      functionalImpact: d.functionalImpact || "",
+      patientGoals: d.patientGoals || "",
+      previousTreatments: d.previousTreatments || "",
+      tobaccoAlcohol: d.tobaccoAlcohol || "",
+      phototype: d.phototype || "", skinType: d.skinType || "",
+      skinConditions: d.skinConditions || "", sunExposure: d.sunExposure || "",
+      sunProtector: d.sunProtector || "", currentSkincareRoutine: d.currentSkincareRoutine || "",
+      previousAestheticTreatments: d.previousAestheticTreatments || "",
+      aestheticReactions: d.aestheticReactions || "", facialSurgeries: d.facialSurgeries || "",
+      sensitizingMedications: d.sensitizingMedications || "",
+      skinContraindications: d.skinContraindications || "",
+      aestheticGoalDetails: d.aestheticGoalDetails || "",
+      mainBodyConcern: d.mainBodyConcern || "", bodyConcernRegions: d.bodyConcernRegions || "",
+      celluliteGrade: d.celluliteGrade || "", bodyWeight: d.bodyWeight || "",
+      bodyHeight: d.bodyHeight || "", bodyMeasurements: d.bodyMeasurements || "",
+      physicalActivityLevel: d.physicalActivityLevel || "", physicalActivityType: d.physicalActivityType || "",
+      waterIntake: d.waterIntake || "", dietHabits: d.dietHabits || "",
+      bodyMedicalConditions: d.bodyMedicalConditions || "",
+      bodyContraindications: d.bodyContraindications || "",
+      previousBodyTreatments: d.previousBodyTreatments || "",
+    });
+  };
+
   useEffect(() => {
-    if (data) {
-      const d = data as any;
-      if (d.templateType) setTemplate(d.templateType as AnamTemplate);
-      setForm({
-        mainComplaint: d.mainComplaint || "", diseaseHistory: d.diseaseHistory || "",
-        medicalHistory: d.medicalHistory || "", medications: d.medications || "",
-        allergies: d.allergies || "", familyHistory: d.familyHistory || "",
-        lifestyle: d.lifestyle || "", painScale: d.painScale || 0,
-        occupation: d.occupation || "", laterality: d.laterality || "",
-        cid10: d.cid10 || "", painLocation: d.painLocation || "",
-        painAggravatingFactors: d.painAggravatingFactors || "",
-        painRelievingFactors: d.painRelievingFactors || "",
-        functionalImpact: d.functionalImpact || "",
-        patientGoals: d.patientGoals || "",
-        previousTreatments: d.previousTreatments || "",
-        tobaccoAlcohol: d.tobaccoAlcohol || "",
-        phototype: d.phototype || "", skinType: d.skinType || "",
-        skinConditions: d.skinConditions || "", sunExposure: d.sunExposure || "",
-        sunProtector: d.sunProtector || "", currentSkincareRoutine: d.currentSkincareRoutine || "",
-        previousAestheticTreatments: d.previousAestheticTreatments || "",
-        aestheticReactions: d.aestheticReactions || "", facialSurgeries: d.facialSurgeries || "",
-        sensitizingMedications: d.sensitizingMedications || "",
-        skinContraindications: d.skinContraindications || "",
-        aestheticGoalDetails: d.aestheticGoalDetails || "",
-        mainBodyConcern: d.mainBodyConcern || "", bodyConcernRegions: d.bodyConcernRegions || "",
-        celluliteGrade: d.celluliteGrade || "", bodyWeight: d.bodyWeight || "",
-        bodyHeight: d.bodyHeight || "", bodyMeasurements: d.bodyMeasurements || "",
-        physicalActivityLevel: d.physicalActivityLevel || "", physicalActivityType: d.physicalActivityType || "",
-        waterIntake: d.waterIntake || "", dietHabits: d.dietHabits || "",
-        bodyMedicalConditions: d.bodyMedicalConditions || "",
-        bodyContraindications: d.bodyContraindications || "",
-        previousBodyTreatments: d.previousBodyTreatments || "",
-      });
+    const match = allAnamnesis.find((a: any) => a.templateType === template);
+    if (match) {
+      populateFormFromRecord(match);
+    } else {
+      setForm(emptyForm);
     }
-  }, [data]);
+  }, [template, allAnamnesis]);
+
+  const currentAnamnesis = allAnamnesis.find((a: any) => a.templateType === template);
 
   const [sections, setSections] = useState<Record<string, boolean>>({
     s1: true, s2: true, s3: true, s4: true, s5: true,
@@ -1574,7 +1739,9 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
     mutation.mutate({ patientId, data: { ...form, templateType: template } as any }, {
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Anamnese atualizada." });
+        refetchAll();
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/anamnesis`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/indicators`] });
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/journey`] });
       },
       onError: () => toast({ title: "Erro", description: "Não foi possível salvar.", variant: "destructive" }),
@@ -1589,17 +1756,28 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <CardTitle className="text-xl">Ficha de Anamnese</CardTitle>
-            <CardDescription>Template adaptado por área de atuação clínica</CardDescription>
+            <CardDescription>
+              Uma ficha independente por tipo de atendimento
+              {filledTypes.size > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+                  <CheckCircle className="w-3 h-3" />
+                  {filledTypes.size} tipo(s) preenchido(s)
+                </span>
+              )}
+            </CardDescription>
           </div>
-          {data?.updatedAt && (
+          {currentAnamnesis?.updatedAt && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 shrink-0">
               <Clock className="w-3 h-3" />
-              Atualizado em {formatDateTime(data.updatedAt)}
+              Atualizado em {formatDateTime(currentAnamnesis.updatedAt)}
             </span>
           )}
         </div>
       </CardHeader>
       <CardContent className="p-6 space-y-5">
+
+        {/* ── Indicators Panel ── */}
+        <IndicatorsPanel patientId={patientId} />
 
         {/* ── Template Selector ── */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1607,6 +1785,7 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {TEMPLATE_OPTIONS.map(opt => {
               const isActive = template === opt.value;
+              const isFilled = filledTypes.has(opt.value);
               const activeStyles: Record<AnamTemplate, string> = {
                 reabilitacao: "border-blue-500 bg-blue-50 text-blue-800 shadow-sm",
                 esteticaFacial: "border-rose-500 bg-rose-50 text-rose-800 shadow-sm",
@@ -1625,8 +1804,15 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                     isActive ? iconStyles[opt.value] : "bg-slate-100 text-slate-500"
                   }`}>{opt.icon}</div>
-                  <div>
-                    <p className="text-sm font-bold leading-tight">{opt.label}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold leading-tight">{opt.label}</p>
+                      {isFilled && !isActive && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                          <Check className="w-2.5 h-2.5" />preenchida
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] mt-0.5 opacity-70">{opt.desc}</p>
                   </div>
                   {isActive && <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-current opacity-60" />}

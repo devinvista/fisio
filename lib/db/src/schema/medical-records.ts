@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, date, numeric, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, date, numeric, index, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { patientsTable } from "./patients";
@@ -7,10 +7,10 @@ import { appointmentsTable } from "./appointments";
 
 export const anamnesisTable = pgTable("anamnesis", {
   id: serial("id").primaryKey(),
-  patientId: integer("patient_id").notNull().unique().references(() => patientsTable.id),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id),
 
-  // Template selector
-  templateType: text("template_type").default("reabilitacao"),
+  // Template selector — one record per (patient, templateType)
+  templateType: text("template_type").notNull().default("reabilitacao"),
 
   // ── Shared fields (all templates) ──
   mainComplaint: text("main_complaint"),
@@ -63,7 +63,10 @@ export const anamnesisTable = pgTable("anamnesis", {
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  unique("uniq_anamnesis_patient_template").on(table.patientId, table.templateType),
+  index("idx_anamnesis_patient_id").on(table.patientId),
+]);
 
 export const insertAnamnesisSchema = createInsertSchema(anamnesisTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAnamnesis = z.infer<typeof insertAnamnesisSchema>;

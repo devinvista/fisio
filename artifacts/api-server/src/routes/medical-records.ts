@@ -154,13 +154,35 @@ router.use(async (req: AuthRequest, res, next) => {
   next();
 });
 
+// GET /anamnesis?type=reabilitacao → single record for that type
+// GET /anamnesis?all=true → array of all anamnesis for patient
+// GET /anamnesis → most recent record (backwards compat)
 router.get("/anamnesis", requirePermission("medical.read"), async (req: Request<P>, res) => {
   try {
     const patientId = parseInt(req.params.patientId);
+    const { type, all } = req.query as { type?: string; all?: string };
+
+    if (all === "true") {
+      const records = await db
+        .select()
+        .from(anamnesisTable)
+        .where(eq(anamnesisTable.patientId, patientId))
+        .orderBy(anamnesisTable.updatedAt);
+      res.json(records);
+      return;
+    }
+
+    const whereClause = type
+      ? and(eq(anamnesisTable.patientId, patientId), eq(anamnesisTable.templateType, type))
+      : eq(anamnesisTable.patientId, patientId);
+
     const [anamnesis] = await db
       .select()
       .from(anamnesisTable)
-      .where(eq(anamnesisTable.patientId, patientId));
+      .where(whereClause)
+      .orderBy(desc(anamnesisTable.updatedAt))
+      .limit(1);
+
     if (!anamnesis) {
       res.status(404).json({ error: "Not Found", message: "Anamnese não encontrada" });
       return;
@@ -190,8 +212,9 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
       bodyMedicalConditions, bodyContraindications, previousBodyTreatments,
     } = body;
 
+    const resolvedType = templateType || "reabilitacao";
+
     const anamnesisFields = {
-      templateType,
       mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale,
       occupation, laterality, cid10, painLocation, painAggravatingFactors, painRelievingFactors,
       functionalImpact, patientGoals, previousTreatments, tobaccoAlcohol,
@@ -203,23 +226,24 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
       bodyMedicalConditions, bodyContraindications, previousBodyTreatments,
     };
 
-    const existing = await db
-      .select()
+    // Upsert by (patientId, templateType)
+    const [existing] = await db
+      .select({ id: anamnesisTable.id })
       .from(anamnesisTable)
-      .where(eq(anamnesisTable.patientId, patientId));
+      .where(and(eq(anamnesisTable.patientId, patientId), eq(anamnesisTable.templateType, resolvedType)));
 
     let anamnesis;
-    const isUpdate = existing.length > 0;
+    const isUpdate = !!existing;
     if (isUpdate) {
       [anamnesis] = await db
         .update(anamnesisTable)
         .set({ ...anamnesisFields, updatedAt: new Date() })
-        .where(eq(anamnesisTable.patientId, patientId))
+        .where(and(eq(anamnesisTable.patientId, patientId), eq(anamnesisTable.templateType, resolvedType)))
         .returning();
     } else {
       [anamnesis] = await db
         .insert(anamnesisTable)
-        .values({ patientId, ...anamnesisFields })
+        .values({ patientId, templateType: resolvedType, ...anamnesisFields })
         .returning();
     }
     await logAudit({
@@ -228,9 +252,90 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
       action: isUpdate ? "update" : "create",
       entityType: "anamnesis",
       entityId: anamnesis?.id,
-      summary: isUpdate ? "Anamnese atualizada" : "Anamnese criada",
+      summary: isUpdate ? `Anamnese (${resolvedType}) atualizada` : `Anamnese (${resolvedType}) criada`,
     });
     res.json(anamnesis);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Indicators: aggregate key clinical indicators with history ─────────────
+router.get("/indicators", requirePermission("medical.read"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+
+    const [allAnamnesis, evaluations, evolutions] = await Promise.all([
+      db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId)).orderBy(anamnesisTable.updatedAt),
+      db.select().from(evaluationsTable).where(eq(evaluationsTable.patientId, patientId)).orderBy(evaluationsTable.createdAt),
+      db.select().from(evolutionsTable).where(eq(evolutionsTable.patientId, patientId)).orderBy(evolutionsTable.createdAt),
+    ]);
+
+    const templateLabels: Record<string, string> = {
+      reabilitacao: "Reabilitação",
+      esteticaFacial: "Estética Facial",
+      esteticaCorporal: "Estética Corporal",
+    };
+
+    // Build EVA history from all sources sorted by date
+    const evaPoints: { date: string; value: number; source: string; label: string }[] = [];
+
+    for (const a of allAnamnesis) {
+      if (a.painScale != null) {
+        evaPoints.push({
+          date: a.updatedAt.toISOString(),
+          value: a.painScale,
+          source: "anamnesis",
+          label: `Anamnese (${templateLabels[a.templateType] ?? a.templateType})`,
+        });
+      }
+    }
+
+    for (const ev of evaluations) {
+      if (ev.painScale != null) {
+        evaPoints.push({
+          date: ev.createdAt.toISOString(),
+          value: ev.painScale,
+          source: "evaluation",
+          label: `Avaliação Física`,
+        });
+      }
+    }
+
+    for (const evo of evolutions) {
+      if (evo.painScale != null) {
+        evaPoints.push({
+          date: evo.createdAt.toISOString(),
+          value: evo.painScale,
+          source: "evolution",
+          label: `Sessão`,
+        });
+      }
+    }
+
+    evaPoints.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Body indicators from corporal anamnesis
+    const corporalAnamnesis = allAnamnesis.find(a => a.templateType === "esteticaCorporal");
+    const bodyIndicators = corporalAnamnesis ? {
+      weight: corporalAnamnesis.bodyWeight,
+      height: corporalAnamnesis.bodyHeight,
+      measurements: corporalAnamnesis.bodyMeasurements,
+      celluliteGrade: corporalAnamnesis.celluliteGrade,
+      updatedAt: corporalAnamnesis.updatedAt.toISOString(),
+    } : null;
+
+    // Reab indicators from reabilitacao anamnesis
+    const reabAnamnesis = allAnamnesis.find(a => a.templateType === "reabilitacao");
+    const reabIndicators = reabAnamnesis ? {
+      cid10: reabAnamnesis.cid10,
+      painLocation: reabAnamnesis.painLocation,
+      functionalImpact: reabAnamnesis.functionalImpact,
+      updatedAt: reabAnamnesis.updatedAt.toISOString(),
+    } : null;
+
+    res.json({ eva: evaPoints, body: bodyIndicators, reab: reabIndicators });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
