@@ -465,7 +465,7 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
             icon={<Clock className="w-4 h-4" />}
             accentColor="#f59e0b"
             loading={dashLoading}
-            sub={`${(dashboard as any)?.pendingSubscriptionCharges?.count ?? 0} lançamento(s)`}
+            sub={`${(dashboard as any)?.pendingSubscriptionCharges?.count ?? 0} lançamento(s) · ${(dashboard as any)?.pendingConsolidatedInvoices?.count ?? 0} fatura(s) consolidada(s)`}
           />
           <div className="relative bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-indigo-400" />

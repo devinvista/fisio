@@ -94,6 +94,26 @@ async function resolvePackageForSubscription(sub: typeof patientSubscriptionsTab
 const router = Router();
 router.use(authMiddleware);
 
+const RECEIVABLE_TYPES = ["creditoAReceber", "cobrancaSessao", "cobrancaMensal", "faturaConsolidada"];
+
+function isActiveFinancialRecord(status: string): boolean {
+  return status !== "estornado" && status !== "cancelado";
+}
+
+function isRevenueSummaryRecord(record: typeof financialRecordsTable.$inferSelect): boolean {
+  return record.type === "receita"
+    && isActiveFinancialRecord(record.status)
+    && record.transactionType !== "pendenteFatura";
+}
+
+function revenueSummarySql() {
+  return and(
+    eq(financialRecordsTable.type, "receita"),
+    sql`${financialRecordsTable.status} NOT IN ('estornado', 'cancelado')`,
+    sql`(${financialRecordsTable.transactionType} IS NULL OR ${financialRecordsTable.transactionType} <> 'pendenteFatura')`
+  )!;
+}
+
 function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
   const lastDay = new Date(year, month, 0).getDate();
   const mm = String(month).padStart(2, "0");
@@ -133,7 +153,7 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .where(cc ? and(cc, recordDateFilter(startDate, endDate)) : recordDateFilter(startDate, endDate));
 
     const monthlyRevenue = records
-      .filter((r) => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
+      .filter(isRevenueSummaryRecord)
       .reduce((sum, r) => sum + Number(r.amount), 0);
 
     const monthlyExpenses = records
@@ -167,12 +187,11 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
         revenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
       })
       .from(financialRecordsTable)
-      .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
-      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
+      .leftJoin(proceduresTable, eq(financialRecordsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
-          : and(eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
+          ? and(cc, revenueSummarySql(), recordDateFilter(startDate, endDate))
+          : and(revenueSummarySql(), recordDateFilter(startDate, endDate))
       )
       .groupBy(proceduresTable.category);
 
@@ -182,12 +201,11 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
         total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
       })
       .from(financialRecordsTable)
-      .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
-      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
+      .leftJoin(proceduresTable, eq(financialRecordsTable.procedureId, proceduresTable.id))
       .where(
         cc
-          ? and(cc, eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
-          : and(eq(financialRecordsTable.type, "receita"), recordDateFilter(startDate, endDate))
+          ? and(cc, revenueSummarySql(), recordDateFilter(startDate, endDate))
+          : and(revenueSummarySql(), recordDateFilter(startDate, endDate))
       )
       .groupBy(proceduresTable.name)
       .orderBy(sql`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0) DESC`)
@@ -212,8 +230,8 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
 
     // Cobranças de assinaturas pendentes (geradas pelo billing, ainda não pagas)
     const pendingSubsWhere = cc
-      ? and(cc, eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId))
-      : and(eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId));
+      ? and(cc, eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId), inArray(financialRecordsTable.transactionType, RECEIVABLE_TYPES))
+      : and(eq(financialRecordsTable.status, "pendente"), isNotNull(financialRecordsTable.subscriptionId), inArray(financialRecordsTable.transactionType, RECEIVABLE_TYPES));
 
     const pendingSubRecords = await db
       .select({
@@ -222,6 +240,18 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       })
       .from(financialRecordsTable)
       .where(pendingSubsWhere);
+
+    const pendingConsolidatedInvoices = await db
+      .select({
+        count: sql<number>`count(*)`,
+        total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
+      })
+      .from(financialRecordsTable)
+      .where(
+        cc
+          ? and(cc, eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.transactionType, "faturaConsolidada"))
+          : and(eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.transactionType, "faturaConsolidada"))
+      );
 
     res.json({
       monthlyRevenue,
@@ -240,6 +270,10 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       pendingSubscriptionCharges: {
         count: Number(pendingSubRecords[0]?.count ?? 0),
         total: Number(pendingSubRecords[0]?.total ?? 0),
+      },
+      pendingConsolidatedInvoices: {
+        count: Number(pendingConsolidatedInvoices[0]?.count ?? 0),
+        total: Number(pendingConsolidatedInvoices[0]?.total ?? 0),
       },
     });
   } catch (err) {
@@ -464,8 +498,6 @@ router.get("/patients/:patientId/summary", requirePermission("financial.read"), 
       .select()
       .from(financialRecordsTable)
       .where(eq(financialRecordsTable.patientId, patientId));
-
-    const RECEIVABLE_TYPES = ["creditoAReceber", "cobrancaSessao", "cobrancaMensal"];
 
     const totalAReceber = records
       .filter((r) => RECEIVABLE_TYPES.includes(r.transactionType ?? "") && r.status !== "cancelado" && r.status !== "estornado" && Number(r.amount) > 0)
@@ -840,18 +872,17 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
 
     // Revenue per procedure
     const revStatsCond = clinicId
-      ? and(eq(financialRecordsTable.clinicId, clinicId), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
-      : and(eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate));
+      ? and(eq(financialRecordsTable.clinicId, clinicId), revenueSummarySql(), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate))
+      : and(revenueSummarySql(), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate));
 
     const revByProcedure = await db
       .select({
-        procedureId: appointmentsTable.procedureId,
+        procedureId: financialRecordsTable.procedureId,
         totalRevenue: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`,
       })
       .from(financialRecordsTable)
-      .leftJoin(appointmentsTable, eq(financialRecordsTable.appointmentId, appointmentsTable.id))
       .where(revStatsCond)
-      .groupBy(appointmentsTable.procedureId);
+      .groupBy(financialRecordsTable.procedureId);
 
     const revMap = new Map(revByProcedure.map(r => [r.procedureId, r.totalRevenue]));
 
@@ -968,7 +999,7 @@ router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest,
         .where(cc ? and(cc, recordDateFilter(s, e)) : recordDateFilter(s, e));
 
       const revenue = records
-        .filter(r => r.type === "receita" && r.status !== "estornado" && r.status !== "cancelado")
+        .filter(isRevenueSummaryRecord)
         .reduce((sum, r) => sum + Number(r.amount), 0);
 
       const expensesByCategory: Record<string, number> = {};
@@ -1014,8 +1045,8 @@ router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest,
 
     // Pending receivables for the month
     const pendCond = cc
-      ? and(cc, eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end))
-      : and(eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end));
+      ? and(cc, eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), inArray(financialRecordsTable.transactionType, RECEIVABLE_TYPES), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end))
+      : and(eq(financialRecordsTable.status, "pendente"), eq(financialRecordsTable.type, "receita"), inArray(financialRecordsTable.transactionType, RECEIVABLE_TYPES), gte(financialRecordsTable.dueDate, start), lte(financialRecordsTable.dueDate, end));
 
     const [pendRow] = await db
       .select({ total: sql<number>`COALESCE(SUM(${financialRecordsTable.amount}::numeric), 0)`, cnt: count() })
