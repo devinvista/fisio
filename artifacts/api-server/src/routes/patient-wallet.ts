@@ -170,9 +170,8 @@ router.post("/wallet/deposit", requirePermission("financial.update"), async (req
 // ─── GET /wallet (admin: listar carteiras da clínica) ────────────────────────
 
 const walletListRouter = Router();
-walletListRouter.use(authMiddleware);
 
-walletListRouter.get("/wallet", requirePermission("financial.read"), async (req: AuthRequest, res) => {
+walletListRouter.get("/wallet", authMiddleware as any, requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
     const clinicId = req.isSuperAdmin ? null : (req.clinicId ?? null);
 
