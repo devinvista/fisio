@@ -439,7 +439,8 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `appointments` | id, patientId, procedureId, clinicId, scheduleId, date, startTime, **endTime** (calculado), status, notes |
 | `schedules` | id, clinicId, type (clinic/professional), name, workingDays, startTime, endTime, isActive |
 | `blocked_slots` | id, clinicId, scheduleId, date, startTime, endTime, reason |
-| `anamnesis` | id, patientId (único), **templateType** (reabilitacao/esteticaFacial/esteticaCorporal), campos compartilhados (mainComplaint, diseaseHistory, medications, painScale…), campos faciais (phototype, skinType, skinConditions, sunExposure…), campos corporais (mainBodyConcern, bodyConcernRegions, celluliteGrade, bodyWeight, bodyHeight…) |
+| `anamnesis` | id, patientId, **templateType** (reabilitacao/esteticaFacial/esteticaCorporal) — UNIQUE(patientId, templateType), campos compartilhados (mainComplaint, diseaseHistory, medications, painScale…), campos faciais (phototype, skinType, skinConditions, sunExposure…), campos corporais (mainBodyConcern, bodyConcernRegions, celluliteGrade, bodyWeight, bodyHeight…) |
+| `body_measurements` | id, patientId, measuredAt, **biometria** (weight, height), **perimetria** (waist, abdomen, hips, thighRight/Left, armRight/Left, calfRight/Left), **composição** (bodyFat, celluliteGrade), notes — tabela de série temporal para acompanhamento evolutivo corporal |
 | `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis |
 | `treatment_plans` | id, patientId (múltiplos por paciente), **clinicId** (FK → clinics), objectives, techniques, frequency, estimatedSessions, status |
 | `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications, **painScale** (0–10) |

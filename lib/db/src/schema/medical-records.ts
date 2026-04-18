@@ -200,3 +200,38 @@ export const atestadosTable = pgTable("atestados", {
 });
 
 export type Atestado = typeof atestadosTable.$inferSelect;
+
+// ─── Body Measurements — série temporal de medidas corporais ─────────────────
+export const bodyMeasurementsTable = pgTable("body_measurements", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id),
+  clinicId: integer("clinic_id"),
+  measuredAt: timestamp("measured_at").defaultNow().notNull(),
+
+  // Biometria
+  weight: numeric("weight", { precision: 5, scale: 2 }),      // kg
+  height: numeric("height", { precision: 5, scale: 2 }),      // cm
+
+  // Perimetria corporal (cm)
+  waist: numeric("waist", { precision: 5, scale: 2 }),        // cintura
+  abdomen: numeric("abdomen", { precision: 5, scale: 2 }),    // abdômen
+  hips: numeric("hips", { precision: 5, scale: 2 }),          // quadril
+  thighRight: numeric("thigh_right", { precision: 5, scale: 2 }),    // coxa D
+  thighLeft: numeric("thigh_left", { precision: 5, scale: 2 }),      // coxa E
+  armRight: numeric("arm_right", { precision: 5, scale: 2 }),        // braço D
+  armLeft: numeric("arm_left", { precision: 5, scale: 2 }),          // braço E
+  calfRight: numeric("calf_right", { precision: 5, scale: 2 }),      // panturrilha D
+  calfLeft: numeric("calf_left", { precision: 5, scale: 2 }),        // panturrilha E
+
+  // Composição e qualidade
+  bodyFat: numeric("body_fat", { precision: 4, scale: 2 }),   // % gordura corporal
+  celluliteGrade: text("cellulite_grade"),                    // I, II, III, IV
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_body_meas_patient_id").on(table.patientId),
+  index("idx_body_meas_measured_at").on(table.measuredAt),
+]);
+
+export type BodyMeasurement = typeof bodyMeasurementsTable.$inferSelect;

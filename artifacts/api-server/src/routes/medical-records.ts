@@ -12,6 +12,7 @@ import {
   examAttachmentsTable,
   atestadosTable,
   patientsTable,
+  bodyMeasurementsTable,
 } from "@workspace/db";
 import { eq, desc, or, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
@@ -266,10 +267,11 @@ router.get("/indicators", requirePermission("medical.read"), async (req: Request
   try {
     const patientId = parseInt(req.params.patientId);
 
-    const [allAnamnesis, evaluations, evolutions] = await Promise.all([
+    const [allAnamnesis, evaluations, evolutions, bodyMeasurements] = await Promise.all([
       db.select().from(anamnesisTable).where(eq(anamnesisTable.patientId, patientId)).orderBy(anamnesisTable.updatedAt),
       db.select().from(evaluationsTable).where(eq(evaluationsTable.patientId, patientId)).orderBy(evaluationsTable.createdAt),
       db.select().from(evolutionsTable).where(eq(evolutionsTable.patientId, patientId)).orderBy(evolutionsTable.createdAt),
+      db.select().from(bodyMeasurementsTable).where(eq(bodyMeasurementsTable.patientId, patientId)).orderBy(bodyMeasurementsTable.measuredAt),
     ]);
 
     const templateLabels: Record<string, string> = {
@@ -316,7 +318,7 @@ router.get("/indicators", requirePermission("medical.read"), async (req: Request
 
     evaPoints.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // Body indicators from corporal anamnesis
+    // Body indicators from corporal anamnesis (current values)
     const corporalAnamnesis = allAnamnesis.find(a => a.templateType === "esteticaCorporal");
     const bodyIndicators = corporalAnamnesis ? {
       weight: corporalAnamnesis.bodyWeight,
@@ -335,7 +337,103 @@ router.get("/indicators", requirePermission("medical.read"), async (req: Request
       updatedAt: reabAnamnesis.updatedAt.toISOString(),
     } : null;
 
-    res.json({ eva: evaPoints, body: bodyIndicators, reab: reabIndicators });
+    // Body measurements time series
+    const bodyMeasurementsSeries = bodyMeasurements.map(m => ({
+      id: m.id,
+      date: m.measuredAt.toISOString(),
+      weight: m.weight ? parseFloat(m.weight) : null,
+      height: m.height ? parseFloat(m.height) : null,
+      waist: m.waist ? parseFloat(m.waist) : null,
+      abdomen: m.abdomen ? parseFloat(m.abdomen) : null,
+      hips: m.hips ? parseFloat(m.hips) : null,
+      thighRight: m.thighRight ? parseFloat(m.thighRight) : null,
+      thighLeft: m.thighLeft ? parseFloat(m.thighLeft) : null,
+      armRight: m.armRight ? parseFloat(m.armRight) : null,
+      armLeft: m.armLeft ? parseFloat(m.armLeft) : null,
+      calfRight: m.calfRight ? parseFloat(m.calfRight) : null,
+      calfLeft: m.calfLeft ? parseFloat(m.calfLeft) : null,
+      bodyFat: m.bodyFat ? parseFloat(m.bodyFat) : null,
+      celluliteGrade: m.celluliteGrade,
+      notes: m.notes,
+    }));
+
+    res.json({ eva: evaPoints, body: bodyIndicators, reab: reabIndicators, bodyMeasurements: bodyMeasurementsSeries });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Body Measurements CRUD ──────────────────────────────────────────────────
+const bodyMeasurementSchema = z.object({
+  measuredAt: z.string().optional().nullable(),
+  weight: z.number().positive().optional().nullable(),
+  height: z.number().positive().optional().nullable(),
+  waist: z.number().positive().optional().nullable(),
+  abdomen: z.number().positive().optional().nullable(),
+  hips: z.number().positive().optional().nullable(),
+  thighRight: z.number().positive().optional().nullable(),
+  thighLeft: z.number().positive().optional().nullable(),
+  armRight: z.number().positive().optional().nullable(),
+  armLeft: z.number().positive().optional().nullable(),
+  calfRight: z.number().positive().optional().nullable(),
+  calfLeft: z.number().positive().optional().nullable(),
+  bodyFat: z.number().min(0).max(100).optional().nullable(),
+  celluliteGrade: z.string().max(20).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+router.get("/body-measurements", requirePermission("medical.read"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const rows = await db
+      .select()
+      .from(bodyMeasurementsTable)
+      .where(eq(bodyMeasurementsTable.patientId, patientId))
+      .orderBy(desc(bodyMeasurementsTable.measuredAt));
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/body-measurements", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const patientId = parseInt(req.params.patientId);
+    const data = validateBody(bodyMeasurementSchema, req.body, res);
+    if (!data) return;
+    const measuredAt = data.measuredAt ? new Date(data.measuredAt) : new Date();
+    const [created] = await db.insert(bodyMeasurementsTable).values({
+      patientId,
+      measuredAt,
+      weight: data.weight?.toString() ?? null,
+      height: data.height?.toString() ?? null,
+      waist: data.waist?.toString() ?? null,
+      abdomen: data.abdomen?.toString() ?? null,
+      hips: data.hips?.toString() ?? null,
+      thighRight: data.thighRight?.toString() ?? null,
+      thighLeft: data.thighLeft?.toString() ?? null,
+      armRight: data.armRight?.toString() ?? null,
+      armLeft: data.armLeft?.toString() ?? null,
+      calfRight: data.calfRight?.toString() ?? null,
+      calfLeft: data.calfLeft?.toString() ?? null,
+      bodyFat: data.bodyFat?.toString() ?? null,
+      celluliteGrade: data.celluliteGrade ?? null,
+      notes: data.notes ?? null,
+    }).returning();
+    res.status(201).json(created);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.delete("/body-measurements/:measurementId", requirePermission("medical.write"), async (req: Request<P>, res) => {
+  try {
+    const id = parseInt(req.params.measurementId);
+    await db.delete(bodyMeasurementsTable).where(eq(bodyMeasurementsTable.id, id));
+    res.status(204).end();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
