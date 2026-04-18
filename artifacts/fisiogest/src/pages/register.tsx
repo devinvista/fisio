@@ -240,6 +240,51 @@ export default function Register() {
                 </button>
               ))}
             </div>
+
+            {/* Coupon field — right after plan selection */}
+            <div className="space-y-2 pt-1">
+              <Label htmlFor="coupon" className="flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-slate-400" />
+                Cupom de desconto
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="coupon"
+                  placeholder="Ex: FISIO30 ou INDICA-SILVA"
+                  value={couponCode}
+                  onChange={(e) => handleCouponChange(e.target.value)}
+                  className={cn(
+                    "h-12 rounded-xl pr-10 font-mono uppercase tracking-widest text-sm",
+                    couponState.status === "valid" && "border-emerald-400 bg-emerald-50/50 focus-visible:ring-emerald-300",
+                    couponState.status === "invalid" && "border-red-400 bg-red-50/50 focus-visible:ring-red-300"
+                  )}
+                  autoComplete="off"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {couponState.status === "loading" && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                  {couponState.status === "valid" && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                  {couponState.status === "invalid" && <XCircle className="w-4 h-4 text-red-400" />}
+                </div>
+              </div>
+
+              {couponState.status === "valid" && (
+                <div className="flex items-start gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold">{couponState.discountLabel} aplicado!</span>
+                    {couponState.description && (
+                      <span className="text-emerald-600 block">{couponState.description}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {couponState.status === "invalid" && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> {couponState.message}
+                </p>
+              )}
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
@@ -363,51 +408,6 @@ export default function Register() {
                 autoComplete="new-password"
                 className="h-12 rounded-xl"
               />
-            </div>
-
-            {/* Coupon field */}
-            <div className="space-y-2">
-              <Label htmlFor="coupon" className="flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-slate-400" />
-                Cupom de desconto
-                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="coupon"
-                  placeholder="Ex: FISIO30 ou INDICA-SILVA"
-                  value={couponCode}
-                  onChange={(e) => handleCouponChange(e.target.value)}
-                  className={cn(
-                    "h-12 rounded-xl pr-10 font-mono uppercase tracking-widest text-sm",
-                    couponState.status === "valid" && "border-emerald-400 bg-emerald-50/50 focus-visible:ring-emerald-300",
-                    couponState.status === "invalid" && "border-red-400 bg-red-50/50 focus-visible:ring-red-300"
-                  )}
-                  autoComplete="off"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {couponState.status === "loading" && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-                  {couponState.status === "valid" && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                  {couponState.status === "invalid" && <XCircle className="w-4 h-4 text-red-400" />}
-                </div>
-              </div>
-
-              {couponState.status === "valid" && (
-                <div className="flex items-start gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <span className="font-semibold">{couponState.discountLabel} aplicado!</span>
-                    {couponState.description && (
-                      <span className="text-emerald-600 block">{couponState.description}</span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {couponState.status === "invalid" && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
-                  <XCircle className="w-3 h-3" /> {couponState.message}
-                </p>
-              )}
             </div>
 
             <Button
