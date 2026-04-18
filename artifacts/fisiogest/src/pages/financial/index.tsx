@@ -288,8 +288,8 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
     return sorted.filter((r) => r.type === typeFilter);
   }, [rawRecords, typeFilter]);
 
-  const totalReceitas = useMemo(() => records.filter((r) => r.type === "receita").reduce((s, r) => s + Number(r.amount), 0), [records]);
-  const totalDespesas = useMemo(() => records.filter((r) => r.type === "despesa").reduce((s, r) => s + Number(r.amount), 0), [records]);
+  const totalReceitas = useMemo(() => records.filter((r) => r.type === "receita" && (r as any).status !== "cancelado" && (r as any).status !== "estornado" && (r as any).transactionType !== "pendenteFatura").reduce((s, r) => s + Number(r.amount), 0), [records]);
+  const totalDespesas = useMemo(() => records.filter((r) => r.type === "despesa" && (r as any).status !== "cancelado" && (r as any).status !== "estornado").reduce((s, r) => s + Number(r.amount), 0), [records]);
 
   const pieData = useMemo(() => {
     const cats = dashboard?.revenueByCategory ?? [];
@@ -823,16 +823,28 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
                           {record.description}
                         </td>
                         <td className="py-3.5 px-5 hidden md:table-cell">
-                          {rec.procedureName ? (
-                            <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                              <Link2 className="w-3 h-3" />
-                              {rec.procedureName}
-                            </span>
-                          ) : record.category ? (
-                            <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
-                              {record.category}
-                            </span>
-                          ) : <span className="text-xs text-slate-300">—</span>}
+                          <div className="flex flex-col gap-1">
+                            {rec.transactionType === "faturaConsolidada" && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide w-fit">
+                                Fatura Consolidada
+                              </span>
+                            )}
+                            {rec.transactionType === "pendenteFatura" && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide w-fit">
+                                Sessão (Pendente Fatura)
+                              </span>
+                            )}
+                            {rec.procedureName ? (
+                              <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium w-fit">
+                                <Link2 className="w-3 h-3" />
+                                {rec.procedureName}
+                              </span>
+                            ) : record.category ? (
+                              <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full w-fit">
+                                {record.category}
+                              </span>
+                            ) : !rec.transactionType && <span className="text-xs text-slate-300">—</span>}
+                          </div>
                         </td>
                         <td className="py-3.5 px-5 hidden lg:table-cell">
                           {rec.paymentMethod ? (
@@ -1199,9 +1211,9 @@ function OrcadoRealizadoTab({ month, year }: { month: number; year: number }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {variance.revenueVariancePct !== undefined && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${variance.revenueVariancePct >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                  {variance.revenueVariancePct >= 0 ? "+" : ""}{variance.revenueVariancePct?.toFixed(1)}% vs orçado
+              {variance.revenuePct !== undefined && (
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${variance.revenuePct >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                  {variance.revenuePct >= 0 ? "+" : ""}{variance.revenuePct?.toFixed(1)}% vs orçado
                 </span>
               )}
             </div>
@@ -1238,9 +1250,9 @@ function OrcadoRealizadoTab({ month, year }: { month: number; year: number }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {variance.expenseVariancePct !== undefined && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${variance.expenseVariancePct <= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                  {variance.expenseVariancePct >= 0 ? "+" : ""}{variance.expenseVariancePct?.toFixed(1)}% vs orçado
+              {variance.expensesPct !== undefined && (
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${variance.expensesPct <= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                  {variance.expensesPct >= 0 ? "+" : ""}{variance.expensesPct?.toFixed(1)}% vs orçado
                 </span>
               )}
             </div>
@@ -1332,7 +1344,7 @@ function DreTab({ month, year }: { month: number; year: number }) {
 
   const est = data?.estimated ?? {};
   const cur = data?.current ?? {};
-  const prev = data?.previousMonth ?? {};
+  const prev = data?.previous ?? {};
   const variance = data?.variance ?? {};
 
   function ChangeChip({ value, inverted }: { value: number; inverted?: boolean }) {
