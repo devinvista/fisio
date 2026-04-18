@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable, patientWalletTable, patientWalletTransactionsTable, patientPackagesTable } from "@workspace/db";
+import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable, patientWalletTable, patientWalletTransactionsTable, patientPackagesTable, packagesTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, ne, gt, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -95,6 +95,17 @@ function addDaysToDate(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function monthRangeFromDate(dateStr: string): { startDate: string; endDate: string } {
+  const d = new Date(dateStr + "T12:00:00Z");
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    startDate: `${year}-${String(month).padStart(2, "0")}-01`,
+    endDate: `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 async function getWithDetails(id: number, clinicId?: number | null) {
   const conditions: any[] = [eq(appointmentsTable.id, id)];
   if (clinicId) conditions.push(eq(appointmentsTable.clinicId, clinicId));
@@ -110,6 +121,66 @@ async function getWithDetails(id: number, clinicId?: number | null) {
   if (!result[0]) return null;
   const { appointment, patient, procedure } = result[0];
   return { ...appointment, patient, procedure };
+}
+
+async function resolveMonthlyPackageCreditPolicy(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  patientId: number,
+  procedureId: number,
+  clinicId?: number | null
+): Promise<{ patientPackageId: number | null; absenceCreditLimit: number | null }> {
+  const conditions: any[] = [
+    eq(patientPackagesTable.patientId, patientId),
+    eq(patientPackagesTable.procedureId, procedureId),
+    eq(packagesTable.packageType, "mensal"),
+  ];
+  if (clinicId) conditions.push(eq(patientPackagesTable.clinicId, clinicId));
+
+  const [patientPackage] = await tx
+    .select({
+      id: patientPackagesTable.id,
+      absenceCreditLimit: packagesTable.absenceCreditLimit,
+    })
+    .from(patientPackagesTable)
+    .innerJoin(packagesTable, eq(patientPackagesTable.packageId, packagesTable.id))
+    .where(and(...conditions))
+    .orderBy(desc(patientPackagesTable.createdAt))
+    .limit(1);
+
+  if (!patientPackage) {
+    return { patientPackageId: null, absenceCreditLimit: null };
+  }
+
+  return {
+    patientPackageId: patientPackage.id,
+    absenceCreditLimit: Number(patientPackage.absenceCreditLimit ?? 0),
+  };
+}
+
+async function countAbsenceCreditsInMonth(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  patientId: number,
+  procedureId: number,
+  startDate: string,
+  endDate: string,
+  clinicId?: number | null
+): Promise<number> {
+  const conditions: any[] = [
+    eq(sessionCreditsTable.patientId, patientId),
+    eq(sessionCreditsTable.procedureId, procedureId),
+    gt(sessionCreditsTable.quantity, 0),
+    sql`${sessionCreditsTable.sourceAppointmentId} IS NOT NULL`,
+    sql`${sessionCreditsTable.createdAt} >= ${startDate}::date`,
+    sql`${sessionCreditsTable.createdAt} < (${endDate}::date + interval '1 day')`,
+  ];
+  if (clinicId) conditions.push(eq(sessionCreditsTable.clinicId, clinicId));
+
+  const [row] = await tx
+    .select({ total: sql<number>`count(*)` })
+    .from(sessionCreditsTable)
+    .where(and(...conditions));
+
+  return Number(row?.total ?? 0);
 }
 
 // ─── Billing rules ────────────────────────────────────────────────────────────
@@ -136,6 +207,7 @@ async function applyBillingRules(
 
   const confirmedStatuses = ["compareceu", "concluido"];
   const canceledStatuses = ["cancelado"];
+  const absenceCreditStatuses = ["cancelado", "faltou"];
 
   const resolvedClinicId = clinicId ?? details.clinicId ?? null;
 
@@ -464,10 +536,49 @@ async function applyBillingRules(
     }
   }
 
-  // ── BILLING: cancellation on monthly plan → generate session credit ─────────
-  if (canceledStatuses.includes(newStatus) && !canceledStatuses.includes(oldStatus) && !confirmedStatuses.includes(oldStatus)) {
+  // ── BILLING: absence/cancellation on monthly plan → generate limited session credit ─────────
+  if (absenceCreditStatuses.includes(newStatus) && !absenceCreditStatuses.includes(oldStatus) && !confirmedStatuses.includes(oldStatus)) {
     if (billingType === "mensal") {
       await db.transaction(async (tx) => {
+        const { patientPackageId, absenceCreditLimit } = await resolveMonthlyPackageCreditPolicy(tx, patientId, procedureId, resolvedClinicId);
+        if (absenceCreditLimit !== null) {
+          if (absenceCreditLimit <= 0) {
+            await tx.insert(financialRecordsTable).values({
+              type:            "receita",
+              amount:          "0",
+              description:     `Crédito não gerado — limite de faltas zerado — ${procedure.name} - ${patientName}`,
+              category:        procedure.category,
+              appointmentId,
+              patientId,
+              procedureId,
+              transactionType: "creditoSessao",
+              status:          "cancelado",
+              dueDate:         today,
+              clinicId:        resolvedClinicId,
+            });
+            return;
+          }
+
+          const { startDate, endDate } = monthRangeFromDate(appointmentDate);
+          const alreadyGranted = await countAbsenceCreditsInMonth(tx, patientId, procedureId, startDate, endDate, resolvedClinicId);
+          if (alreadyGranted >= absenceCreditLimit) {
+            await tx.insert(financialRecordsTable).values({
+              type:            "receita",
+              amount:          "0",
+              description:     `Crédito não gerado — limite mensal de ${absenceCreditLimit} falta(s) atingido — ${procedure.name} - ${patientName}`,
+              category:        procedure.category,
+              appointmentId,
+              patientId,
+              procedureId,
+              transactionType: "creditoSessao",
+              status:          "cancelado",
+              dueDate:         today,
+              clinicId:        resolvedClinicId,
+            });
+            return;
+          }
+        }
+
         await tx
           .insert(sessionCreditsTable)
           .values({
@@ -476,14 +587,15 @@ async function applyBillingRules(
             quantity: 1,
             usedQuantity: 0,
             sourceAppointmentId: appointmentId,
+            patientPackageId,
             clinicId: resolvedClinicId,
-            notes: `Crédito por cancelamento — ${procedure.name}`,
+            notes: `Crédito por ${newStatus === "faltou" ? "falta" : "cancelamento"} — ${procedure.name}`,
           });
 
         await tx.insert(financialRecordsTable).values({
           type:            "receita",
           amount:          "0",
-          description:     `Crédito de sessão gerado — ${procedure.name} - ${patientName}`,
+            description:     `Crédito de sessão gerado por ${newStatus === "faltou" ? "falta" : "cancelamento"} — ${procedure.name} - ${patientName}`,
           category:        procedure.category,
           appointmentId,
           patientId,
@@ -509,6 +621,40 @@ async function applyBillingRules(
           eq(financialRecordsTable.status, "pendente")
         )
       );
+  }
+
+  // ── ROLLBACK: absence/cancellation → active state → remove available absence credit ───────────
+  if (["agendado", "remarcado"].includes(newStatus) && absenceCreditStatuses.includes(oldStatus)) {
+    await db.transaction(async (tx) => {
+      const [credit] = await tx
+        .select()
+        .from(sessionCreditsTable)
+        .where(
+          and(
+            eq(sessionCreditsTable.sourceAppointmentId, appointmentId),
+            eq(sessionCreditsTable.patientId, patientId),
+            eq(sessionCreditsTable.procedureId, procedureId)
+          )
+        )
+        .limit(1);
+
+      if (credit) {
+        await tx
+          .update(sessionCreditsTable)
+          .set({ quantity: credit.usedQuantity })
+          .where(eq(sessionCreditsTable.id, credit.id));
+      }
+
+      await tx
+        .update(financialRecordsTable)
+        .set({ status: "cancelado" })
+        .where(
+          and(
+            eq(financialRecordsTable.appointmentId, appointmentId),
+            eq(financialRecordsTable.transactionType, "creditoSessao")
+          )
+        );
+    });
   }
 }
 

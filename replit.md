@@ -65,6 +65,8 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefat
 - Tipos de pacote: `sessoes`, `mensal`, `faturaConsolidada`.
 - Pacotes por sessão criam créditos em `session_credits` vinculados ao `patient_package_id`; o consumo de consulta usa `session_credits` e atualiza `patient_packages.used_sessions` junto.
 - Mensalidades criam assinatura `patient_subscriptions` e geram créditos quando a cobrança mensal é marcada como paga. A quantidade padrão é `sessions_per_week * 4`.
+- `absence_credit_limit` limita quantos créditos de ausência/cancelamento podem ser gerados por mês em pacotes mensais. Limite `0` bloqueia créditos automáticos.
+- `next_billing_date` é preenchido na criação de assinaturas, tanto pela contratação de pacote quanto pela criação direta de assinatura.
 - Fatura consolidada é um produto real na UI: atendimentos concluídos geram lançamentos `pendenteFatura`, e o job mensal cria uma única `faturaConsolidada`.
 
 ---

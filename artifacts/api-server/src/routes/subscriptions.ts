@@ -15,6 +15,19 @@ import { runBilling } from "../services/billingService.js";
 const router = Router();
 router.use(authMiddleware);
 
+function calcInitialNextBillingDate(startDate: string, billingDay: number): string {
+  const start = new Date(startDate + "T12:00:00Z");
+  const year = start.getUTCFullYear();
+  const month = start.getUTCMonth() + 1;
+  const startDay = start.getUTCDate();
+  const targetMonth = billingDay >= startDay ? month : month + 1;
+  const targetYear = targetMonth > 12 ? year + 1 : year;
+  const normalizedMonth = targetMonth > 12 ? 1 : targetMonth;
+  const lastDay = new Date(targetYear, normalizedMonth, 0).getDate();
+  const day = Math.min(billingDay, lastDay);
+  return `${targetYear}-${String(normalizedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 router.get("/", requirePermission("financial.read"), async (req, res) => {
   try {
     const authReq = req as AuthRequest;
@@ -79,6 +92,7 @@ router.post("/", requirePermission("financial.write"), async (req, res) => {
         status: "ativa",
         notes: notes || null,
         clinicId: authReq.clinicId ?? null,
+        nextBillingDate: calcInitialNextBillingDate(startDate, day),
       })
       .returning();
 
