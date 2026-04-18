@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable, patientWalletTable, patientWalletTransactionsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql, ne, gt } from "drizzle-orm";
+import { appointmentsTable, patientsTable, proceduresTable, procedureCostsTable, financialRecordsTable, blockedSlotsTable, patientSubscriptionsTable, sessionCreditsTable, schedulesTable, clinicsTable, patientWalletTable, patientWalletTransactionsTable, patientPackagesTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, ne, gt, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
@@ -232,10 +232,25 @@ async function applyBillingRules(
             .set({ usedQuantity: credit.usedQuantity + 1 })
             .where(eq(sessionCreditsTable.id, credit.id));
 
+          if (credit.patientPackageId) {
+            const [patientPackage] = await tx
+              .select({ usedSessions: patientPackagesTable.usedSessions, totalSessions: patientPackagesTable.totalSessions })
+              .from(patientPackagesTable)
+              .where(eq(patientPackagesTable.id, credit.patientPackageId))
+              .limit(1);
+
+            if (patientPackage && patientPackage.usedSessions < patientPackage.totalSessions) {
+              await tx
+                .update(patientPackagesTable)
+                .set({ usedSessions: patientPackage.usedSessions + 1 })
+                .where(eq(patientPackagesTable.id, credit.patientPackageId));
+            }
+          }
+
           await tx.insert(financialRecordsTable).values({
             type:            "receita",
             amount:          "0",
-            description:     `Uso de crédito — ${procedure.name} - ${patientName}`,
+            description:     `Uso de crédito #${credit.id} — ${procedure.name} - ${patientName}`,
             category:        procedure.category,
             appointmentId,
             patientId,
@@ -390,6 +405,62 @@ async function applyBillingRules(
           .set({ status: "estornado" })
           .where(eq(financialRecordsTable.id, fr.id));
       }
+    }
+
+    const creditUsage = await db
+      .select()
+      .from(financialRecordsTable)
+      .where(
+        and(
+          eq(financialRecordsTable.appointmentId, appointmentId),
+          eq(financialRecordsTable.transactionType, "usoCredito"),
+          eq(financialRecordsTable.status, "pago")
+        )
+      )
+      .limit(1);
+
+    if (creditUsage.length > 0) {
+      await db.transaction(async (tx) => {
+        const [credit] = await tx
+          .select()
+          .from(sessionCreditsTable)
+          .where(
+            and(
+              eq(sessionCreditsTable.patientId, patientId),
+              eq(sessionCreditsTable.procedureId, procedureId),
+              gt(sessionCreditsTable.usedQuantity, 0)
+            )
+          )
+          .orderBy(desc(sessionCreditsTable.createdAt))
+          .limit(1);
+
+        if (credit) {
+          await tx
+            .update(sessionCreditsTable)
+            .set({ usedQuantity: Math.max(0, credit.usedQuantity - 1) })
+            .where(eq(sessionCreditsTable.id, credit.id));
+
+          if (credit.patientPackageId) {
+            const [patientPackage] = await tx
+              .select({ usedSessions: patientPackagesTable.usedSessions })
+              .from(patientPackagesTable)
+              .where(eq(patientPackagesTable.id, credit.patientPackageId))
+              .limit(1);
+
+            if (patientPackage && patientPackage.usedSessions > 0) {
+              await tx
+                .update(patientPackagesTable)
+                .set({ usedSessions: patientPackage.usedSessions - 1 })
+                .where(eq(patientPackagesTable.id, credit.patientPackageId));
+            }
+          }
+        }
+
+        await tx
+          .update(financialRecordsTable)
+          .set({ status: "estornado" })
+          .where(eq(financialRecordsTable.id, creditUsage[0].id));
+      });
     }
   }
 

@@ -7,7 +7,7 @@ import { requirePermission } from "../middleware/rbac.js";
 import { validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
-const packageTypeEnum = z.enum(["sessoes", "mensal"]);
+const packageTypeEnum = z.enum(["sessoes", "mensal", "faturaConsolidada"]);
 
 const createPackageSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(200),
@@ -23,8 +23,8 @@ const createPackageSchema = z.object({
   absenceCreditLimit: z.union([z.number().int().min(0), z.string().transform(Number)]).optional().default(0),
 }).refine(d => d.packageType !== "sessoes" || (d.totalSessions != null && Number(d.totalSessions) > 0), {
   message: "totalSessions é obrigatório para pacotes por sessão",
-}).refine(d => d.packageType !== "mensal" || (d.monthlyPrice != null && d.billingDay != null), {
-  message: "monthlyPrice e billingDay são obrigatórios para pacotes mensais",
+}).refine(d => !["mensal", "faturaConsolidada"].includes(d.packageType) || (d.monthlyPrice != null && d.billingDay != null), {
+  message: "monthlyPrice e billingDay são obrigatórios para mensalidade ou fatura consolidada",
 });
 
 const updatePackageSchema = z.object({

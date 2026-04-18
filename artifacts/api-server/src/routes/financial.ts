@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable, procedureCostsTable, schedulesTable, recurringExpensesTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or, count } from "drizzle-orm";
+import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable, procedureCostsTable, schedulesTable, recurringExpensesTable, patientPackagesTable } from "@workspace/db";
+import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or, count, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
@@ -64,6 +64,31 @@ async function assertPatientInClinic(patientId: number, req: AuthRequest): Promi
     .from(patientsTable)
     .where(and(eq(patientsTable.id, patientId), eq(patientsTable.clinicId, req.clinicId)));
   return !!p;
+}
+
+function monthlyCreditQuantity(sessionsPerWeek?: number | null): number {
+  return Math.max(1, Number(sessionsPerWeek ?? 1) * 4);
+}
+
+async function resolvePackageForSubscription(sub: typeof patientSubscriptionsTable.$inferSelect, clinicId?: number | null) {
+  const conditions = [
+    eq(patientPackagesTable.patientId, sub.patientId),
+    eq(patientPackagesTable.procedureId, sub.procedureId),
+  ];
+  const resolvedClinicId = sub.clinicId ?? clinicId;
+  if (resolvedClinicId) conditions.push(eq(patientPackagesTable.clinicId, resolvedClinicId));
+
+  const [patientPackage] = await db
+    .select({
+      id: patientPackagesTable.id,
+      sessionsPerWeek: patientPackagesTable.sessionsPerWeek,
+    })
+    .from(patientPackagesTable)
+    .where(and(...conditions))
+    .orderBy(desc(patientPackagesTable.createdAt))
+    .limit(1);
+
+  return patientPackage ?? null;
 }
 
 const router = Router();
@@ -624,17 +649,20 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
           .from(patientSubscriptionsTable)
           .where(eq(patientSubscriptionsTable.id, existing.subscriptionId));
 
-        if (sub) {
+        if (sub && sub.subscriptionType !== "faturaConsolidada" && existing.transactionType !== "faturaConsolidada") {
+          const patientPackage = await resolvePackageForSubscription(sub, req.clinicId);
+          const quantity = monthlyCreditQuantity(patientPackage?.sessionsPerWeek);
           await db.insert(sessionCreditsTable).values({
             patientId: sub.patientId,
             procedureId: sub.procedureId,
-            quantity: 1,
+            quantity,
             usedQuantity: 0,
+            patientPackageId: patientPackage?.id ?? null,
             clinicId: sub.clinicId ?? req.clinicId ?? null,
-            notes: `Crédito gerado automaticamente — mensalidade #${record.id} paga`,
+            notes: `Créditos gerados automaticamente — mensalidade #${record.id} paga (${quantity} sessão${quantity === 1 ? "" : "ões"})`,
           });
           console.log(
-            `[session-credit] Crédito gerado para paciente #${sub.patientId} / procedimento #${sub.procedureId} — registro financeiro #${record.id}`
+            `[session-credit] ${quantity} crédito(s) gerado(s) para paciente #${sub.patientId} / procedimento #${sub.procedureId} — registro financeiro #${record.id}`
           );
         }
       } catch (creditErr) {

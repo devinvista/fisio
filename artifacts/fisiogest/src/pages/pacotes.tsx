@@ -40,12 +40,12 @@ import {
   CalendarDays,
   Clock,
   Layers,
-  TrendingUp,
   User,
   Users,
   RefreshCw,
   AlertCircle,
   Info,
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ interface PackageItem {
   procedureModalidade: string;
   procedureDurationMinutes: number;
   procedurePricePerSession: string | number;
-  packageType: "sessoes" | "mensal";
+  packageType: "sessoes" | "mensal" | "faturaConsolidada";
   totalSessions?: number | null;
   sessionsPerWeek: number;
   validityDays?: number | null;
@@ -127,7 +127,7 @@ const EMPTY_FORM = {
   name: "",
   description: "",
   procedureId: "",
-  packageType: "sessoes" as "sessoes" | "mensal",
+  packageType: "sessoes" as "sessoes" | "mensal" | "faturaConsolidada",
   totalSessions: 8,
   sessionsPerWeek: 2,
   validityDays: 30,
@@ -144,7 +144,7 @@ export default function Pacotes() {
   const isAdmin = hasRole("admin");
 
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "sessoes" | "mensal">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "sessoes" | "mensal" | "faturaConsolidada">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<PackageItem | null>(null);
   const [deletingPackage, setDeletingPackage] = useState<PackageItem | null>(null);
@@ -278,8 +278,8 @@ export default function Pacotes() {
       toast({ title: "Informe o preço total do pacote", variant: "destructive" });
       return;
     }
-    if (form.packageType === "mensal" && !form.monthlyPrice) {
-      toast({ title: "Informe o valor mensal", variant: "destructive" });
+    if (form.packageType !== "sessoes" && !form.monthlyPrice) {
+      toast({ title: "Informe o valor da cobrança", variant: "destructive" });
       return;
     }
     if (editingPackage) {
@@ -309,10 +309,9 @@ export default function Pacotes() {
     ? Number(form.monthlyPrice) / mensal_sessoesMes
     : null;
 
-  const sessoesPkg = typeFilter === "sessoes" || typeFilter === "all"
-    ? packages.filter(p => p.packageType === "sessoes").length : 0;
-  const mensaisPkg = typeFilter === "mensal" || typeFilter === "all"
-    ? packages.filter(p => p.packageType === "mensal").length : 0;
+  const sessoesPkg = packages.filter(p => p.packageType === "sessoes").length;
+  const mensaisPkg = packages.filter(p => p.packageType === "mensal").length;
+  const faturasPkg = packages.filter(p => p.packageType === "faturaConsolidada").length;
 
   return (
     <AppLayout title="Pacotes">
@@ -362,16 +361,12 @@ export default function Pacotes() {
             </div>
           </div>
           <div className="bg-card border rounded-xl p-4 flex items-center gap-3">
-            <div className="bg-amber-100 p-2.5 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-amber-600" />
+            <div className="bg-violet-100 p-2.5 rounded-lg">
+              <FileText className="h-5 w-5 text-violet-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold">
-                {packages.length > 0
-                  ? formatCurrency(packages.reduce((a, p) => a + Number(p.packageType === "mensal" ? p.monthlyPrice ?? p.price : p.price), 0) / packages.length)
-                  : "R$ 0"}
-              </p>
-              <p className="text-xs text-muted-foreground">Ticket médio</p>
+              <p className="text-2xl font-bold">{faturasPkg}</p>
+              <p className="text-xs text-muted-foreground">Faturas</p>
             </div>
           </div>
         </div>
@@ -392,6 +387,7 @@ export default function Pacotes() {
               { v: "all", label: "Todos" },
               { v: "sessoes", label: "Por Sessões" },
               { v: "mensal", label: "Mensalidade" },
+              { v: "faturaConsolidada", label: `Fatura (${faturasPkg})` },
             ] as const).map(opt => (
               <button
                 key={opt.v}
@@ -432,6 +428,7 @@ export default function Pacotes() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((pkg) => {
               const isMensal = pkg.packageType === "mensal";
+              const isFatura = pkg.packageType === "faturaConsolidada";
               const ModalIcon = MODALIDADE_CONFIG[pkg.procedureModalidade]?.icon ?? User;
               const modalidadeLabel = MODALIDADE_CONFIG[pkg.procedureModalidade]?.label ?? pkg.procedureModalidade;
               const pps = isMensal
@@ -448,9 +445,9 @@ export default function Pacotes() {
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className={cn(
                           "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                          isMensal ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                          isFatura ? "bg-violet-100 text-violet-700" : isMensal ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
                         )}>
-                          {isMensal ? "Mensal" : "Sessões"}
+                          {isFatura ? "Fatura" : isMensal ? "Mensal" : "Sessões"}
                         </span>
                         {!pkg.isActive && <Badge variant="secondary" className="text-[10px]">Inativo</Badge>}
                       </div>
@@ -484,17 +481,17 @@ export default function Pacotes() {
                     <span className="text-muted-foreground"> ({pkg.procedureDurationMinutes} min)</span>
                   </p>
 
-                  {isMensal ? (
+                  {isMensal || isFatura ? (
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="bg-muted/50 rounded-lg p-2">
-                        <CalendarDays className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
-                        <p className="text-base font-bold">{pkg.sessionsPerWeek}x</p>
-                        <p className="text-[10px] text-muted-foreground">por semana</p>
+                        {isFatura ? <FileText className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" /> : <CalendarDays className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />}
+                        <p className="text-base font-bold">{isFatura ? "uso" : `${pkg.sessionsPerWeek}x`}</p>
+                        <p className="text-[10px] text-muted-foreground">{isFatura ? "por sessão" : "por semana"}</p>
                       </div>
                       <div className="bg-muted/50 rounded-lg p-2">
                         <AlertCircle className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
-                        <p className="text-base font-bold">{pkg.absenceCreditLimit}</p>
-                        <p className="text-[10px] text-muted-foreground">faltas/mês</p>
+                        <p className="text-base font-bold">{isFatura ? "fim" : pkg.absenceCreditLimit}</p>
+                        <p className="text-[10px] text-muted-foreground">{isFatura ? "do ciclo" : "faltas/mês"}</p>
                       </div>
                       <div className="bg-muted/50 rounded-lg p-2">
                         <Clock className="h-3 w-3 mx-auto mb-0.5 text-muted-foreground" />
@@ -527,7 +524,7 @@ export default function Pacotes() {
                       <p className="text-xl font-bold">
                         {isMensal ? formatCurrency(pkg.monthlyPrice) : formatCurrency(pkg.price)}
                         <span className="text-xs font-normal text-muted-foreground ml-1">
-                          {isMensal ? "/mês" : "total"}
+                          {isFatura ? "/sessão" : isMensal ? "/mês" : "total"}
                         </span>
                       </p>
                       {pps !== null && (
@@ -604,7 +601,7 @@ export default function Pacotes() {
             {/* Tipo do pacote */}
             <div className="space-y-2">
               <Label>Tipo de pacote *</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {([
                   {
                     v: "sessoes",
@@ -616,9 +613,16 @@ export default function Pacotes() {
                   {
                     v: "mensal",
                     label: "Mensalidade",
-                    desc: "Cobrança mensal fixa com crédito para faltas",
+                    desc: "Cobrança fixa; gera créditos após pagamento",
                     icon: RefreshCw,
                     color: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                  },
+                  {
+                    v: "faturaConsolidada",
+                    label: "Fatura consolidada",
+                    desc: "Sessões acumulam e viram uma fatura mensal",
+                    icon: FileText,
+                    color: "border-violet-300 bg-violet-50 text-violet-700",
                   },
                 ] as const).map((opt) => {
                   const Icon = opt.icon;
@@ -700,13 +704,14 @@ export default function Pacotes() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
-                  <RefreshCw className="h-3.5 w-3.5" /> Configurações da Mensalidade
+              <div className={cn("space-y-4 p-4 rounded-xl border", form.packageType === "mensal" ? "bg-emerald-50/50 border-emerald-100" : "bg-violet-50/50 border-violet-100")}>
+                <p className={cn("text-xs font-semibold flex items-center gap-1.5", form.packageType === "mensal" ? "text-emerald-700" : "text-violet-700")}>
+                  {form.packageType === "mensal" ? <RefreshCw className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                  {form.packageType === "mensal" ? "Configurações da Mensalidade" : "Configurações da Fatura Consolidada"}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Valor mensal (R$) *</Label>
+                    <Label>{form.packageType === "mensal" ? "Valor mensal (R$) *" : "Valor por sessão (R$) *"}</Label>
                     <Input
                       type="number" min={0} step={0.01} placeholder="0,00"
                       value={form.monthlyPrice}
@@ -722,7 +727,7 @@ export default function Pacotes() {
                     />
                   </div>
                 </div>
-                <div className="space-y-1.5">
+                {form.packageType === "mensal" && <div className="space-y-1.5">
                   <Label className="flex items-center gap-1.5">
                     Limite de faltas creditadas por mês
                     <span className="text-[10px] text-muted-foreground font-normal">(faltas acima deste limite não são creditadas)</span>
@@ -748,7 +753,13 @@ export default function Pacotes() {
                       Até {form.absenceCreditLimit} falta(s) por mês geram crédito de sessão para o próximo mês. Faltas adicionais não geram crédito.
                     </p>
                   )}
-                </div>
+                </div>}
+                {form.packageType === "faturaConsolidada" && (
+                  <p className="text-[10px] text-violet-700 bg-violet-50 rounded-lg p-2 flex gap-1.5">
+                    <Info className="h-3 w-3 shrink-0 mt-0.5" />
+                    As sessões concluídas não geram cobrança imediata; elas ficam pendentes e são somadas em uma fatura no dia de cobrança.
+                  </p>
+                )}
               </div>
             )}
 
@@ -783,7 +794,7 @@ export default function Pacotes() {
                       </div>
                     )}
                   </>
-                ) : (
+                ) : form.packageType === "mensal" ? (
                   <>
                     {mensal_sessoesMes !== null && (
                       <div className="flex justify-between">
@@ -813,6 +824,20 @@ export default function Pacotes() {
                         </span>
                       </div>
                     )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Valor que entra na fatura por sessão:</span>
+                      <span className="font-semibold">{formatCurrency(form.monthlyPrice || selectedProcedure.price)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Dia de fechamento/cobrança:</span>
+                      <span className="font-semibold">dia {form.billingDay}</span>
+                    </div>
+                    <div className="text-[10px] text-violet-700 bg-violet-50 rounded-lg p-2">
+                      Atendimento concluído entra como pendente de fatura, e o job mensal consolida tudo em uma cobrança única.
+                    </div>
                   </>
                 )}
               </div>

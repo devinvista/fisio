@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable } from "@workspace/db";
+import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable, sessionCreditsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -35,6 +35,19 @@ const updatePatientPackageSchema = z.object({
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
+
+function calcNextBillingDate(startDate: string, billingDay: number): string {
+  const start = new Date(startDate + "T12:00:00Z");
+  const year = start.getUTCFullYear();
+  const month = start.getUTCMonth() + 1;
+  const startDay = start.getUTCDate();
+  const targetMonth = billingDay >= startDay ? month : month + 1;
+  const targetYear = targetMonth > 12 ? year + 1 : year;
+  const normalizedMonth = targetMonth > 12 ? 1 : targetMonth;
+  const lastDay = new Date(targetYear, normalizedMonth, 0).getDate();
+  const day = Math.min(billingDay, lastDay);
+  return `${targetYear}-${String(normalizedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 router.get("/", requirePermission("patients.read"), async (req: AuthRequest, res) => {
   try {
@@ -139,6 +152,18 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
       })
       .returning();
 
+    if (!pkg || pkg.packageType === "sessoes") {
+      await db.insert(sessionCreditsTable).values({
+        patientId: resolvedPatientId,
+        procedureId: Number(procedureId),
+        quantity: Number(totalSessions),
+        usedQuantity: 0,
+        patientPackageId: pp.id,
+        clinicId: req.clinicId ?? null,
+        notes: `Créditos gerados a partir do pacote: ${name}`,
+      });
+    }
+
     // Auto-create subscription for mensal and faturaConsolidada packages
     let subscription: typeof patientSubscriptionsTable.$inferSelect | null = null;
 
@@ -160,6 +185,7 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
           subscriptionType,
           clinicId: req.clinicId ?? null,
           notes: `Gerada automaticamente a partir do pacote: ${name}`,
+          nextBillingDate: calcNextBillingDate(startDate, day),
         })
         .returning();
 
