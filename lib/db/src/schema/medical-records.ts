@@ -8,6 +8,11 @@ import { appointmentsTable } from "./appointments";
 export const anamnesisTable = pgTable("anamnesis", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().unique().references(() => patientsTable.id),
+
+  // Template selector
+  templateType: text("template_type").default("reabilitacao"),
+
+  // ── Shared fields (all templates) ──
   mainComplaint: text("main_complaint"),
   diseaseHistory: text("disease_history"),
   medicalHistory: text("medical_history"),
@@ -26,6 +31,36 @@ export const anamnesisTable = pgTable("anamnesis", {
   patientGoals: text("patient_goals"),
   previousTreatments: text("previous_treatments"),
   tobaccoAlcohol: text("tobacco_alcohol"),
+
+  // ── Estética Facial fields ──
+  phototype: text("phototype"),
+  skinType: text("skin_type"),
+  skinConditions: text("skin_conditions"),
+  sunExposure: text("sun_exposure"),
+  sunProtector: text("sun_protector"),
+  currentSkincareRoutine: text("current_skincare_routine"),
+  previousAestheticTreatments: text("previous_aesthetic_treatments"),
+  aestheticReactions: text("aesthetic_reactions"),
+  facialSurgeries: text("facial_surgeries"),
+  sensitizingMedications: text("sensitizing_medications"),
+  skinContraindications: text("skin_contraindications"),
+  aestheticGoalDetails: text("aesthetic_goal_details"),
+
+  // ── Estética Corporal fields ──
+  mainBodyConcern: text("main_body_concern"),
+  bodyConcernRegions: text("body_concern_regions"),
+  celluliteGrade: text("cellulite_grade"),
+  bodyWeight: text("body_weight"),
+  bodyHeight: text("body_height"),
+  bodyMeasurements: text("body_measurements"),
+  physicalActivityLevel: text("physical_activity_level"),
+  physicalActivityType: text("physical_activity_type"),
+  waterIntake: text("water_intake"),
+  dietHabits: text("diet_habits"),
+  bodyMedicalConditions: text("body_medical_conditions"),
+  bodyContraindications: text("body_contraindications"),
+  previousBodyTreatments: text("previous_body_treatments"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

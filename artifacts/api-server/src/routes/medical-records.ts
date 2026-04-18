@@ -22,6 +22,8 @@ import { validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
 
 const anamnesisSchema = z.object({
+  templateType: z.enum(["reabilitacao", "esteticaFacial", "esteticaCorporal"]).optional().nullable(),
+  // Shared fields
   mainComplaint: z.string().max(2000).optional().nullable(),
   diseaseHistory: z.string().max(5000).optional().nullable(),
   medicalHistory: z.string().max(5000).optional().nullable(),
@@ -40,6 +42,33 @@ const anamnesisSchema = z.object({
   patientGoals: z.string().max(2000).optional().nullable(),
   previousTreatments: z.string().max(5000).optional().nullable(),
   tobaccoAlcohol: z.string().max(2000).optional().nullable(),
+  // Estética Facial fields
+  phototype: z.string().max(100).optional().nullable(),
+  skinType: z.string().max(100).optional().nullable(),
+  skinConditions: z.string().max(2000).optional().nullable(),
+  sunExposure: z.string().max(100).optional().nullable(),
+  sunProtector: z.string().max(100).optional().nullable(),
+  currentSkincareRoutine: z.string().max(2000).optional().nullable(),
+  previousAestheticTreatments: z.string().max(2000).optional().nullable(),
+  aestheticReactions: z.string().max(2000).optional().nullable(),
+  facialSurgeries: z.string().max(2000).optional().nullable(),
+  sensitizingMedications: z.string().max(2000).optional().nullable(),
+  skinContraindications: z.string().max(2000).optional().nullable(),
+  aestheticGoalDetails: z.string().max(2000).optional().nullable(),
+  // Estética Corporal fields
+  mainBodyConcern: z.string().max(2000).optional().nullable(),
+  bodyConcernRegions: z.string().max(2000).optional().nullable(),
+  celluliteGrade: z.string().max(100).optional().nullable(),
+  bodyWeight: z.string().max(50).optional().nullable(),
+  bodyHeight: z.string().max(50).optional().nullable(),
+  bodyMeasurements: z.string().max(2000).optional().nullable(),
+  physicalActivityLevel: z.string().max(100).optional().nullable(),
+  physicalActivityType: z.string().max(500).optional().nullable(),
+  waterIntake: z.string().max(100).optional().nullable(),
+  dietHabits: z.string().max(2000).optional().nullable(),
+  bodyMedicalConditions: z.string().max(2000).optional().nullable(),
+  bodyContraindications: z.string().max(2000).optional().nullable(),
+  previousBodyTreatments: z.string().max(2000).optional().nullable(),
 });
 
 const evaluationSchema = z.object({
@@ -149,15 +178,29 @@ router.post("/anamnesis", requirePermission("medical.write"), async (req: Reques
     const body = validateBody(anamnesisSchema, req.body, res);
     if (!body) return;
     const {
+      templateType,
       mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale,
       occupation, laterality, cid10, painLocation, painAggravatingFactors, painRelievingFactors,
       functionalImpact, patientGoals, previousTreatments, tobaccoAlcohol,
+      phototype, skinType, skinConditions, sunExposure, sunProtector, currentSkincareRoutine,
+      previousAestheticTreatments, aestheticReactions, facialSurgeries, sensitizingMedications,
+      skinContraindications, aestheticGoalDetails,
+      mainBodyConcern, bodyConcernRegions, celluliteGrade, bodyWeight, bodyHeight, bodyMeasurements,
+      physicalActivityLevel, physicalActivityType, waterIntake, dietHabits,
+      bodyMedicalConditions, bodyContraindications, previousBodyTreatments,
     } = body;
 
     const anamnesisFields = {
+      templateType,
       mainComplaint, diseaseHistory, medicalHistory, medications, allergies, familyHistory, lifestyle, painScale,
       occupation, laterality, cid10, painLocation, painAggravatingFactors, painRelievingFactors,
       functionalImpact, patientGoals, previousTreatments, tobaccoAlcohol,
+      phototype, skinType, skinConditions, sunExposure, sunProtector, currentSkincareRoutine,
+      previousAestheticTreatments, aestheticReactions, facialSurgeries, sensitizingMedications,
+      skinContraindications, aestheticGoalDetails,
+      mainBodyConcern, bodyConcernRegions, celluliteGrade, bodyWeight, bodyHeight, bodyMeasurements,
+      physicalActivityLevel, physicalActivityType, waterIntake, dietHabits,
+      bodyMedicalConditions, bodyContraindications, previousBodyTreatments,
     };
 
     const existing = await db

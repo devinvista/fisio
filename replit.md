@@ -439,7 +439,7 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `appointments` | id, patientId, procedureId, clinicId, scheduleId, date, startTime, **endTime** (calculado), status, notes |
 | `schedules` | id, clinicId, type (clinic/professional), name, workingDays, startTime, endTime, isActive |
 | `blocked_slots` | id, clinicId, scheduleId, date, startTime, endTime, reason |
-| `anamnesis` | id, patientId (único), mainComplaint, diseaseHistory, medications, painScale… |
+| `anamnesis` | id, patientId (único), **templateType** (reabilitacao/esteticaFacial/esteticaCorporal), campos compartilhados (mainComplaint, diseaseHistory, medications, painScale…), campos faciais (phototype, skinType, skinConditions, sunExposure…), campos corporais (mainBodyConcern, bodyConcernRegions, celluliteGrade, bodyWeight, bodyHeight…) |
 | `evaluations` | id, patientId, inspection, posture, rangeOfMotion, muscleStrength, orthopedicTests, functionalDiagnosis |
 | `treatment_plans` | id, patientId (múltiplos por paciente), **clinicId** (FK → clinics), objectives, techniques, frequency, estimatedSessions, status |
 | `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications, **painScale** (0–10) |
@@ -641,7 +641,7 @@ A página do prontuário (`artifacts/fisiogest/src/pages/patients/[id].tsx`) imp
 
 | Aba | Descrição |
 |---|---|
-| Anamnese | Queixa principal, histórico, medicamentos, escala de dor (EVA 0–10) |
+| Anamnese | **3 templates adaptativos**: Reabilitação (EVA, HDA, dor, histórico médico), Estética Facial (fototipo Fitzpatrick, tipo de pele, condições com checkboxes, triagem de contraindicações), Estética Corporal (IMC calculado, grau de celulite Nürnberger-Müller, regiões corporais, hábitos de vida) |
 | Avaliações | Avaliações físicas — CRUD completo com edição/exclusão inline |
 | Plano de Tratamento | Objetivos, técnicas, frequência, status |
 | Evoluções | Notas de sessão — CRUD, vínculo com consulta |

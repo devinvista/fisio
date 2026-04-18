@@ -36,6 +36,8 @@ import {
   Milestone, RotateCcw, Filter,
   Check, ArrowUpRight, Zap, X,
   Wallet, TrendingDown, ArrowDownRight,
+  Sparkles, Leaf, Droplets, Sun, Dumbbell, Scale, Ruler, FlaskConical,
+  ShieldCheck, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -1249,47 +1251,191 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
 
 // ─── Anamnesis Tab ──────────────────────────────────────────────────────────────
 
+type AnamTemplate = "reabilitacao" | "esteticaFacial" | "esteticaCorporal";
+
+const TEMPLATE_OPTIONS: { value: AnamTemplate; label: string; desc: string; color: string; icon: React.ReactNode }[] = [
+  { value: "reabilitacao", label: "Reabilitação", desc: "Fisioterapia, ortopedia, neurologia e pós-cirúrgico", color: "blue", icon: <Stethoscope className="w-4 h-4" /> },
+  { value: "esteticaFacial", label: "Estética Facial", desc: "Pele, tratamentos faciais e procedimentos estéticos", color: "rose", icon: <Sparkles className="w-4 h-4" /> },
+  { value: "esteticaCorporal", label: "Estética Corporal", desc: "Modelagem, celulite, gordura localizada e flacidez", color: "violet", icon: <Leaf className="w-4 h-4" /> },
+];
+
+function AnamSection({ title, subtitle, icon, colorClass, open, onToggle, children }: {
+  title: string; subtitle: string; icon: React.ReactNode; colorClass: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  const colors: Record<string, string> = {
+    blue: "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200",
+    red: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+    emerald: "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200",
+    violet: "bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200",
+    amber: "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200",
+    rose: "bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200",
+    teal: "bg-teal-50 hover:bg-teal-100 text-teal-800 border-teal-200",
+    orange: "bg-orange-50 hover:bg-orange-100 text-orange-800 border-orange-200",
+    indigo: "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200",
+    pink: "bg-pink-50 hover:bg-pink-100 text-pink-800 border-pink-200",
+  };
+  const iconBg: Record<string, string> = {
+    blue: "bg-blue-100 border-blue-200 text-blue-600",
+    red: "bg-red-100 border-red-200 text-red-600",
+    emerald: "bg-emerald-100 border-emerald-200 text-emerald-600",
+    violet: "bg-violet-100 border-violet-200 text-violet-600",
+    amber: "bg-amber-100 border-amber-200 text-amber-600",
+    rose: "bg-rose-100 border-rose-200 text-rose-600",
+    teal: "bg-teal-100 border-teal-200 text-teal-600",
+    orange: "bg-orange-100 border-orange-200 text-orange-600",
+    indigo: "bg-indigo-100 border-indigo-200 text-indigo-600",
+    pink: "bg-pink-100 border-pink-200 text-pink-600",
+  };
+  const subtitleColor: Record<string, string> = {
+    blue: "text-blue-500", red: "text-red-400", emerald: "text-emerald-500", violet: "text-violet-500",
+    amber: "text-amber-500", rose: "text-rose-500", teal: "text-teal-500", orange: "text-orange-500",
+    indigo: "text-indigo-500", pink: "text-pink-500",
+  };
+  return (
+    <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <button type="button" onClick={onToggle}
+        className={`w-full flex items-center justify-between px-4 py-3 transition-colors text-left ${colors[colorClass]}`}>
+        <div className="flex items-center gap-2.5">
+          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${iconBg[colorClass]}`}>{icon}</div>
+          <div>
+            <p className="text-sm font-bold">{title}</p>
+            <p className={`text-xs ${subtitleColor[colorClass]}`}>{subtitle}</p>
+          </div>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+      </button>
+      {open && <div className="p-4 space-y-4 bg-white">{children}</div>}
+    </div>
+  );
+}
+
+function EVAScale({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="space-y-3 bg-slate-50 rounded-xl border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA)</Label>
+          <p className="text-xs text-slate-400 mt-0.5">Escala Visual Analógica — 0 (sem dor) a 10 (dor máxima)</p>
+        </div>
+        <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl text-white shadow-md ${value >= 7 ? "bg-red-500" : value >= 4 ? "bg-orange-400" : "bg-green-500"}`}>{value}</div>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
+          <button key={v} type="button" onClick={() => onChange(v)}
+            className={`w-9 h-9 rounded-lg text-sm font-semibold border-2 transition-all ${
+              value === v
+                ? v >= 7 ? "bg-red-500 border-red-600 text-white" : v >= 4 ? "bg-orange-400 border-orange-500 text-white" : "bg-green-500 border-green-600 text-white"
+                : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+            }`}>{v}</button>
+        ))}
+      </div>
+      <p className="text-xs font-medium flex items-center gap-1.5">
+        <span className={`inline-block w-2 h-2 rounded-full ${value >= 7 ? "bg-red-500" : value >= 4 ? "bg-orange-400" : "bg-green-500"}`} />
+        <span className={value >= 7 ? "text-red-600" : value >= 4 ? "text-orange-600" : "text-green-600"}>
+          {value === 0 ? "Sem dor" : value <= 3 ? "Dor leve" : value <= 6 ? "Dor moderada" : value <= 9 ? "Dor intensa" : "Dor insuportável"}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+function CheckTag({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+        active ? "bg-primary text-white border-primary shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+      }`}>
+      {active && <Check className="w-3 h-3" />}
+      {label}
+    </button>
+  );
+}
+
+function toggleInList(list: string, item: string): string {
+  const arr = list ? list.split(",").map(s => s.trim()).filter(Boolean) : [];
+  const idx = arr.indexOf(item);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(item);
+  return arr.join(", ");
+}
+
+function hasInList(list: string, item: string): boolean {
+  return list ? list.split(",").map(s => s.trim()).includes(item) : false;
+}
+
 function AnamnesisTab({ patientId }: { patientId: number }) {
   const { data, isLoading } = useGetAnamnesis(patientId);
   const mutation = useCreateAnamnesis();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({
+  const [template, setTemplate] = useState<AnamTemplate>("reabilitacao");
+
+  const emptyForm = {
+    // shared
     mainComplaint: "", diseaseHistory: "", medicalHistory: "",
     medications: "", allergies: "", familyHistory: "", lifestyle: "", painScale: 0,
     occupation: "", laterality: "", cid10: "", painLocation: "",
     painAggravatingFactors: "", painRelievingFactors: "",
     functionalImpact: "", patientGoals: "", previousTreatments: "", tobaccoAlcohol: "",
-  });
+    // facial
+    phototype: "", skinType: "", skinConditions: "", sunExposure: "", sunProtector: "",
+    currentSkincareRoutine: "", previousAestheticTreatments: "", aestheticReactions: "",
+    facialSurgeries: "", sensitizingMedications: "", skinContraindications: "", aestheticGoalDetails: "",
+    // corporal
+    mainBodyConcern: "", bodyConcernRegions: "", celluliteGrade: "", bodyWeight: "",
+    bodyHeight: "", bodyMeasurements: "", physicalActivityLevel: "", physicalActivityType: "",
+    waterIntake: "", dietHabits: "", bodyMedicalConditions: "", bodyContraindications: "", previousBodyTreatments: "",
+  };
+
+  const [form, setForm] = useState(emptyForm);
+  const f = (k: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const sv = (k: keyof typeof emptyForm) => (v: string) => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
     if (data) {
+      const d = data as any;
+      if (d.templateType) setTemplate(d.templateType as AnamTemplate);
       setForm({
-        mainComplaint: data.mainComplaint || "",
-        diseaseHistory: data.diseaseHistory || "",
-        medicalHistory: data.medicalHistory || "",
-        medications: data.medications || "",
-        allergies: data.allergies || "",
-        familyHistory: data.familyHistory || "",
-        lifestyle: data.lifestyle || "",
-        painScale: data.painScale || 0,
-        occupation: (data as any).occupation || "",
-        laterality: (data as any).laterality || "",
-        cid10: (data as any).cid10 || "",
-        painLocation: (data as any).painLocation || "",
-        painAggravatingFactors: (data as any).painAggravatingFactors || "",
-        painRelievingFactors: (data as any).painRelievingFactors || "",
-        functionalImpact: (data as any).functionalImpact || "",
-        patientGoals: (data as any).patientGoals || "",
-        previousTreatments: (data as any).previousTreatments || "",
-        tobaccoAlcohol: (data as any).tobaccoAlcohol || "",
+        mainComplaint: d.mainComplaint || "", diseaseHistory: d.diseaseHistory || "",
+        medicalHistory: d.medicalHistory || "", medications: d.medications || "",
+        allergies: d.allergies || "", familyHistory: d.familyHistory || "",
+        lifestyle: d.lifestyle || "", painScale: d.painScale || 0,
+        occupation: d.occupation || "", laterality: d.laterality || "",
+        cid10: d.cid10 || "", painLocation: d.painLocation || "",
+        painAggravatingFactors: d.painAggravatingFactors || "",
+        painRelievingFactors: d.painRelievingFactors || "",
+        functionalImpact: d.functionalImpact || "",
+        patientGoals: d.patientGoals || "",
+        previousTreatments: d.previousTreatments || "",
+        tobaccoAlcohol: d.tobaccoAlcohol || "",
+        phototype: d.phototype || "", skinType: d.skinType || "",
+        skinConditions: d.skinConditions || "", sunExposure: d.sunExposure || "",
+        sunProtector: d.sunProtector || "", currentSkincareRoutine: d.currentSkincareRoutine || "",
+        previousAestheticTreatments: d.previousAestheticTreatments || "",
+        aestheticReactions: d.aestheticReactions || "", facialSurgeries: d.facialSurgeries || "",
+        sensitizingMedications: d.sensitizingMedications || "",
+        skinContraindications: d.skinContraindications || "",
+        aestheticGoalDetails: d.aestheticGoalDetails || "",
+        mainBodyConcern: d.mainBodyConcern || "", bodyConcernRegions: d.bodyConcernRegions || "",
+        celluliteGrade: d.celluliteGrade || "", bodyWeight: d.bodyWeight || "",
+        bodyHeight: d.bodyHeight || "", bodyMeasurements: d.bodyMeasurements || "",
+        physicalActivityLevel: d.physicalActivityLevel || "", physicalActivityType: d.physicalActivityType || "",
+        waterIntake: d.waterIntake || "", dietHabits: d.dietHabits || "",
+        bodyMedicalConditions: d.bodyMedicalConditions || "",
+        bodyContraindications: d.bodyContraindications || "",
+        previousBodyTreatments: d.previousBodyTreatments || "",
       });
     }
   }, [data]);
 
+  const [sections, setSections] = useState<Record<string, boolean>>({
+    s1: true, s2: true, s3: true, s4: true, s5: true,
+  });
+  const toggle = (k: string) => setSections(p => ({ ...p, [k]: !p[k] }));
+
   const handleSave = () => {
-    mutation.mutate({ patientId, data: form }, {
+    mutation.mutate({ patientId, data: { ...form, templateType: template } as any }, {
       onSuccess: () => {
         toast({ title: "Salvo com sucesso", description: "Anamnese atualizada." });
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/anamnesis`] });
@@ -1299,9 +1445,6 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
     });
   };
 
-  const [anamSections, setAnamSections] = useState({ queixa: true, historico: true, dor: true, habitos: true, complementar: true });
-  const toggleAnamSection = (s: keyof typeof anamSections) => setAnamSections(prev => ({ ...prev, [s]: !prev[s] }));
-
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>;
 
   return (
@@ -1310,7 +1453,7 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <CardTitle className="text-xl">Ficha de Anamnese</CardTitle>
-            <CardDescription>Histórico completo de saúde do paciente</CardDescription>
+            <CardDescription>Template adaptado por área de atuação clínica</CardDescription>
           </div>
           {data?.updatedAt && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 shrink-0">
@@ -1320,244 +1463,489 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="p-6 space-y-4">
+      <CardContent className="p-6 space-y-5">
 
-        {/* ── Seção 1: Queixa e História ── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => toggleAnamSection("queixa")}
-            className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center"><ClipboardList className="w-4 h-4 text-blue-600" /></div>
-              <div>
-                <p className="text-sm font-bold text-blue-800">Queixa Principal e História</p>
-                <p className="text-xs text-blue-500">QP, HDA e dados de identificação</p>
-              </div>
-            </div>
-            {anamSections.queixa ? <ChevronUp className="w-4 h-4 text-blue-500" /> : <ChevronDown className="w-4 h-4 text-blue-500" />}
-          </button>
-          {anamSections.queixa && (
-            <div className="p-4 space-y-4 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Profissão / Ocupação</Label>
-                  <Input className="bg-slate-50 border-slate-200 focus:bg-white"
-                    value={form.occupation} onChange={e => setForm({ ...form, occupation: e.target.value })}
-                    placeholder="Ex: Professor, Atleta, Operário..." />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Lateralidade</Label>
-                  <Select value={form.laterality} onValueChange={v => setForm({ ...form, laterality: v })}>
-                    <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="destro">Destro (direita)</SelectItem>
-                      <SelectItem value="canhoto">Canhoto (esquerda)</SelectItem>
-                      <SelectItem value="ambidestro">Ambidestro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Queixa Principal (QP) <span className="text-red-400">*</span></Label>
-                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.mainComplaint} onChange={e => setForm({ ...form, mainComplaint: e.target.value })}
-                  placeholder="Relato do paciente sobre o motivo da consulta, em suas próprias palavras..." />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">História da Doença Atual (HDA)</Label>
-                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.diseaseHistory} onChange={e => setForm({ ...form, diseaseHistory: e.target.value })}
-                  placeholder="Evolução dos sintomas, quando iniciou, como iniciou, o que fez até agora..." />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">CID-10 (Diagnóstico Médico)</Label>
-                <Input className="bg-slate-50 border-slate-200 focus:bg-white"
-                  value={form.cid10} onChange={e => setForm({ ...form, cid10: e.target.value })}
-                  placeholder="Ex: M54.5 – Lombalgia, M75.1 – Síndrome do Manguito Rotador..." />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Seção 2: Dor ── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => toggleAnamSection("dor")}
-            className="w-full flex items-center justify-between px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center"><Activity className="w-4 h-4 text-red-600" /></div>
-              <div>
-                <p className="text-sm font-bold text-red-800">Dor e Sintomas</p>
-                <p className="text-xs text-red-400">EVA, localização, fatores agravantes e aliviantes</p>
-              </div>
-            </div>
-            {anamSections.dor ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
-          </button>
-          {anamSections.dor && (
-            <div className="p-4 space-y-4 bg-white">
-              <div className="space-y-3 bg-slate-50 rounded-xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between">
+        {/* ── Template Selector ── */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Tipo de Atendimento</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {TEMPLATE_OPTIONS.map(opt => {
+              const isActive = template === opt.value;
+              const activeStyles: Record<AnamTemplate, string> = {
+                reabilitacao: "border-blue-500 bg-blue-50 text-blue-800 shadow-sm",
+                esteticaFacial: "border-rose-500 bg-rose-50 text-rose-800 shadow-sm",
+                esteticaCorporal: "border-violet-500 bg-violet-50 text-violet-800 shadow-sm",
+              };
+              const iconStyles: Record<AnamTemplate, string> = {
+                reabilitacao: "bg-blue-100 text-blue-600",
+                esteticaFacial: "bg-rose-100 text-rose-600",
+                esteticaCorporal: "bg-violet-100 text-violet-600",
+              };
+              return (
+                <button key={opt.value} type="button" onClick={() => setTemplate(opt.value)}
+                  className={`relative flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                    isActive ? activeStyles[opt.value] : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
+                  }`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    isActive ? iconStyles[opt.value] : "bg-slate-100 text-slate-500"
+                  }`}>{opt.icon}</div>
                   <div>
-                    <Label className="text-sm font-semibold text-slate-700">Escala de Dor (EVA)</Label>
-                    <p className="text-xs text-slate-400 mt-0.5">Escala Visual Analógica — 0 (sem dor) a 10 (dor máxima)</p>
+                    <p className="text-sm font-bold leading-tight">{opt.label}</p>
+                    <p className="text-[11px] mt-0.5 opacity-70">{opt.desc}</p>
                   </div>
-                  <div className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-xl text-white shadow-md ${
-                    form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"
-                  }`}>{form.painScale}</div>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
-                    <button key={v} type="button" onClick={() => setForm({ ...form, painScale: v })}
-                      className={`w-9 h-9 rounded-lg text-sm font-semibold border-2 transition-all ${
-                        form.painScale === v
-                          ? v >= 7 ? "bg-red-500 border-red-600 text-white" : v >= 4 ? "bg-orange-400 border-orange-500 text-white" : "bg-green-500 border-green-600 text-white"
-                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
-                      }`}>{v}</button>
-                  ))}
-                </div>
-                {form.painScale !== null && (
-                  <p className="text-xs font-medium flex items-center gap-1.5">
-                    <span className={`inline-block w-2 h-2 rounded-full ${form.painScale >= 7 ? "bg-red-500" : form.painScale >= 4 ? "bg-orange-400" : "bg-green-500"}`} />
-                    <span className={form.painScale >= 7 ? "text-red-600" : form.painScale >= 4 ? "text-orange-600" : "text-green-600"}>
-                      {form.painScale === 0 ? "Sem dor" : form.painScale <= 3 ? "Dor leve" : form.painScale <= 6 ? "Dor moderada" : form.painScale <= 9 ? "Dor intensa" : "Dor insuportável"}
-                    </span>
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Localização e Irradiação da Dor</Label>
-                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.painLocation} onChange={e => setForm({ ...form, painLocation: e.target.value })}
-                  placeholder="Ex: Dor lombar com irradiação para MID, formigamento em L5-S1..." />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Fatores que Agravam</Label>
-                  <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.painAggravatingFactors} onChange={e => setForm({ ...form, painAggravatingFactors: e.target.value })}
-                    placeholder="Ex: Ficar sentado por muito tempo, caminhar, subir escadas..." />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Fatores que Aliviam</Label>
-                  <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.painRelievingFactors} onChange={e => setForm({ ...form, painRelievingFactors: e.target.value })}
-                    placeholder="Ex: Repouso, compressa quente, analgésico, deitar..." />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Impacto Funcional (AVDs afetadas)</Label>
-                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.functionalImpact} onChange={e => setForm({ ...form, functionalImpact: e.target.value })}
-                  placeholder="Ex: Dificuldade para se vestir, limitação para dirigir, não consegue trabalhar..." />
-              </div>
-            </div>
-          )}
+                  {isActive && <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-current opacity-60" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* ── Seção 3: Histórico Médico ── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => toggleAnamSection("historico")}
-            className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition-colors text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center"><FileText className="w-4 h-4 text-emerald-600" /></div>
-              <div>
-                <p className="text-sm font-bold text-emerald-800">Histórico Médico</p>
-                <p className="text-xs text-emerald-500">HMP, medicamentos, alergias, tratamentos anteriores</p>
-              </div>
-            </div>
-            {anamSections.historico ? <ChevronUp className="w-4 h-4 text-emerald-500" /> : <ChevronDown className="w-4 h-4 text-emerald-500" />}
-          </button>
-          {anamSections.historico && (
-            <div className="p-4 space-y-4 bg-white">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Histórico Médico (HMP)</Label>
-                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.medicalHistory} onChange={e => setForm({ ...form, medicalHistory: e.target.value })}
-                  placeholder="Cirurgias, internações, doenças crônicas, comorbidades..." />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Tratamentos Anteriores</Label>
-                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.previousTreatments} onChange={e => setForm({ ...form, previousTreatments: e.target.value })}
-                  placeholder="Ex: Fisioterapia anterior, cirurgias, uso de órteses, infiltrações..." />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Medicamentos em Uso</Label>
-                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })}
-                    placeholder="Nome comercial, dosagem e frequência..." />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
-                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })}
-                    placeholder="Alergias a medicamentos, látex, materiais..." />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Histórico Familiar</Label>
-                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.familyHistory} onChange={e => setForm({ ...form, familyHistory: e.target.value })}
-                    placeholder="Doenças hereditárias relevantes na família..." />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Tabagismo / Etilismo / Outros</Label>
-                  <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                    value={form.tobaccoAlcohol} onChange={e => setForm({ ...form, tobaccoAlcohol: e.target.value })}
-                    placeholder="Fuma? Bebe? Usa outras substâncias? Frequência..." />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* ════════════════════════════════════════════════════════
+            TEMPLATE: REABILITAÇÃO
+        ════════════════════════════════════════════════════════ */}
+        {template === "reabilitacao" && (<>
 
-        {/* ── Seção 4: Hábitos e Estilo de Vida ── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => toggleAnamSection("habitos")}
-            className="w-full flex items-center justify-between px-4 py-3 bg-violet-50 hover:bg-violet-100 transition-colors text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-violet-100 border border-violet-200 flex items-center justify-center"><UserCheck className="w-4 h-4 text-violet-600" /></div>
-              <div>
-                <p className="text-sm font-bold text-violet-800">Hábitos e Estilo de Vida</p>
-                <p className="text-xs text-violet-500">Atividade física, sono, alimentação, rotina</p>
-              </div>
-            </div>
-            {anamSections.habitos ? <ChevronUp className="w-4 h-4 text-violet-400" /> : <ChevronDown className="w-4 h-4 text-violet-400" />}
-          </button>
-          {anamSections.habitos && (
-            <div className="p-4 bg-white">
+          <AnamSection title="Queixa Principal e História" subtitle="QP, HDA, ocupação e lateralidade" icon={<ClipboardList className="w-4 h-4" />} colorClass="blue" open={sections.s1} onToggle={() => toggle("s1")}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Estilo de Vida</Label>
-                <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.lifestyle} onChange={e => setForm({ ...form, lifestyle: e.target.value })}
-                  placeholder="Atividade física (tipo e frequência), qualidade do sono, alimentação, postura no trabalho, nível de estresse..." />
+                <Label className="text-sm font-semibold text-slate-700">Profissão / Ocupação</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.occupation} onChange={f("occupation")} placeholder="Ex: Professor, Atleta, Operário..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Lateralidade</Label>
+                <Select value={form.laterality} onValueChange={sv("laterality")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="destro">Destro (direita)</SelectItem>
+                    <SelectItem value="canhoto">Canhoto (esquerda)</SelectItem>
+                    <SelectItem value="ambidestro">Ambidestro</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Queixa Principal (QP) <span className="text-red-400">*</span></Label>
+              <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.mainComplaint} onChange={f("mainComplaint")} placeholder="Relato do paciente sobre o motivo da consulta, em suas próprias palavras..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">História da Doença Atual (HDA)</Label>
+              <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.diseaseHistory} onChange={f("diseaseHistory")} placeholder="Evolução dos sintomas, quando iniciou, como iniciou, o que fez até agora..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">CID-10 (Diagnóstico Médico)</Label>
+              <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.cid10} onChange={f("cid10")} placeholder="Ex: M54.5 – Lombalgia, M75.1 – Síndrome do Manguito Rotador..." />
+            </div>
+          </AnamSection>
 
-        {/* ── Seção 5: Objetivos e Expectativas ── */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => toggleAnamSection("complementar")}
-            className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 hover:bg-amber-100 transition-colors text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center"><Target className="w-4 h-4 text-amber-600" /></div>
-              <div>
-                <p className="text-sm font-bold text-amber-800">Objetivos e Expectativas</p>
-                <p className="text-xs text-amber-500">O que o paciente espera do tratamento</p>
-              </div>
+          <AnamSection title="Dor e Sintomas" subtitle="EVA, localização, fatores agravantes e aliviantes" icon={<Activity className="w-4 h-4" />} colorClass="red" open={sections.s2} onToggle={() => toggle("s2")}>
+            <EVAScale value={form.painScale} onChange={v => setForm(p => ({ ...p, painScale: v }))} />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Localização e Irradiação da Dor</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.painLocation} onChange={f("painLocation")} placeholder="Ex: Dor lombar com irradiação para MID, formigamento em L5-S1..." />
             </div>
-            {anamSections.complementar ? <ChevronUp className="w-4 h-4 text-amber-400" /> : <ChevronDown className="w-4 h-4 text-amber-400" />}
-          </button>
-          {anamSections.complementar && (
-            <div className="p-4 bg-white">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">Objetivos e Expectativas do Paciente</Label>
-                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none"
-                  value={form.patientGoals} onChange={e => setForm({ ...form, patientGoals: e.target.value })}
-                  placeholder="O que o paciente espera alcançar com o tratamento? Metas de curto e longo prazo..." />
+                <Label className="text-sm font-semibold text-slate-700">Fatores que Agravam</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.painAggravatingFactors} onChange={f("painAggravatingFactors")} placeholder="Ex: Ficar sentado por muito tempo, caminhar, subir escadas..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Fatores que Aliviam</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.painRelievingFactors} onChange={f("painRelievingFactors")} placeholder="Ex: Repouso, compressa quente, analgésico, deitar..." />
               </div>
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Impacto Funcional (AVDs afetadas)</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.functionalImpact} onChange={f("functionalImpact")} placeholder="Ex: Dificuldade para se vestir, limitação para dirigir, não consegue trabalhar..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Histórico Médico" subtitle="HMP, medicamentos, alergias, tratamentos anteriores" icon={<FileText className="w-4 h-4" />} colorClass="emerald" open={sections.s3} onToggle={() => toggle("s3")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Histórico Médico (HMP)</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.medicalHistory} onChange={f("medicalHistory")} placeholder="Cirurgias, internações, doenças crônicas, comorbidades..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Tratamentos Anteriores</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.previousTreatments} onChange={f("previousTreatments")} placeholder="Ex: Fisioterapia anterior, cirurgias, uso de órteses, infiltrações..." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Medicamentos em Uso</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.medications} onChange={f("medications")} placeholder="Nome comercial, dosagem e frequência..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.allergies} onChange={f("allergies")} placeholder="Alergias a medicamentos, látex, materiais..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Histórico Familiar</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.familyHistory} onChange={f("familyHistory")} placeholder="Doenças hereditárias relevantes na família..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tabagismo / Etilismo / Outros</Label>
+                <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.tobaccoAlcohol} onChange={f("tobaccoAlcohol")} placeholder="Fuma? Bebe? Usa outras substâncias? Frequência..." />
+              </div>
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Hábitos e Estilo de Vida" subtitle="Atividade física, sono, alimentação, rotina" icon={<UserCheck className="w-4 h-4" />} colorClass="violet" open={sections.s4} onToggle={() => toggle("s4")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Estilo de Vida</Label>
+              <Textarea className="min-h-[90px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.lifestyle} onChange={f("lifestyle")} placeholder="Atividade física (tipo e frequência), qualidade do sono, alimentação, postura no trabalho, nível de estresse..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Objetivos e Expectativas" subtitle="O que o paciente espera do tratamento" icon={<Target className="w-4 h-4" />} colorClass="amber" open={sections.s5} onToggle={() => toggle("s5")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Objetivos e Expectativas do Paciente</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.patientGoals} onChange={f("patientGoals")} placeholder="O que o paciente espera alcançar com o tratamento? Metas de curto e longo prazo..." />
+            </div>
+          </AnamSection>
+
+        </>)}
+
+        {/* ════════════════════════════════════════════════════════
+            TEMPLATE: ESTÉTICA FACIAL
+        ════════════════════════════════════════════════════════ */}
+        {template === "esteticaFacial" && (<>
+
+          <AnamSection title="Queixa Principal e Histórico" subtitle="Motivo da consulta e histórico do problema" icon={<ClipboardList className="w-4 h-4" />} colorClass="rose" open={sections.s1} onToggle={() => toggle("s1")}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Profissão / Ocupação</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.occupation} onChange={f("occupation")} placeholder="Ex: Professora, Executiva, Esteticista..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">CID-10 (se aplicável)</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.cid10} onChange={f("cid10")} placeholder="Ex: L70 – Acne, L81 – Hiperpigmentação..." />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Queixa Principal <span className="text-red-400">*</span></Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.mainComplaint} onChange={f("mainComplaint")} placeholder="O que mais incomoda na face? Acne, manchas, rugas, flacidez, poros dilatados..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Histórico do Problema</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.diseaseHistory} onChange={f("diseaseHistory")} placeholder="Quando começou? Houve piora recente? Fatores que desencadearam (estresse, mudança hormonal, sol)..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Análise de Pele" subtitle="Tipo de pele, fototipo (Fitzpatrick), condições e exposição solar" icon={<Sun className="w-4 h-4" />} colorClass="amber" open={sections.s2} onToggle={() => toggle("s2")}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tipo de Pele</Label>
+                <Select value={form.skinType} onValueChange={sv("skinType")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="seca">Seca</SelectItem>
+                    <SelectItem value="oleosa">Oleosa</SelectItem>
+                    <SelectItem value="mista">Mista</SelectItem>
+                    <SelectItem value="sensivel">Sensível</SelectItem>
+                    <SelectItem value="acneica">Acneica</SelectItem>
+                    <SelectItem value="desidratada">Desidratada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Fototipo (Fitzpatrick)</Label>
+                <Select value={form.phototype} onValueChange={sv("phototype")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="I">I – Sempre queima, nunca bronzeia (pele muito clara)</SelectItem>
+                    <SelectItem value="II">II – Sempre queima, bronzeia minimamente</SelectItem>
+                    <SelectItem value="III">III – Queima moderado, bronzeia gradualmente</SelectItem>
+                    <SelectItem value="IV">IV – Queima minimamente, bronzeia com facilidade</SelectItem>
+                    <SelectItem value="V">V – Raramente queima, bronzeia muito (pele morena)</SelectItem>
+                    <SelectItem value="VI">VI – Nunca queima, pele muito escura</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Condições de Pele (marque todas que se aplicam)</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Acne", "Rosácea", "Melasma", "Manchas solares", "Envelhecimento precoce", "Flacidez", "Rugas finas", "Rugas profundas", "Poros dilatados", "Oleosidade excessiva", "Ressecamento", "Sensibilidade", "Telangectasias", "Cicatrizes", "Olheiras", "Estrias faciais", "Xantomas", "Ceratose pilar"].map(cond => (
+                  <CheckTag key={cond} label={cond} active={hasInList(form.skinConditions, cond)} onClick={() => setForm(p => ({ ...p, skinConditions: toggleInList(p.skinConditions, cond) }))} />
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Exposição Solar</Label>
+                <Select value={form.sunExposure} onValueChange={sv("sunExposure")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="alta">Alta (trabalha ao ar livre, praia frequente)</SelectItem>
+                    <SelectItem value="moderada">Moderada (exposição ocasional)</SelectItem>
+                    <SelectItem value="baixa">Baixa (trabalha em ambiente fechado)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Uso de Protetor Solar</Label>
+                <Select value={form.sunProtector} onValueChange={sv("sunProtector")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="diario">Diário (FPS 30+)</SelectItem>
+                    <SelectItem value="as-vezes">Às vezes</SelectItem>
+                    <SelectItem value="nao-usa">Não usa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Rotina de Skincare Atual</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.currentSkincareRoutine} onChange={f("currentSkincareRoutine")} placeholder="Produtos usados: limpeza, hidratante, sérum, vitamina C, retinol, ácidos, etc..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Histórico de Tratamentos Estéticos" subtitle="Procedimentos anteriores, reações e cirurgias" icon={<FlaskConical className="w-4 h-4" />} colorClass="pink" open={sections.s3} onToggle={() => toggle("s3")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Tratamentos Estéticos Anteriores</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.previousAestheticTreatments} onChange={f("previousAestheticTreatments")} placeholder="Ex: Peeling químico, laser CO₂, luz intensa pulsada (IPL), microagulhamento, toxina botulínica, preenchimento com ácido hialurônico, HIFU..." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Reações ou Complicações Anteriores</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.aestheticReactions} onChange={f("aestheticReactions")} placeholder="Queimaduras, hiperpigmentação pós-inflamatória, alergias a cosméticos, infecções..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Cirurgias Faciais</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.facialSurgeries} onChange={f("facialSurgeries")} placeholder="Ritidoplastia (lifting), blefaroplastia, rinoplastia, otoplastia, lipoaspiração facial..." />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Medicamentos Fotossensibilizantes ou Interfirentes</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.sensitizingMedications} onChange={f("sensitizingMedications")} placeholder="Isotretinoína, retinoides tópicos, anticoagulantes, corticoides, anticonvulsivantes, metformina, antibióticos..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.allergies} onChange={f("allergies")} placeholder="Cosméticos, anestésicos tópicos (lidocaína), metais (níquel), fragrâncias, látex..." />
+              </div>
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Triagem de Contraindicações" subtitle="Gestação, implantes, doenças de pele ativas e outros" icon={<ShieldCheck className="w-4 h-4" />} colorClass="teal" open={sections.s4} onToggle={() => toggle("s4")}>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-1">
+              <p className="text-xs text-amber-700 font-medium">Marque todas as condições que o paciente apresenta ou apresentou nos últimos 6 meses.</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Condições e Contraindicações</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Gestante", "Lactante", "Marca-passo", "Implantes metálicos na face/pescoço",
+                  "Herpes ativo", "Psoríase ativa", "Dermatite ativa", "Rosácea grau III/IV",
+                  "Distúrbio de coagulação", "Uso de anticoagulante", "Isotretinoína (últimos 6m)",
+                  "Diabetes descompensada", "Lúpus", "Doença autoimune", "Queloides",
+                  "Implante de silicone facial", "Fios de sustentação", "Radiofrequência contraindicada",
+                ].map(cond => (
+                  <CheckTag key={cond} label={cond} active={hasInList(form.skinContraindications, cond)} onClick={() => setForm(p => ({ ...p, skinContraindications: toggleInList(p.skinContraindications, cond) }))} />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Outras condições clínicas relevantes</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.medicalHistory} onChange={f("medicalHistory")} placeholder="Doenças crônicas, uso de medicamentos contínuos, condições dermatológicas específicas..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Objetivos e Expectativas" subtitle="O que deseja melhorar e expectativas com o tratamento" icon={<Target className="w-4 h-4" />} colorClass="indigo" open={sections.s5} onToggle={() => toggle("s5")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">O que deseja melhorar na pele?</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.aestheticGoalDetails} onChange={f("aestheticGoalDetails")} placeholder="Descreva as principais queixas e o que espera após o tratamento (manchas, textura, firmeza, luminosidade)..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Expectativas e Disponibilidade para Manutenção</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.patientGoals} onChange={f("patientGoals")} placeholder="Prazo esperado para resultados, disponibilidade para sessões regulares, orçamento..." />
+            </div>
+          </AnamSection>
+
+        </>)}
+
+        {/* ════════════════════════════════════════════════════════
+            TEMPLATE: ESTÉTICA CORPORAL
+        ════════════════════════════════════════════════════════ */}
+        {template === "esteticaCorporal" && (<>
+
+          <AnamSection title="Queixa Principal e Dados Gerais" subtitle="Motivo da consulta, ocupação e medidas corporais" icon={<ClipboardList className="w-4 h-4" />} colorClass="violet" open={sections.s1} onToggle={() => toggle("s1")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Queixa Principal <span className="text-red-400">*</span></Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.mainComplaint} onChange={f("mainComplaint")} placeholder="O que mais incomoda? Celulite, gordura localizada, flacidez, estrias, retenção hídrica..." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Profissão / Ocupação</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.occupation} onChange={f("occupation")} placeholder="Ex: Professora, Motorista, Analista..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Histórico do Problema</Label>
+                <Textarea className="min-h-[60px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.diseaseHistory} onChange={f("diseaseHistory")} placeholder="Quando começou? Houve ganho/perda de peso recente? Gestação?" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { k: "bodyWeight" as const, label: "Peso (kg)", ph: "Ex: 68.5" },
+                { k: "bodyHeight" as const, label: "Altura (cm)", ph: "Ex: 165" },
+              ].map(item => (
+                <div key={item.k} className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">{item.label}</Label>
+                  <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form[item.k]} onChange={f(item.k)} placeholder={item.ph} />
+                </div>
+              ))}
+              {form.bodyWeight && form.bodyHeight && (() => {
+                const h = parseFloat(form.bodyHeight) / 100;
+                const w = parseFloat(form.bodyWeight);
+                if (!isNaN(h) && !isNaN(w) && h > 0) {
+                  const bmi = (w / (h * h)).toFixed(1);
+                  const cat = parseFloat(bmi) < 18.5 ? "Abaixo do peso" : parseFloat(bmi) < 25 ? "Peso normal" : parseFloat(bmi) < 30 ? "Sobrepeso" : "Obesidade";
+                  return (
+                    <div className="col-span-2 flex items-center gap-3 bg-slate-100 rounded-xl px-4 py-3">
+                      <Scale className="w-5 h-5 text-slate-500" />
+                      <div>
+                        <p className="text-xs text-slate-500">IMC calculado</p>
+                        <p className="text-lg font-bold text-slate-800">{bmi} <span className="text-sm font-normal text-slate-500">— {cat}</span></p>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Medidas Corporais (perimetria)</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.bodyMeasurements} onChange={f("bodyMeasurements")} placeholder="Cintura: __ cm | Quadril: __ cm | Coxa D: __ cm | Coxa E: __ cm | Braço D: __ cm | Braço E: __ cm | Abdome: __ cm" />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Análise Corporal" subtitle="Regiões de preocupação, tipo de celulite e alterações visíveis" icon={<Ruler className="w-4 h-4" />} colorClass="indigo" open={sections.s2} onToggle={() => toggle("s2")}>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Principais Queixas (marque todas que se aplicam)</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Celulite", "Gordura localizada", "Flacidez", "Estrias", "Retenção hídrica", "Linfedema", "Lipedema", "Fibroedema gelóide", "Gordura visceral", "Ptose abdominal", "Cicatrizes corporais"].map(c => (
+                  <CheckTag key={c} label={c} active={hasInList(form.mainBodyConcern, c)} onClick={() => setForm(p => ({ ...p, mainBodyConcern: toggleInList(p.mainBodyConcern, c) }))} />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Regiões de Interesse (marque todas que se aplicam)</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Abdome", "Flancos", "Dorso", "Glúteos", "Coxas (anterior)", "Coxas (posterior)", "Coxas (medial)", "Panturrilhas", "Braços", "Axila (gordura)", "Papada", "Pescoço"].map(r => (
+                  <CheckTag key={r} label={r} active={hasInList(form.bodyConcernRegions, r)} onClick={() => setForm(p => ({ ...p, bodyConcernRegions: toggleInList(p.bodyConcernRegions, r) }))} />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Grau de Celulite (Nürnberger-Müller)</Label>
+              <Select value={form.celluliteGrade} onValueChange={sv("celluliteGrade")}>
+                <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Grau 0 – Sem celulite visível</SelectItem>
+                  <SelectItem value="I">Grau I – Aparece somente ao apertar a pele</SelectItem>
+                  <SelectItem value="II">Grau II – Visível em pé, sem apertar</SelectItem>
+                  <SelectItem value="III">Grau III – Visível em pé e deitada (depressões profundas)</SelectItem>
+                  <SelectItem value="IV">Grau IV – Grau III + dolorosa à palpação</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Hábitos de Vida" subtitle="Atividade física, alimentação, hidratação e sono" icon={<Dumbbell className="w-4 h-4" />} colorClass="emerald" open={sections.s3} onToggle={() => toggle("s3")}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Nível de Atividade Física</Label>
+                <Select value={form.physicalActivityLevel} onValueChange={sv("physicalActivityLevel")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sedentario">Sedentário (sem atividade)</SelectItem>
+                    <SelectItem value="levemente-ativo">Levemente ativo (1–2x/semana)</SelectItem>
+                    <SelectItem value="moderado">Moderadamente ativo (3–4x/semana)</SelectItem>
+                    <SelectItem value="muito-ativo">Muito ativo (5+ vezes/semana ou atleta)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tipo de Atividade Física</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.physicalActivityType} onChange={f("physicalActivityType")} placeholder="Musculação, corrida, natação, pilates, caminhada..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Ingestão Hídrica</Label>
+                <Select value={form.waterIntake} onValueChange={sv("waterIntake")}>
+                  <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="menos-1L">Menos de 1 litro/dia</SelectItem>
+                    <SelectItem value="1-1.5L">1 a 1,5 litros/dia</SelectItem>
+                    <SelectItem value="1.5-2L">1,5 a 2 litros/dia</SelectItem>
+                    <SelectItem value="mais-2L">Mais de 2 litros/dia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Tabagismo / Etilismo</Label>
+                <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form.tobaccoAlcohol} onChange={f("tobaccoAlcohol")} placeholder="Fuma? Bebe? Frequência..." />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Hábitos Alimentares</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.dietHabits} onChange={f("dietHabits")} placeholder="Dieta equilibrada, excesso de sódio ou açúcar, dieta restritiva, come fora frequentemente, ingestão de ultraprocessados..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Qualidade do Sono e Estresse</Label>
+              <Textarea className="min-h-[60px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.lifestyle} onChange={f("lifestyle")} placeholder="Dorme bem? Acorda cansado? Nível de estresse no trabalho/vida pessoal..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Histórico Médico e Contraindicações" subtitle="Condições de saúde, medicamentos e restrições" icon={<ShieldCheck className="w-4 h-4" />} colorClass="orange" open={sections.s4} onToggle={() => toggle("s4")}>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <p className="text-xs text-amber-700 font-medium">Marque todas as condições que o paciente apresenta ou apresentou. Contraindicações relativas ou absolutas devem ser avaliadas antes do tratamento.</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">Condições Médicas (marque todas que se aplicam)</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Gestante", "Lactante", "Marca-passo", "Implantes metálicos", "Varizes grau III/IV",
+                  "Tromboflebite", "Trombose venosa profunda", "Insuficiência venosa", "Linfedema",
+                  "Diabetes", "Hipertensão descompensada", "Hipotireoidismo", "Hipertireoidismo",
+                  "Câncer ativo", "Cirurgia abdominal recente (<6m)", "Hérnia abdominal",
+                  "Distúrbio de coagulação", "Uso de anticoagulante", "Lipodistrofia",
+                ].map(cond => (
+                  <CheckTag key={cond} label={cond} active={hasInList(form.bodyContraindications, cond)} onClick={() => setForm(p => ({ ...p, bodyContraindications: toggleInList(p.bodyContraindications, cond) }))} />
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Medicamentos em Uso</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.medications} onChange={f("medications")} placeholder="Anticoagulantes, diuréticos, hormônios, anticoncepcionais, corticoides..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Alergias</Label>
+                <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.allergies} onChange={f("allergies")} placeholder="Alergias a géis, cremes, látex, metais, adesivos..." />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Condições Hormonais</Label>
+              <Textarea className="min-h-[60px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.bodyMedicalConditions} onChange={f("bodyMedicalConditions")} placeholder="SOP, endometriose, menopausa, pré-menopausa, reposição hormonal, histórico de gestações..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Tratamentos Corporais Anteriores</Label>
+              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.previousBodyTreatments} onChange={f("previousBodyTreatments")} placeholder="Criolipólise, radiofrequência, ultrassom focado, drenagem linfática, endermologia, lipoaspiração, mesoterapia..." />
+            </div>
+          </AnamSection>
+
+          <AnamSection title="Objetivos e Expectativas" subtitle="Resultado esperado e disponibilidade para o tratamento" icon={<Target className="w-4 h-4" />} colorClass="amber" open={sections.s5} onToggle={() => toggle("s5")}>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Resultado Esperado</Label>
+              <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.patientGoals} onChange={f("patientGoals")} placeholder="O que espera alcançar? Redução de medidas, melhora da celulite, firmeza, definição muscular..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">Disponibilidade e Expectativa de Prazo</Label>
+              <Textarea className="min-h-[60px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.aestheticGoalDetails} onChange={f("aestheticGoalDetails")} placeholder="Quantas vezes por semana pode comparecer? Tem evento ou data especial? Expectativa de prazo para resultados..." />
+            </div>
+          </AnamSection>
+
+        </>)}
 
         <ExamAttachmentsSection patientId={patientId} />
 
