@@ -131,6 +131,7 @@ const patientFinancialSchema = z.object({
 });
 
 type P = { patientId: string };
+type PBodyMeasurement = P & { measurementId: string };
 type PEval = { patientId: string; evaluationId: string };
 type PEvol = { patientId: string; evolutionId: string };
 
@@ -429,7 +430,7 @@ router.post("/body-measurements", requirePermission("medical.write"), async (req
   }
 });
 
-router.delete("/body-measurements/:measurementId", requirePermission("medical.write"), async (req: Request<P>, res) => {
+router.delete("/body-measurements/:measurementId", requirePermission("medical.write"), async (req: Request<PBodyMeasurement>, res) => {
   try {
     const id = parseInt(req.params.measurementId);
     await db.delete(bodyMeasurementsTable).where(eq(bodyMeasurementsTable.id, id));

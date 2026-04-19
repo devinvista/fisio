@@ -14,6 +14,8 @@ const ALLOWED_TYPES = [
   "image/png",
   "image/webp",
   "image/gif",
+  "image/heic",
+  "image/heif",
 ];
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;

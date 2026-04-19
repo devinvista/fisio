@@ -3,38 +3,40 @@ import { db } from "@workspace/db";
 import { patientPhotosTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { z } from "zod/v4";
-import { validateBody } from "../lib/validate.js";
+import { parseIntParam, validateBody } from "../lib/validate.js";
 
 const router = Router({ mergeParams: true });
 const objectStorageService = new ObjectStorageService();
 
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"];
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB
 
 const VIEW_TYPES = ["frontal", "lateral_d", "lateral_e", "posterior", "detalhe"] as const;
 
 const createPhotoSchema = z.object({
-  objectPath: z.string().min(1),
+  objectPath: z.string().min(1).regex(/^\/objects\//, "Caminho do arquivo inválido"),
   originalFilename: z.string().optional(),
-  contentType: z.string().optional(),
-  fileSize: z.number().int().optional(),
+  contentType: z.enum(ALLOWED_IMAGE_TYPES as [string, ...string[]]).optional(),
+  fileSize: z.number().int().positive().max(MAX_PHOTO_SIZE).optional(),
   viewType: z.enum(VIEW_TYPES),
-  takenAt: z.string().optional(),
-  sessionLabel: z.string().max(100).optional(),
-  notes: z.string().max(1000).optional(),
+  takenAt: z.string().datetime().optional(),
+  sessionLabel: z.string().max(100).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+const updatePhotoSchema = z.object({
+  sessionLabel: z.string().max(100).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
 });
 
 // GET /patients/:patientId/photos — list all photos
-router.get("/", authMiddleware, async (req: Request, res: Response) => {
+router.get("/", authMiddleware, requirePermission("medical.read"), async (req: Request, res: Response) => {
   try {
-    const authReq = req as AuthRequest;
-    const patientId = parseInt(req.params.patientId);
-    if (isNaN(patientId)) {
-      res.status(400).json({ error: "ID de paciente inválido" });
-      return;
-    }
+    const patientId = parseIntParam(req.params.patientId, res, "Paciente");
+    if (patientId === null) return;
 
     const photos = await db
       .select()
@@ -50,14 +52,11 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 });
 
 // POST /patients/:patientId/photos — save photo record after upload
-router.post("/", authMiddleware, async (req: Request, res: Response) => {
+router.post("/", authMiddleware, requirePermission("medical.write"), async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const patientId = parseInt(req.params.patientId);
-    if (isNaN(patientId)) {
-      res.status(400).json({ error: "ID de paciente inválido" });
-      return;
-    }
+    const patientId = parseIntParam(req.params.patientId, res, "Paciente");
+    if (patientId === null) return;
 
     const body = validateBody(createPhotoSchema, req.body, res);
     if (!body) return;
@@ -66,7 +65,7 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
 
     const [photo] = await db.insert(patientPhotosTable).values({
       patientId,
-      clinicId: authReq.user?.clinicId ?? null,
+      clinicId: authReq.clinicId ?? null,
       objectPath,
       originalFilename,
       contentType,
@@ -85,13 +84,27 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
 });
 
 // DELETE /patients/:patientId/photos/:photoId
-router.delete("/:photoId", authMiddleware, async (req: Request, res: Response) => {
+router.delete("/:photoId", authMiddleware, requirePermission("medical.write"), async (req: Request, res: Response) => {
   try {
-    const patientId = parseInt(req.params.patientId);
-    const photoId = parseInt(req.params.photoId);
-    if (isNaN(patientId) || isNaN(photoId)) {
-      res.status(400).json({ error: "IDs inválidos" });
+    const patientId = parseIntParam(req.params.patientId, res, "Paciente");
+    const photoId = parseIntParam(req.params.photoId, res, "Foto");
+    if (patientId === null || photoId === null) return;
+
+    const [existing] = await db
+      .select()
+      .from(patientPhotosTable)
+      .where(and(eq(patientPhotosTable.id, photoId), eq(patientPhotosTable.patientId, patientId)));
+
+    if (!existing) {
+      res.status(404).json({ error: "Foto não encontrada" });
       return;
+    }
+
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
+      await objectFile.delete();
+    } catch (storageErr) {
+      console.error("Falha ao excluir foto do storage (continuando com remoção do banco):", storageErr);
     }
 
     const [deleted] = await db
@@ -112,20 +125,18 @@ router.delete("/:photoId", authMiddleware, async (req: Request, res: Response) =
 });
 
 // PATCH /patients/:patientId/photos/:photoId — update notes/label
-router.patch("/:photoId", authMiddleware, async (req: Request, res: Response) => {
+router.patch("/:photoId", authMiddleware, requirePermission("medical.write"), async (req: Request, res: Response) => {
   try {
-    const patientId = parseInt(req.params.patientId);
-    const photoId = parseInt(req.params.photoId);
-    if (isNaN(patientId) || isNaN(photoId)) {
-      res.status(400).json({ error: "IDs inválidos" });
-      return;
-    }
+    const patientId = parseIntParam(req.params.patientId, res, "Paciente");
+    const photoId = parseIntParam(req.params.photoId, res, "Foto");
+    if (patientId === null || photoId === null) return;
 
-    const { notes, sessionLabel } = req.body;
+    const body = validateBody(updatePhotoSchema, req.body, res);
+    if (!body) return;
 
     const [updated] = await db
       .update(patientPhotosTable)
-      .set({ notes, sessionLabel })
+      .set(body)
       .where(and(eq(patientPhotosTable.id, photoId), eq(patientPhotosTable.patientId, patientId)))
       .returning();
 

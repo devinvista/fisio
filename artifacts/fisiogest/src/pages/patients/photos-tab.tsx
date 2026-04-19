@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 import {
   Camera,
   Upload,
@@ -100,6 +101,9 @@ const VIEW_COLORS: Record<ViewType, string> = {
   detalhe: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
 
+const MAX_PHOTO_SIZE = 15 * 1024 * 1024;
+const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function groupBySession(photos: PatientPhoto[]): PhotoSession[] {
@@ -156,9 +160,15 @@ function AuthImage({
     let blobUrl: string | null = null;
     let cancelled = false;
 
-    fetch(`/api/storage${objectPath}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    setError(false);
+    setSrc(null);
+
+    if (!token) {
+      setError(true);
+      return;
+    }
+
+    apiFetch(`/api/storage${objectPath}`)
       .then((res) => {
         if (!res.ok) throw new Error("not ok");
         return res.blob();
@@ -344,7 +354,6 @@ function UploadModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const { token } = useAuth();
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -377,9 +386,16 @@ function UploadModal({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files ?? []).filter((f) =>
-      f.type.startsWith("image/")
-    );
+    const allFiles = Array.from(e.target.files ?? []);
+    const selected = allFiles.filter((f) => ALLOWED_PHOTO_TYPES.has(f.type) && f.size <= MAX_PHOTO_SIZE);
+    const rejected = allFiles.length - selected.length;
+    if (rejected > 0) {
+      toast({
+        title: `${rejected} arquivo(s) ignorado(s)`,
+        description: "Use JPG, PNG, WebP ou HEIC com até 15MB por foto.",
+        variant: "destructive",
+      });
+    }
     setFiles(selected);
     setPreviews((prev) => {
       prev.forEach(URL.revokeObjectURL);
@@ -388,14 +404,9 @@ function UploadModal({
   };
 
   const uploadSingle = async (file: File): Promise<void> => {
-    const authHeader: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-
-    // Step 1: presigned URL
-    const urlRes = await fetch("/api/storage/uploads/request-url", {
+    const urlRes = await apiFetch("/api/storage/uploads/request-url", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: file.name,
         size: file.size,
@@ -405,7 +416,6 @@ function UploadModal({
     if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
     const { uploadURL, objectPath } = await urlRes.json();
 
-    // Step 2: upload to GCS
     const putRes = await fetch(uploadURL, {
       method: "PUT",
       headers: { "Content-Type": file.type },
@@ -413,17 +423,16 @@ function UploadModal({
     });
     if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
 
-    // Step 3: save metadata
-    const metaRes = await fetch(`/api/patients/${patientId}/photos`, {
+    const metaRes = await apiFetch(`/api/patients/${patientId}/photos`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         objectPath,
         originalFilename: file.name,
         contentType: file.type,
         fileSize: file.size,
         viewType,
-        takenAt: new Date(takenAt).toISOString(),
+        takenAt: `${takenAt}T12:00:00.000Z`,
         sessionLabel: sessionLabel || null,
         notes: notes || null,
       }),
@@ -935,7 +944,6 @@ function SessionCard({
 // ─── Main PhotosTab ───────────────────────────────────────────────────────────
 
 export function PhotosTab({ patientId }: { patientId: number }) {
-  const { token } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -945,9 +953,7 @@ export function PhotosTab({ patientId }: { patientId: number }) {
   const { data: photos = [], isLoading } = useQuery<PatientPhoto[]>({
     queryKey: ["patient-photos", patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/photos`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await apiFetch(`/api/patients/${patientId}/photos`);
       if (!res.ok) throw new Error("Falha ao carregar fotos");
       return res.json();
     },
@@ -955,9 +961,8 @@ export function PhotosTab({ patientId }: { patientId: number }) {
 
   const deleteMutation = useMutation({
     mutationFn: async (photoId: number) => {
-      const res = await fetch(`/api/patients/${patientId}/photos/${photoId}`, {
+      const res = await apiFetch(`/api/patients/${patientId}/photos/${photoId}`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error("Falha ao excluir foto");
     },
