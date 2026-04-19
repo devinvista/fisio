@@ -2030,9 +2030,6 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
       </CardHeader>
       <CardContent className="p-6 space-y-5">
 
-        {/* ── Indicators Panel ── */}
-        <IndicatorsPanel patientId={patientId} />
-
         {/* ── Template Selector ── */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Tipo de Atendimento</p>
@@ -2113,8 +2110,13 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
             </div>
           </AnamSection>
 
-          <AnamSection title="Dor e Sintomas" subtitle="EVA, localização, fatores agravantes e aliviantes" icon={<Activity className="w-4 h-4" />} colorClass="red" open={sections.s2} onToggle={() => toggle("s2")}>
-            <EVAScale value={form.painScale} onChange={v => setForm(p => ({ ...p, painScale: v }))} />
+          <AnamSection title="Dor e Sintomas" subtitle="Localização, fatores agravantes, aliviantes e impacto funcional" icon={<Activity className="w-4 h-4" />} colorClass="red" open={sections.s2} onToggle={() => toggle("s2")}>
+            <div className="flex items-start gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5">
+              <Activity className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">Escala EVA (dor):</span> o registro da Escala Visual Analógica é feito na aba <span className="font-semibold">Avaliações</span> — tanto na avaliação inicial quanto ao longo do tratamento — para garantir o acompanhamento evolutivo sem duplicidade.
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-slate-700">Localização e Irradiação da Dor</Label>
               <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.painLocation} onChange={f("painLocation")} placeholder="Ex: Dor lombar com irradiação para MID, formigamento em L5-S1..." />
@@ -2345,7 +2347,7 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
         ════════════════════════════════════════════════════════ */}
         {template === "esteticaCorporal" && (<>
 
-          <AnamSection title="Queixa Principal e Dados Gerais" subtitle="Motivo da consulta, ocupação e medidas corporais" icon={<ClipboardList className="w-4 h-4" />} colorClass="violet" open={sections.s1} onToggle={() => toggle("s1")}>
+          <AnamSection title="Queixa Principal e Dados Gerais" subtitle="Motivo da consulta, ocupação e histórico do problema" icon={<ClipboardList className="w-4 h-4" />} colorClass="violet" open={sections.s1} onToggle={() => toggle("s1")}>
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-slate-700">Queixa Principal <span className="text-red-400">*</span></Label>
               <Textarea className="min-h-[80px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.mainComplaint} onChange={f("mainComplaint")} placeholder="O que mais incomoda? Celulite, gordura localizada, flacidez, estrias, retenção hídrica..." />
@@ -2360,42 +2362,15 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
                 <Textarea className="min-h-[60px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.diseaseHistory} onChange={f("diseaseHistory")} placeholder="Quando começou? Houve ganho/perda de peso recente? Gestação?" />
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { k: "bodyWeight" as const, label: "Peso (kg)", ph: "Ex: 68.5" },
-                { k: "bodyHeight" as const, label: "Altura (cm)", ph: "Ex: 165" },
-              ].map(item => (
-                <div key={item.k} className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">{item.label}</Label>
-                  <Input className="bg-slate-50 border-slate-200 focus:bg-white" value={form[item.k]} onChange={f(item.k)} placeholder={item.ph} />
-                </div>
-              ))}
-              {form.bodyWeight && form.bodyHeight && (() => {
-                const h = parseFloat(form.bodyHeight) / 100;
-                const w = parseFloat(form.bodyWeight);
-                if (!isNaN(h) && !isNaN(w) && h > 0) {
-                  const bmi = (w / (h * h)).toFixed(1);
-                  const cat = parseFloat(bmi) < 18.5 ? "Abaixo do peso" : parseFloat(bmi) < 25 ? "Peso normal" : parseFloat(bmi) < 30 ? "Sobrepeso" : "Obesidade";
-                  return (
-                    <div className="col-span-2 flex items-center gap-3 bg-slate-100 rounded-xl px-4 py-3">
-                      <Scale className="w-5 h-5 text-slate-500" />
-                      <div>
-                        <p className="text-xs text-slate-500">IMC calculado</p>
-                        <p className="text-lg font-bold text-slate-800">{bmi} <span className="text-sm font-normal text-slate-500">— {cat}</span></p>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">Medidas Corporais (perimetria)</Label>
-              <Textarea className="min-h-[70px] bg-slate-50 border-slate-200 focus:bg-white resize-none" value={form.bodyMeasurements} onChange={f("bodyMeasurements")} placeholder="Cintura: __ cm | Quadril: __ cm | Coxa D: __ cm | Coxa E: __ cm | Braço D: __ cm | Braço E: __ cm | Abdome: __ cm" />
+            <div className="flex items-start gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5">
+              <Ruler className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">Peso, altura, perimetria e IMC</span> são registrados e monitorados na aba <span className="font-semibold">Avaliações</span> (indicadores de resultado), permitindo acompanhar a evolução ao longo do tratamento.
+              </p>
             </div>
           </AnamSection>
 
-          <AnamSection title="Análise Corporal" subtitle="Regiões de preocupação, tipo de celulite e alterações visíveis" icon={<Ruler className="w-4 h-4" />} colorClass="indigo" open={sections.s2} onToggle={() => toggle("s2")}>
+          <AnamSection title="Análise Corporal" subtitle="Regiões de preocupação e alterações visíveis" icon={<Ruler className="w-4 h-4" />} colorClass="indigo" open={sections.s2} onToggle={() => toggle("s2")}>
             <div className="space-y-2">
               <Label className="text-sm font-semibold text-slate-700">Principais Queixas (marque todas que se aplicam)</Label>
               <div className="flex flex-wrap gap-2">
@@ -2412,18 +2387,11 @@ function AnamnesisTab({ patientId }: { patientId: number }) {
                 ))}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">Grau de Celulite (Nürnberger-Müller)</Label>
-              <Select value={form.celluliteGrade} onValueChange={sv("celluliteGrade")}>
-                <SelectTrigger className="bg-slate-50 border-slate-200"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Grau 0 – Sem celulite visível</SelectItem>
-                  <SelectItem value="I">Grau I – Aparece somente ao apertar a pele</SelectItem>
-                  <SelectItem value="II">Grau II – Visível em pé, sem apertar</SelectItem>
-                  <SelectItem value="III">Grau III – Visível em pé e deitada (depressões profundas)</SelectItem>
-                  <SelectItem value="IV">Grau IV – Grau III + dolorosa à palpação</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-start gap-2.5 rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5">
+              <Activity className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">Grau de celulite (Nürnberger-Müller)</span> é registrado como indicador de resultado na aba <span className="font-semibold">Avaliações</span>, para monitorar a evolução de grau a cada reavaliação.
+              </p>
             </div>
           </AnamSection>
 
@@ -2738,6 +2706,10 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
 
   return (
     <div className="space-y-4">
+
+      {/* ── Indicadores de Resultado ── */}
+      <IndicatorsPanel patientId={patientId} />
+
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-800">Avaliações Físicas</h3>
@@ -2787,13 +2759,20 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
                       className="flex items-center gap-3 flex-1 text-left"
                       onClick={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
                     >
-                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold shrink-0">
                         {evaluations.length - idx}
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-800 text-sm">Avaliação #{evaluations.length - idx}</p>
                         <p className="text-xs text-slate-500">{formatDateTime(ev.createdAt)}</p>
                       </div>
+                      {ev.painScale !== null && ev.painScale !== undefined && (
+                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold text-white shrink-0 ${
+                          Number(ev.painScale) >= 7 ? "bg-red-500" : Number(ev.painScale) >= 4 ? "bg-orange-400" : "bg-green-500"
+                        }`}>
+                          EVA {ev.painScale}
+                        </div>
+                      )}
                     </button>
                     <div className="flex items-center gap-1 ml-2">
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
@@ -2808,13 +2787,32 @@ function EvaluationsTab({ patientId }: { patientId: number }) {
                     </div>
                   </div>
                   {expandedId === ev.id && (
-                    <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
-                      {ev.inspection && <InfoBlock label="Inspeção" value={ev.inspection} />}
-                      {ev.posture && <InfoBlock label="Postura" value={ev.posture} />}
-                      {ev.rangeOfMotion && <InfoBlock label="Amplitude de Movimento" value={ev.rangeOfMotion} />}
-                      {ev.muscleStrength && <InfoBlock label="Força Muscular" value={ev.muscleStrength} />}
-                      {ev.orthopedicTests && <InfoBlock label="Testes Ortopédicos" value={ev.orthopedicTests} className="md:col-span-2" />}
-                      {ev.functionalDiagnosis && <InfoBlock label="Diagnóstico Funcional" value={ev.functionalDiagnosis} className="md:col-span-2" />}
+                    <div className="px-4 pb-4 border-t border-slate-100 pt-4 space-y-4">
+                      {/* EVA badge if present */}
+                      {ev.painScale !== null && ev.painScale !== undefined && (
+                        <div className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg text-white shrink-0 ${
+                            Number(ev.painScale) >= 7 ? "bg-red-500" : Number(ev.painScale) >= 4 ? "bg-orange-400" : "bg-green-500"
+                          }`}>{ev.painScale}</div>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Escala de Dor (EVA)</p>
+                            <p className={`text-sm font-medium ${Number(ev.painScale) >= 7 ? "text-red-600" : Number(ev.painScale) >= 4 ? "text-orange-600" : "text-green-600"}`}>
+                              {Number(ev.painScale) === 0 ? "Sem dor" : Number(ev.painScale) <= 3 ? "Dor leve" : Number(ev.painScale) <= 6 ? "Dor moderada" : Number(ev.painScale) <= 9 ? "Dor intensa" : "Dor insuportável"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {ev.inspection && <InfoBlock label="Inspeção" value={ev.inspection} />}
+                        {ev.posture && <InfoBlock label="Postura" value={ev.posture} />}
+                        {ev.rangeOfMotion && <InfoBlock label="Amplitude de Movimento" value={ev.rangeOfMotion} />}
+                        {ev.muscleStrength && <InfoBlock label="Força Muscular" value={ev.muscleStrength} />}
+                        {ev.palpation && <InfoBlock label="Palpação" value={ev.palpation} />}
+                        {ev.gait && <InfoBlock label="Marcha e Equilíbrio" value={ev.gait} />}
+                        {ev.orthopedicTests && <InfoBlock label="Testes Ortopédicos" value={ev.orthopedicTests} className="md:col-span-2" />}
+                        {ev.functionalTests && <InfoBlock label="Testes Funcionais e Escalas" value={ev.functionalTests} className="md:col-span-2" />}
+                        {ev.functionalDiagnosis && <InfoBlock label="Diagnóstico Funcional" value={ev.functionalDiagnosis} className="md:col-span-2" />}
+                      </div>
                     </div>
                   )}
                 </Card>

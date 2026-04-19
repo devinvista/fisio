@@ -598,6 +598,10 @@ export const ListEvaluationsResponseItem = zod.object({
   muscleStrength: zod.string().optional(),
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
+  painScale: zod.number().nullable().optional(),
+  palpation: zod.string().optional(),
+  gait: zod.string().optional(),
+  functionalTests: zod.string().optional(),
   createdAt: zod.date(),
   updatedAt: zod.date(),
 });
@@ -617,6 +621,10 @@ export const CreateEvaluationBody = zod.object({
   muscleStrength: zod.string().optional(),
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
+  painScale: zod.number().nullable().optional(),
+  palpation: zod.string().optional(),
+  gait: zod.string().optional(),
+  functionalTests: zod.string().optional(),
 });
 
 /**
@@ -634,6 +642,10 @@ export const UpdateEvaluationBody = zod.object({
   muscleStrength: zod.string().optional(),
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
+  painScale: zod.number().nullable().optional(),
+  palpation: zod.string().optional(),
+  gait: zod.string().optional(),
+  functionalTests: zod.string().optional(),
 });
 
 export const UpdateEvaluationResponse = zod.object({
@@ -645,6 +657,10 @@ export const UpdateEvaluationResponse = zod.object({
   muscleStrength: zod.string().optional(),
   orthopedicTests: zod.string().optional(),
   functionalDiagnosis: zod.string().optional(),
+  painScale: zod.number().nullable().optional(),
+  palpation: zod.string().optional(),
+  gait: zod.string().optional(),
+  functionalTests: zod.string().optional(),
   createdAt: zod.date(),
   updatedAt: zod.date(),
 });

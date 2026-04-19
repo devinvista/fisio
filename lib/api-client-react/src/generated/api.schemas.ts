@@ -250,6 +250,10 @@ export interface Evaluation {
   muscleStrength?: string;
   orthopedicTests?: string;
   functionalDiagnosis?: string;
+  painScale?: number | null;
+  palpation?: string;
+  gait?: string;
+  functionalTests?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -261,6 +265,10 @@ export interface CreateEvaluationRequest {
   muscleStrength?: string;
   orthopedicTests?: string;
   functionalDiagnosis?: string;
+  painScale?: number | null;
+  palpation?: string;
+  gait?: string;
+  functionalTests?: string;
 }
 
 export type TreatmentPlanStatus =

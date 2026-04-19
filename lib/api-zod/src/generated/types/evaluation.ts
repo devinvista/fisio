@@ -15,6 +15,10 @@ export interface Evaluation {
   muscleStrength?: string;
   orthopedicTests?: string;
   functionalDiagnosis?: string;
+  painScale?: number | null;
+  palpation?: string;
+  gait?: string;
+  functionalTests?: string;
   createdAt: Date;
   updatedAt: Date;
 }
