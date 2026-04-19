@@ -50,7 +50,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
 });
 
 // POST /patients/:patientId/photos — save photo record after upload
-router.post("/", authMiddleware, validateBody(createPhotoSchema), async (req: Request, res: Response) => {
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
     const patientId = parseInt(req.params.patientId);
@@ -59,7 +59,10 @@ router.post("/", authMiddleware, validateBody(createPhotoSchema), async (req: Re
       return;
     }
 
-    const { objectPath, originalFilename, contentType, fileSize, viewType, takenAt, sessionLabel, notes } = req.body;
+    const body = validateBody(createPhotoSchema, req.body, res);
+    if (!body) return;
+
+    const { objectPath, originalFilename, contentType, fileSize, viewType, takenAt, sessionLabel, notes } = body;
 
     const [photo] = await db.insert(patientPhotosTable).values({
       patientId,
