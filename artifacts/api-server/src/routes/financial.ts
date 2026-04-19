@@ -152,12 +152,6 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
     const cc = clinicCond(req);
     const ac = apptClinicCond(req);
 
-    // Use paymentDate as the primary date filter (covers both revenue and expenses)
-    const records = await db
-      .select()
-      .from(financialRecordsTable)
-      .where(cc ? and(cc, recordDateFilter(startDate, endDate)) : recordDateFilter(startDate, endDate));
-
     const accountingTotals = await getAccountingTotals({
       clinicId: req.isSuperAdmin ? null : req.clinicId,
       startDate,
@@ -889,26 +883,50 @@ router.patch("/records/:id/estorno", requirePermission("financial.write"), async
   try {
     const id = parseInt(req.params.id as string);
 
+    const cc = clinicCond(req);
+    const whereClause = cc ? and(eq(financialRecordsTable.id, id), cc) : eq(financialRecordsTable.id, id);
+
     const [record] = await db
       .select()
       .from(financialRecordsTable)
-      .where(eq(financialRecordsTable.id, id));
+      .where(whereClause);
 
     if (!record) {
       res.status(404).json({ error: "Not Found", message: "Registro financeiro não encontrado" });
       return;
     }
 
-    if (record.status === "estornado") {
-      res.status(400).json({ error: "Bad Request", message: "Registro já foi estornado" });
+    if (record.status === "estornado" || record.status === "cancelado") {
+      res.status(400).json({ error: "Bad Request", message: "Registro já foi estornado ou cancelado" });
       return;
     }
 
-    const [updated] = await db
-      .update(financialRecordsTable)
-      .set({ status: "estornado" })
-      .where(eq(financialRecordsTable.id, id))
-      .returning();
+    const [updated] = await db.transaction(async (tx) => {
+      const [u] = await tx
+        .update(financialRecordsTable)
+        .set({ status: "estornado" })
+        .where(whereClause)
+        .returning();
+
+      const entryId = record.accountingEntryId ?? record.recognizedEntryId ?? record.settlementEntryId;
+      if (entryId) {
+        await postReversal(entryId, {
+          clinicId: record.clinicId ?? req.clinicId ?? null,
+          entryDate: todayBRT(),
+          description: `Estorno — ${record.description}`,
+          sourceType: "financial_record",
+          sourceId: record.id,
+          patientId: record.patientId,
+          appointmentId: record.appointmentId,
+          procedureId: record.procedureId,
+          subscriptionId: record.subscriptionId,
+          financialRecordId: record.id,
+          createdBy: req.userId ?? null,
+        }, tx as any);
+      }
+
+      return [u];
+    });
 
     await logAudit({
       userId: req.userId,
@@ -1151,6 +1169,7 @@ router.get("/cost-per-procedure", requirePermission("financial.read"), async (re
 router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {
     const clinicId = req.clinicId;
+    const cc = clinicCond(req);
     const brt = nowBRT();
     const month = parseInt(req.query.month as string) || brt.month;
     const year  = parseInt(req.query.year  as string) || brt.year;

@@ -14,10 +14,6 @@ const MONTH_NAMES = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-function monthRange(year: number, month: number): { start: Date; end: Date } {
-  return { start: new Date(year, month - 1, 1), end: new Date(year, month, 1) };
-}
-
 function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
   const lastDay = new Date(year, month, 0).getDate();
   const mm = String(month).padStart(2, "0");

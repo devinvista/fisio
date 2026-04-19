@@ -422,6 +422,7 @@ Para publicar o projeto no Replit (`.replit.app`):
 │   ├── post-merge.sh                   # Roda após merge de task agents
 │   ├── seed-demo.ts                    # Seed completo (novo clinic) — falha se usuários já existem
 │   └── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
+│   # Nota: backfillAccounting.ts foi removido (migração única já concluída)
 │
 ├── pnpm-workspace.yaml
 └── package.json                        # Scripts raiz: build:libs, typecheck, db:seed-demo
@@ -451,8 +452,15 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
 | `patient_subscriptions` | id, patientId, procedureId, startDate, billingDay, monthlyAmount, status, clinicId, cancelledAt, nextBillingDate |
 | `session_credits` | id, patientId, procedureId, quantity, usedQuantity, clinicId, notes |
-| `financial_records` | id, type (receita/despesa), amount, description, category, **status** (pendente/pago/cancelado/estornado), **dueDate** (vencimento), **paymentDate** (data de pagamento), **paymentMethod** (forma de pagamento), transactionType, appointmentId?, patientId?, procedureId?, subscriptionId?, clinicId |
+| `financial_records` | id, type (receita/despesa), amount, description, category, **status** (pendente/pago/cancelado/estornado), **dueDate** (vencimento), **paymentDate** (data de pagamento), **paymentMethod** (forma de pagamento), transactionType, appointmentId?, patientId?, procedureId?, subscriptionId?, clinicId, **accountingEntryId** (FK → journal entry principal), **recognizedEntryId** (FK → entry de reconhecimento de receita), **settlementEntryId** (FK → entry de liquidação) |
+| `accounting_accounts` | id, clinicId, code (único por clínica), name, type (asset/liability/equity/revenue/expense), normalBalance (debit/credit), isSystem |
+| `accounting_journal_entries` | id, clinicId, entryDate, eventType, description, sourceType, sourceId, status (posted/reversed), patientId?, appointmentId?, procedureId?, patientPackageId?, subscriptionId?, walletTransactionId?, financialRecordId?, reversalOfEntryId? |
+| `accounting_journal_lines` | id, entryId (FK cascade), accountId, debitAmount, creditAmount, memo |
+| `receivable_allocations` | id, clinicId, paymentEntryId, receivableEntryId, patientId, amount, allocatedAt |
+| `patient_wallet` | id, patientId, clinicId, balance |
+| `patient_wallet_transactions` | id, walletId, patientId, clinicId, amount, type (deposito/debito), description, appointmentId?, financialRecordId? |
 | `recurring_expenses` | id, clinicId, name, category, amount, frequency (mensal/anual/semanal), isActive, notes |
+| `billing_run_logs` | id, ranAt, triggeredBy (scheduler/manual), clinicId, processed, generated, skipped, errors, dryRun |
 | `audit_log` | id, userId, action, entityType, entityId, patientId, summary, createdAt |
 
 ### Comandos de schema
@@ -546,7 +554,7 @@ Todas as rotas exigem `Authorization: Bearer <token>`, exceto `/api/auth/*` e `/
 | POST | `/api/financial/records` | Criar registro manual — aceita status, dueDate, paymentMethod |
 | PATCH | `/api/financial/records/:id` | Editar lançamento completo (todos os campos) |
 | PATCH | `/api/financial/records/:id/status` | Atualizar apenas status + paymentDate + paymentMethod |
-| PATCH | `/api/financial/records/:id/estorno` | Soft-reversal: status=estornado |
+| PATCH | `/api/financial/records/:id/estorno` | Soft-reversal: status=estornado + postReversal no ledger contábil |
 | DELETE | `/api/financial/records/:id` | Deleta despesas; estorna receitas (soft) |
 | GET | `/api/financial/patients/:id/history` | Histórico financeiro completo do paciente |
 | GET | `/api/financial/patients/:id/summary` | Saldo: totalAReceber, totalPago, saldo, totalSessionCredits |
@@ -653,6 +661,45 @@ A página do prontuário (`artifacts/fisiogest/src/pages/patients/[id].tsx`) imp
 | Histórico | Todas as consultas (status, procedimento, data) |
 | Financeiro | Histórico de receitas/despesas por paciente |
 | Alta Fisioterapêutica | Alta obrigatória pelo COFFITO: motivo, resultados, recomendações |
+
+---
+
+## Sistema Contábil (Partidas Dobradas)
+
+O sistema financeiro usa **ledger contábil formal por partidas dobradas** como fonte de verdade para KPIs, DRE e relatórios. Os `financial_records` são a camada operacional/de exibição; os lançamentos contábeis são a fonte de verdade para os totais.
+
+### Plano de Contas (ACCOUNT_CODES)
+| Código | Nome | Tipo | Saldo Normal |
+|---|---|---|---|
+| `1.1.1` | Caixa/Banco | Ativo | Débito |
+| `1.1.2` | Contas a Receber | Ativo | Débito |
+| `2.1.1` | Adiantamentos de Clientes | Passivo | Crédito |
+| `3.1.1` | Patrimônio/Resultado Acumulado | PL | Crédito |
+| `4.1.1` | Receita de Atendimentos | Receita | Crédito |
+| `4.1.2` | Receita de Pacotes/Mensalidades Reconhecida | Receita | Crédito |
+| `5.1.1` | Despesas Operacionais | Despesa | Débito |
+| `5.1.2` | Estornos/Cancelamentos de Receita | Despesa | Débito |
+
+### Eventos contábeis e seus lançamentos
+| Evento | Débito | Crédito |
+|---|---|---|
+| Pagamento direto (`postCashReceipt`) | 1.1.1 Caixa | 4.1.1 Receita |
+| Geração de recebível (`postReceivableRevenue`) | 1.1.2 Recebíveis | 4.1.1 Receita |
+| Liquidação de recebível (`postReceivableSettlement`) | 1.1.1 Caixa | 1.1.2 Recebíveis |
+| Depósito em carteira (`postWalletDeposit`) | 1.1.1 Caixa | 2.1.1 Adiantamentos |
+| Uso de carteira (`postWalletUsage`) | 2.1.1 Adiantamentos | 4.1.1 Receita |
+| Venda de pacote (`postPackageSale`) | 1.1.1 ou 1.1.2 | 2.1.1 Adiantamentos |
+| Uso de crédito de pacote (`postPackageCreditUsage`) | 2.1.1 Adiantamentos | 4.1.2 Receita Pacote |
+| Despesa (`postExpense`) | 5.1.1 Despesas | 1.1.1 Caixa |
+| Estorno (`postReversal`) | Inverte todas as linhas | do lançamento original |
+
+### Regras contábeis
+- Todo lançamento deve ter `débitos = créditos` (validado em `createJournalEntry`)
+- Estornos: criam lançamento espelho + marcam original como `reversed`
+- Receita só é reconhecida **no consumo** do crédito/sessão (competência), não no pagamento antecipado
+- `getAccountingTotals()` — soma por período (para DRE e KPIs mensais)
+- `getAccountingBalances()` — soma total (para Contas a Receber e Adiantamentos)
+- Todas as contas são auto-criadas por clínica na primeira escrituração (`ensureSystemAccounts`)
 
 ---
 

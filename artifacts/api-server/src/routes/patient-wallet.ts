@@ -89,7 +89,7 @@ const depositSchema = z.object({
   paymentMethod: z.string().optional(),
 });
 
-router.post("/wallet/deposit", requirePermission("financial.update"), async (req: AuthRequest, res) => {
+router.post("/wallet/deposit", requirePermission("financial.write"), async (req: AuthRequest, res) => {
   try {
     const patientId = parseInt(req.params.patientId as string);
     if (isNaN(patientId)) {
