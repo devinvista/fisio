@@ -9,6 +9,7 @@ import type { Role } from "@workspace/db";
 import { todayBRT } from "../lib/dateUtils.js";
 import { parseIntParam, validateBody } from "../lib/validate.js";
 import { logAudit } from "../lib/auditLog.js";
+import { postPackageCreditUsage, postReceivableRevenue, postWalletUsage } from "../services/accountingService.js";
 import { z } from "zod/v4";
 
 const appointmentStatusEnum = z.enum(["agendado", "confirmado", "compareceu", "concluido", "cancelado", "faltou", "remarcado"]);
@@ -263,7 +264,7 @@ async function applyBillingRules(
         .limit(1);
 
       if (existingPendente.length === 0) {
-        await db.insert(financialRecordsTable).values({
+        const [pendingInvoiceItem] = await db.insert(financialRecordsTable).values({
           type:            "receita",
           amount:          effectivePrice,
           description:     `[Aguardando fatura] ${procedure.name} - ${patientName}`,
@@ -276,7 +277,26 @@ async function applyBillingRules(
           dueDate:         appointmentDate,
           subscriptionId:  consolidatedSub.id,
           clinicId:        resolvedClinicId,
+        }).returning();
+
+        const entry = await postReceivableRevenue({
+          clinicId: resolvedClinicId,
+          entryDate: appointmentDate,
+          amount: Number(effectivePrice),
+          description: `Receita em fatura consolidada — ${procedure.name} - ${patientName}`,
+          sourceType: "financial_record",
+          sourceId: pendingInvoiceItem.id,
+          patientId,
+          appointmentId,
+          procedureId,
+          subscriptionId: consolidatedSub.id,
+          financialRecordId: pendingInvoiceItem.id,
         });
+
+        await db
+          .update(financialRecordsTable)
+          .set({ recognizedEntryId: entry.id, accountingEntryId: entry.id })
+          .where(eq(financialRecordsTable.id, pendingInvoiceItem.id));
       }
       return;
     }
@@ -306,7 +326,7 @@ async function applyBillingRules(
 
           if (credit.patientPackageId) {
             const [patientPackage] = await tx
-              .select({ usedSessions: patientPackagesTable.usedSessions, totalSessions: patientPackagesTable.totalSessions })
+              .select({ usedSessions: patientPackagesTable.usedSessions, totalSessions: patientPackagesTable.totalSessions, price: patientPackagesTable.price })
               .from(patientPackagesTable)
               .where(eq(patientPackagesTable.id, credit.patientPackageId))
               .limit(1);
@@ -319,7 +339,7 @@ async function applyBillingRules(
             }
           }
 
-          await tx.insert(financialRecordsTable).values({
+          const [creditUsageRecord] = await tx.insert(financialRecordsTable).values({
             type:            "receita",
             amount:          "0",
             description:     `Uso de crédito #${credit.id} — ${procedure.name} - ${patientName}`,
@@ -331,7 +351,40 @@ async function applyBillingRules(
             status:          "pago",
             dueDate:         today,
             clinicId:        resolvedClinicId,
-          });
+          }).returning();
+
+          if (credit.patientPackageId) {
+            const [packageForRevenue] = await tx
+              .select({ price: patientPackagesTable.price, totalSessions: patientPackagesTable.totalSessions, usedSessions: patientPackagesTable.usedSessions })
+              .from(patientPackagesTable)
+              .where(eq(patientPackagesTable.id, credit.patientPackageId))
+              .limit(1);
+
+            const unitAmount = packageForRevenue && packageForRevenue.totalSessions > 0
+              ? Number(packageForRevenue.price) / packageForRevenue.totalSessions
+              : 0;
+
+            if (unitAmount > 0) {
+              const entry = await postPackageCreditUsage({
+                clinicId: resolvedClinicId,
+                entryDate: appointmentDate,
+                amount: unitAmount,
+                description: `Receita reconhecida por crédito — ${procedure.name} - ${patientName}`,
+                sourceType: "session_credit",
+                sourceId: credit.id,
+                patientId,
+                appointmentId,
+                procedureId,
+                patientPackageId: credit.patientPackageId,
+                financialRecordId: creditUsageRecord.id,
+              }, tx as any);
+
+              await tx
+                .update(financialRecordsTable)
+                .set({ recognizedEntryId: entry.id, accountingEntryId: entry.id })
+                .where(eq(financialRecordsTable.id, creditUsageRecord.id));
+            }
+          }
           return;
         }
 
@@ -370,7 +423,7 @@ async function applyBillingRules(
               clinicId:        resolvedClinicId,
             }).returning();
 
-            await tx.insert(patientWalletTransactionsTable).values({
+            const [walletTransaction] = await tx.insert(patientWalletTransactionsTable).values({
               walletId:          wallet.id,
               patientId,
               clinicId:          resolvedClinicId,
@@ -379,7 +432,26 @@ async function applyBillingRules(
               description:       `Sessão: ${procedure.name} — consulta #${appointmentId}`,
               appointmentId,
               financialRecordId: fr.id,
-            });
+            }).returning();
+
+            const entry = await postWalletUsage({
+              clinicId: resolvedClinicId,
+              entryDate: appointmentDate,
+              amount: Number(effectivePrice),
+              description: `Receita por uso de carteira — ${procedure.name} - ${patientName}`,
+              sourceType: "patient_wallet_transaction",
+              sourceId: walletTransaction.id,
+              patientId,
+              appointmentId,
+              procedureId,
+              walletTransactionId: walletTransaction.id,
+              financialRecordId: fr.id,
+            }, tx as any);
+
+            await tx
+              .update(financialRecordsTable)
+              .set({ recognizedEntryId: entry.id, accountingEntryId: entry.id })
+              .where(eq(financialRecordsTable.id, fr.id));
             return;
           }
         }
@@ -397,7 +469,7 @@ async function applyBillingRules(
           .limit(1);
 
         if (existing.length === 0) {
-          await tx.insert(financialRecordsTable).values({
+          const [receivableRecord] = await tx.insert(financialRecordsTable).values({
             type:            "receita",
             amount:          effectivePrice,
             description:     `${procedure.name} - ${patientName}`,
@@ -409,7 +481,25 @@ async function applyBillingRules(
             status:          "pendente",
             dueDate:         dueDatePorSessao,
             clinicId:        resolvedClinicId,
-          });
+          }).returning();
+
+          const entry = await postReceivableRevenue({
+            clinicId: resolvedClinicId,
+            entryDate: appointmentDate,
+            amount: Number(effectivePrice),
+            description: `A receber por sessão — ${procedure.name} - ${patientName}`,
+            sourceType: "financial_record",
+            sourceId: receivableRecord.id,
+            patientId,
+            appointmentId,
+            procedureId,
+            financialRecordId: receivableRecord.id,
+          }, tx as any);
+
+          await tx
+            .update(financialRecordsTable)
+            .set({ recognizedEntryId: entry.id, accountingEntryId: entry.id })
+            .where(eq(financialRecordsTable.id, receivableRecord.id));
         }
       });
     }

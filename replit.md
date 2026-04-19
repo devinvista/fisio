@@ -68,7 +68,11 @@ O projeto é um **monorepo pnpm** hospedado no Replit. Dividido em três artefat
 - `absence_credit_limit` limita quantos créditos de ausência/cancelamento podem ser gerados por mês em pacotes mensais. Limite `0` bloqueia créditos automáticos.
 - `next_billing_date` é preenchido na criação de assinaturas, tanto pela contratação de pacote quanto pela criação direta de assinatura.
 - Fatura consolidada é um produto real na UI: atendimentos concluídos geram lançamentos `pendenteFatura`, e o job mensal cria uma única `faturaConsolidada`.
-- Resumos financeiros contam `faturaConsolidada` como cobrança real e excluem `pendenteFatura` dos totais para evitar dupla contagem antes da consolidação.
+- O financeiro usa ledger contábil formal por partidas dobradas (`accounting_accounts`, `accounting_journal_entries`, `accounting_journal_lines`, `receivable_allocations`) como fonte de verdade para caixa, receita por competência, contas a receber, adiantamentos e DRE.
+- `financial_records` permanece como camada operacional/compatibilidade e guarda vínculos `accounting_entry_id`, `recognized_entry_id` e `settlement_entry_id`.
+- Depósitos em carteira e vendas antecipadas de pacote entram como caixa + adiantamento de cliente; receita só é reconhecida no uso da carteira ou consumo do crédito/sessão.
+- `faturaConsolidada` funciona como agrupador/cobrança oficial; a receita de competência é reconhecida pelos atendimentos/itens, sem duplicar no fechamento da fatura.
+- Pagamentos manuais baixam títulos existentes via `receivable_allocations`; quando não há título pendente, viram recebimento direto.
 
 ---
 

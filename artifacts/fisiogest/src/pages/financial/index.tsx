@@ -374,18 +374,30 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
 
   const netProfit = (dashboard?.monthlyRevenue ?? 0) - (dashboard?.monthlyExpenses ?? 0);
   const isProfitable = netProfit >= 0;
+  const cashReceived = (dashboard as any)?.cashReceived ?? 0;
+  const accountsReceivable = (dashboard as any)?.accountsReceivable ?? 0;
+  const customerAdvances = (dashboard as any)?.customerAdvances ?? 0;
 
   return (
     <div className="space-y-6">
 
       {/* ── Hero KPI Strip ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <KpiCard
-          label="Receitas"
+          label="Receita Competência"
           value={formatCurrency(dashboard?.monthlyRevenue ?? 0)}
           icon={<TrendingUp className="w-4 h-4" />}
           accentColor="#10b981"
           loading={dashLoading}
+          sub="Reconhecida no DRE"
+        />
+        <KpiCard
+          label="Caixa Recebido"
+          value={formatCurrency(cashReceived)}
+          icon={<PiggyBank className="w-4 h-4" />}
+          accentColor="#0ea5e9"
+          loading={dashLoading}
+          sub="Dinheiro que entrou"
         />
         <KpiCard
           label="Despesas"
@@ -418,6 +430,25 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
           sub={dashboard?.topProcedure ? `Top: ${dashboard.topProcedure}` : undefined}
         />
       </div>
+
+      {!dashLoading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <KpiCard
+            label="A Receber Contábil"
+            value={formatCurrency(accountsReceivable)}
+            icon={<Clock className="w-4 h-4" />}
+            accentColor="#f59e0b"
+            sub="Títulos abertos no ledger"
+          />
+          <KpiCard
+            label="Adiantamentos / Carteira"
+            value={formatCurrency(customerAdvances)}
+            icon={<PiggyBank className="w-4 h-4" />}
+            accentColor="#14b8a6"
+            sub="Passivo com pacientes"
+          />
+        </div>
+      )}
 
       {/* ── Net Result Banner ── */}
       {!dashLoading && (
@@ -460,12 +491,12 @@ function LancamentosTab({ month, year }: { month: number; year: number }) {
             sub={`${(dashboard as any)?.activeSubscriptions ?? 0} assinatura(s) ativa(s)`}
           />
           <KpiCard
-            label="A Receber — Cobranças Pendentes"
-            value={formatCurrency((dashboard as any)?.pendingSubscriptionCharges?.total ?? 0)}
+            label="A Receber — Ledger"
+            value={formatCurrency(accountsReceivable)}
             icon={<Clock className="w-4 h-4" />}
             accentColor="#f59e0b"
             loading={dashLoading}
-            sub={`${(dashboard as any)?.pendingSubscriptionCharges?.count ?? 0} lançamento(s) · ${(dashboard as any)?.pendingConsolidatedInvoices?.count ?? 0} fatura(s) consolidada(s)`}
+            sub={`${(dashboard as any)?.pendingSubscriptionCharges?.count ?? 0} cobrança(s) recorrente(s) pendente(s)`}
           />
           <div className="relative bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-indigo-400" />

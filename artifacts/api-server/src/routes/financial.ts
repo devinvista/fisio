@@ -5,8 +5,18 @@ import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or, count, 
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { logAudit } from "../lib/auditLog.js";
-import { nowBRT, todayBRT } from "../lib/dateUtils.js";
+import { monthDateRangeBRT, nowBRT, todayBRT } from "../lib/dateUtils.js";
 import { validateBody, positiveNumber } from "../lib/validate.js";
+import {
+  ACCOUNT_CODES,
+  allocateReceivable,
+  getAccountingBalances,
+  getAccountingTotals,
+  postCashReceipt,
+  postReceivableRevenue,
+  postReceivableSettlement,
+  postReversal,
+} from "../services/accountingService.js";
 import { z } from "zod/v4";
 
 const createRecordSchema = z.object({
@@ -101,26 +111,22 @@ function isActiveFinancialRecord(status: string): boolean {
 }
 
 function isRevenueSummaryRecord(record: typeof financialRecordsTable.$inferSelect): boolean {
+  const nonCompetencyTypes = ["depositoCarteira", "vendaPacote", "pagamento", "faturaConsolidada"];
   return record.type === "receita"
     && isActiveFinancialRecord(record.status)
-    && record.transactionType !== "pendenteFatura";
+    && !nonCompetencyTypes.includes(record.transactionType ?? "");
 }
 
 function revenueSummarySql() {
   return and(
     eq(financialRecordsTable.type, "receita"),
     sql`${financialRecordsTable.status} NOT IN ('estornado', 'cancelado')`,
-    sql`(${financialRecordsTable.transactionType} IS NULL OR ${financialRecordsTable.transactionType} <> 'pendenteFatura')`
+    sql`(${financialRecordsTable.transactionType} IS NULL OR ${financialRecordsTable.transactionType} NOT IN ('depositoCarteira', 'vendaPacote', 'pagamento', 'faturaConsolidada'))`
   )!;
 }
 
 function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
-  const lastDay = new Date(year, month, 0).getDate();
-  const mm = String(month).padStart(2, "0");
-  return {
-    startDate: `${year}-${mm}-01`,
-    endDate: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
-  };
+  return monthDateRangeBRT(year, month);
 }
 
 // Unified date filter used by every financial endpoint:
@@ -152,13 +158,26 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
       .from(financialRecordsTable)
       .where(cc ? and(cc, recordDateFilter(startDate, endDate)) : recordDateFilter(startDate, endDate));
 
-    const monthlyRevenue = records
-      .filter(isRevenueSummaryRecord)
-      .reduce((sum, r) => sum + Number(r.amount), 0);
+    const accountingTotals = await getAccountingTotals({
+      clinicId: req.isSuperAdmin ? null : req.clinicId,
+      startDate,
+      endDate,
+    });
+    const accountingBalances = await getAccountingBalances({
+      clinicId: req.isSuperAdmin ? null : req.clinicId,
+    });
+    const totalByCode = new Map(accountingTotals.map((row) => [row.code, { debit: Number(row.debit), credit: Number(row.credit) }]));
+    const balanceByCode = new Map(accountingBalances.map((row) => [row.code, { debit: Number(row.debit), credit: Number(row.credit) }]));
 
-    const monthlyExpenses = records
-      .filter((r) => r.type === "despesa")
-      .reduce((sum, r) => sum + Number(r.amount), 0);
+    const monthlyRevenue =
+      (totalByCode.get(ACCOUNT_CODES.serviceRevenue)?.credit ?? 0) +
+      (totalByCode.get(ACCOUNT_CODES.packageRevenue)?.credit ?? 0);
+    const monthlyExpenses =
+      (totalByCode.get(ACCOUNT_CODES.operatingExpenses)?.debit ?? 0) +
+      (totalByCode.get(ACCOUNT_CODES.revenueReversals)?.debit ?? 0);
+    const cashReceived = totalByCode.get(ACCOUNT_CODES.cash)?.debit ?? 0;
+    const accountsReceivable = (balanceByCode.get(ACCOUNT_CODES.receivables)?.debit ?? 0) - (balanceByCode.get(ACCOUNT_CODES.receivables)?.credit ?? 0);
+    const customerAdvances = (balanceByCode.get(ACCOUNT_CODES.customerAdvances)?.credit ?? 0) - (balanceByCode.get(ACCOUNT_CODES.customerAdvances)?.debit ?? 0);
 
     const completedAppts = await db
       .select({ count: sql<number>`count(*)` })
@@ -255,6 +274,10 @@ router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRe
 
     res.json({
       monthlyRevenue,
+      recognizedRevenue: monthlyRevenue,
+      cashReceived,
+      accountsReceivable,
+      customerAdvances,
       monthlyExpenses,
       monthlyProfit: monthlyRevenue - monthlyExpenses,
       averageTicket,
@@ -494,20 +517,15 @@ router.get("/patients/:patientId/summary", requirePermission("financial.read"), 
       return;
     }
 
-    const records = await db
-      .select()
-      .from(financialRecordsTable)
-      .where(eq(financialRecordsTable.patientId, patientId));
-
-    const totalAReceber = records
-      .filter((r) => RECEIVABLE_TYPES.includes(r.transactionType ?? "") && r.status !== "cancelado" && r.status !== "estornado" && Number(r.amount) > 0)
-      .reduce((s, r) => s + Number(r.amount), 0);
-
-    const totalPago = records
-      .filter((r) => r.transactionType === "pagamento" && r.status === "pago")
-      .reduce((s, r) => s + Number(r.amount), 0);
-
-    const saldo = totalAReceber - totalPago;
+    const balances = await getAccountingBalances({
+      clinicId: (req as AuthRequest).isSuperAdmin ? null : (req as AuthRequest).clinicId,
+      patientId,
+    });
+    const balanceByCode = new Map(balances.map((row) => [row.code, { debit: Number(row.debit), credit: Number(row.credit) }]));
+    const totalAReceber = Math.max(0, (balanceByCode.get(ACCOUNT_CODES.receivables)?.debit ?? 0) - (balanceByCode.get(ACCOUNT_CODES.receivables)?.credit ?? 0));
+    const totalPago = balanceByCode.get(ACCOUNT_CODES.cash)?.debit ?? 0;
+    const saldoCarteiraAdiantamentos = Math.max(0, (balanceByCode.get(ACCOUNT_CODES.customerAdvances)?.credit ?? 0) - (balanceByCode.get(ACCOUNT_CODES.customerAdvances)?.debit ?? 0));
+    const saldo = totalAReceber;
 
     const credits = await db
       .select()
@@ -520,6 +538,7 @@ router.get("/patients/:patientId/summary", requirePermission("financial.read"), 
       totalAReceber,
       totalPago,
       saldo,
+      saldoCarteiraAdiantamentos,
       totalSessionCredits,
     });
   } catch (err) {
@@ -544,22 +563,121 @@ router.post("/patients/:patientId/payment", requirePermission("financial.write")
 
     const [patient] = await db.select({ name: patientsTable.name }).from(patientsTable).where(eq(patientsTable.id, patientId));
 
-    const [record] = await db
-      .insert(financialRecordsTable)
-      .values({
-        type: "receita",
-        amount: String(numAmount),
-        description: description || `Pagamento — ${patient?.name ?? "Paciente"}`,
-        category: "Pagamento",
-        patientId,
-        procedureId: procedureId ? parseInt(String(procedureId)) : null,
-        transactionType: "pagamento",
-        status: "pago",
-        paymentDate: today,
-        paymentMethod: paymentMethod || null,
-        clinicId: req.clinicId ?? null,
-      })
-      .returning();
+    const [record] = await db.transaction(async (tx) => {
+      const [paymentRecord] = await tx
+        .insert(financialRecordsTable)
+        .values({
+          type: "receita",
+          amount: String(numAmount),
+          description: description || `Pagamento — ${patient?.name ?? "Paciente"}`,
+          category: "Pagamento",
+          patientId,
+          procedureId: procedureId ? parseInt(String(procedureId)) : null,
+          transactionType: "pagamento",
+          status: "pago",
+          paymentDate: today,
+          paymentMethod: paymentMethod || null,
+          clinicId: req.clinicId ?? null,
+        })
+        .returning();
+
+      const pendingRecords = await tx
+        .select()
+        .from(financialRecordsTable)
+        .where(and(
+          eq(financialRecordsTable.patientId, patientId),
+          eq(financialRecordsTable.status, "pendente"),
+          inArray(financialRecordsTable.transactionType, [...RECEIVABLE_TYPES, "vendaPacote"])
+        ))
+        .orderBy(financialRecordsTable.dueDate, financialRecordsTable.createdAt);
+
+      let remaining = numAmount;
+      let primaryEntryId: number | null = null;
+
+      for (const pending of pendingRecords) {
+        if (remaining <= 0) break;
+        const allocationAmount = Math.min(remaining, Number(pending.amount));
+        let receivableEntryId = pending.accountingEntryId ?? pending.recognizedEntryId;
+
+        if (!receivableEntryId && pending.transactionType !== "vendaPacote") {
+          const recognitionEntry = await postReceivableRevenue({
+            clinicId: pending.clinicId ?? req.clinicId ?? null,
+            entryDate: pending.dueDate ?? today,
+            amount: Number(pending.amount),
+            description: pending.description,
+            sourceType: "financial_record",
+            sourceId: pending.id,
+            patientId,
+            appointmentId: pending.appointmentId,
+            procedureId: pending.procedureId,
+            subscriptionId: pending.subscriptionId,
+            financialRecordId: pending.id,
+          }, tx as any);
+          receivableEntryId = recognitionEntry.id;
+          await tx
+            .update(financialRecordsTable)
+            .set({ accountingEntryId: recognitionEntry.id, recognizedEntryId: recognitionEntry.id })
+            .where(eq(financialRecordsTable.id, pending.id));
+        }
+
+        const paymentEntry = await postReceivableSettlement({
+          clinicId: pending.clinicId ?? req.clinicId ?? null,
+          entryDate: today,
+          amount: allocationAmount,
+          description: `Baixa de recebível — ${pending.description}`,
+          sourceType: "financial_record",
+          sourceId: paymentRecord.id,
+          patientId,
+          appointmentId: pending.appointmentId,
+          procedureId: pending.procedureId,
+          subscriptionId: pending.subscriptionId,
+          financialRecordId: paymentRecord.id,
+        }, tx as any);
+        primaryEntryId ??= paymentEntry.id;
+
+        if (receivableEntryId) {
+          await allocateReceivable({
+            clinicId: pending.clinicId ?? req.clinicId ?? null,
+            paymentEntryId: paymentEntry.id,
+            receivableEntryId,
+            patientId,
+            amount: allocationAmount,
+            allocatedAt: today,
+          }, tx as any);
+        }
+
+        if (allocationAmount >= Number(pending.amount)) {
+          await tx
+            .update(financialRecordsTable)
+            .set({ status: "pago", paymentDate: today, paymentMethod: paymentMethod || null, settlementEntryId: paymentEntry.id })
+            .where(eq(financialRecordsTable.id, pending.id));
+        }
+
+        remaining = Math.round((remaining - allocationAmount) * 100) / 100;
+      }
+
+      if (remaining > 0) {
+        const directEntry = await postCashReceipt({
+          clinicId: req.clinicId ?? null,
+          entryDate: today,
+          amount: remaining,
+          description: description || `Pagamento direto — ${patient?.name ?? "Paciente"}`,
+          sourceType: "financial_record",
+          sourceId: paymentRecord.id,
+          patientId,
+          procedureId: procedureId ? parseInt(String(procedureId)) : null,
+          financialRecordId: paymentRecord.id,
+        }, tx as any);
+        primaryEntryId ??= directEntry.id;
+      }
+
+      await tx
+        .update(financialRecordsTable)
+        .set({ accountingEntryId: primaryEntryId, settlementEntryId: primaryEntryId })
+        .where(eq(financialRecordsTable.id, paymentRecord.id));
+
+      return [paymentRecord];
+    });
 
     await logAudit({
       userId: req.userId,
@@ -654,15 +772,73 @@ router.patch("/records/:id/status", requirePermission("financial.write"), async 
       return;
     }
 
-    const [record] = await db
-      .update(financialRecordsTable)
-      .set({
-        status,
-        paymentDate: paymentDate || undefined,
-        paymentMethod: paymentMethod || undefined,
-      })
-      .where(existingWhere)
-      .returning();
+    const [record] = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(financialRecordsTable)
+        .set({
+          status,
+          paymentDate: paymentDate || undefined,
+          paymentMethod: paymentMethod || undefined,
+        })
+        .where(existingWhere)
+        .returning();
+
+      if (!updated) return [];
+
+      if (status === "pago" && existing.status !== "pago" && [...RECEIVABLE_TYPES, "vendaPacote"].includes(existing.transactionType ?? "")) {
+        const settlement = await postReceivableSettlement({
+          clinicId: existing.clinicId ?? req.clinicId ?? null,
+          entryDate: paymentDate || todayBRT(),
+          amount: Number(existing.amount),
+          description: `Baixa de recebível — ${existing.description}`,
+          sourceType: "financial_record",
+          sourceId: existing.id,
+          patientId: existing.patientId,
+          appointmentId: existing.appointmentId,
+          procedureId: existing.procedureId,
+          subscriptionId: existing.subscriptionId,
+          financialRecordId: existing.id,
+        }, tx as any);
+
+        if (existing.accountingEntryId || existing.recognizedEntryId) {
+          await allocateReceivable({
+            clinicId: existing.clinicId ?? req.clinicId ?? null,
+            paymentEntryId: settlement.id,
+            receivableEntryId: existing.accountingEntryId ?? existing.recognizedEntryId!,
+            patientId: existing.patientId!,
+            amount: Number(existing.amount),
+            allocatedAt: paymentDate || todayBRT(),
+          }, tx as any);
+        }
+
+        await tx
+          .update(financialRecordsTable)
+          .set({ settlementEntryId: settlement.id })
+          .where(eq(financialRecordsTable.id, existing.id));
+
+        updated.settlementEntryId = settlement.id;
+      }
+
+      if ((status === "cancelado" || status === "estornado") && existing.status !== status) {
+        const entryId = existing.accountingEntryId ?? existing.recognizedEntryId ?? existing.settlementEntryId;
+        if (entryId) {
+          await postReversal(entryId, {
+            clinicId: existing.clinicId ?? req.clinicId ?? null,
+            entryDate: todayBRT(),
+            description: `Estorno/cancelamento — ${existing.description}`,
+            sourceType: "financial_record",
+            sourceId: existing.id,
+            patientId: existing.patientId,
+            appointmentId: existing.appointmentId,
+            procedureId: existing.procedureId,
+            subscriptionId: existing.subscriptionId,
+            financialRecordId: existing.id,
+          }, tx as any);
+        }
+      }
+
+      return [updated];
+    });
 
     if (!record) {
       res.status(404).json({ error: "Not Found" });
@@ -980,9 +1156,8 @@ router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest,
     const year  = parseInt(req.query.year  as string) || brt.year;
 
     function dateRange(y: number, m: number) {
-      const last = new Date(y, m, 0).getDate();
-      const mm = String(m).padStart(2, "0");
-      return { start: `${y}-${mm}-01`, end: `${y}-${mm}-${String(last).padStart(2, "0")}` };
+      const range = monthDateRangeBRT(y, m);
+      return { start: range.startDate, end: range.endDate };
     }
 
     const { start, end } = dateRange(year, month);
@@ -990,25 +1165,26 @@ router.get("/dre", requirePermission("financial.read"), async (req: AuthRequest,
     const prevYear  = month === 1 ? year - 1 : year;
     const { start: ps, end: pe } = dateRange(prevYear, prevMonth);
 
-    const cc = clinicId ? eq(financialRecordsTable.clinicId, clinicId) : null;
-
     async function getMonthlyFinancials(s: string, e: string) {
-      const records = await db
-        .select()
-        .from(financialRecordsTable)
-        .where(cc ? and(cc, recordDateFilter(s, e)) : recordDateFilter(s, e));
-
-      const revenue = records
-        .filter(isRevenueSummaryRecord)
-        .reduce((sum, r) => sum + Number(r.amount), 0);
-
-      const expensesByCategory: Record<string, number> = {};
-      const expenses = records.filter(r => r.type === "despesa");
-      expenses.forEach(r => {
-        const cat = r.category ?? "Outros";
-        expensesByCategory[cat] = (expensesByCategory[cat] ?? 0) + Number(r.amount);
+      const totals = await getAccountingTotals({
+        clinicId: req.isSuperAdmin ? null : clinicId,
+        startDate: s,
+        endDate: e,
       });
-      const totalExpenses = expenses.reduce((sum, r) => sum + Number(r.amount), 0);
+      const byCode = new Map(totals.map((row) => [row.code, { debit: Number(row.debit), credit: Number(row.credit) }]));
+
+      const revenue =
+        (byCode.get(ACCOUNT_CODES.serviceRevenue)?.credit ?? 0) +
+        (byCode.get(ACCOUNT_CODES.packageRevenue)?.credit ?? 0);
+      const operatingExpenses = byCode.get(ACCOUNT_CODES.operatingExpenses)?.debit ?? 0;
+      const revenueReversals = byCode.get(ACCOUNT_CODES.revenueReversals)?.debit ?? 0;
+      const totalExpenses = operatingExpenses + revenueReversals;
+      const expensesByCategory: Record<string, number> = {
+        "Despesas Operacionais": operatingExpenses,
+      };
+      if (revenueReversals > 0) {
+        expensesByCategory["Estornos/Cancelamentos"] = revenueReversals;
+      }
 
       return { revenue, totalExpenses, expensesByCategory };
     }

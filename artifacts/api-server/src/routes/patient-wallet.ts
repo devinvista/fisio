@@ -20,6 +20,8 @@ import { eq, and, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { validateBody } from "../lib/validate.js";
+import { todayBRT } from "../lib/dateUtils.js";
+import { postWalletDeposit } from "../services/accountingService.js";
 import { z } from "zod/v4";
 
 const router = Router({ mergeParams: true });
@@ -136,13 +138,13 @@ router.post("/wallet/deposit", requirePermission("financial.update"), async (req
           transactionType: "depositoCarteira",
           status:          "pago",
           paymentMethod:   body.paymentMethod ?? null,
-          dueDate:         new Date().toISOString().slice(0, 10),
-          paymentDate:     new Date().toISOString().slice(0, 10),
+          dueDate:         todayBRT(),
+          paymentDate:     todayBRT(),
         })
         .returning();
 
       // Cria transação na carteira
-      await tx.insert(patientWalletTransactionsTable).values({
+      const [walletTransaction] = await tx.insert(patientWalletTransactionsTable).values({
         walletId:          wallet.id,
         patientId,
         clinicId,
@@ -150,7 +152,24 @@ router.post("/wallet/deposit", requirePermission("financial.update"), async (req
         type:              "deposito",
         description,
         financialRecordId: fr.id,
-      });
+      }).returning();
+
+      const entry = await postWalletDeposit({
+        clinicId,
+        entryDate: todayBRT(),
+        amount: Number(body.amount),
+        description,
+        sourceType: "patient_wallet_transaction",
+        sourceId: walletTransaction.id,
+        patientId,
+        walletTransactionId: walletTransaction.id,
+        financialRecordId: fr.id,
+      }, tx as any);
+
+      await tx
+        .update(financialRecordsTable)
+        .set({ accountingEntryId: entry.id, settlementEntryId: entry.id })
+        .where(eq(financialRecordsTable.id, fr.id));
     });
 
     // Retorna carteira atualizada

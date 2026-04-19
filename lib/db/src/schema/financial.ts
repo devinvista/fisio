@@ -21,6 +21,9 @@ export const financialRecordsTable = pgTable("financial_records", {
   status: text("status").notNull().default("pendente"),
   dueDate: date("due_date"),
   subscriptionId: integer("subscription_id"),
+  accountingEntryId: integer("accounting_entry_id"),
+  recognizedEntryId: integer("recognized_entry_id"),
+  settlementEntryId: integer("settlement_entry_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_financial_records_clinic_id").on(table.clinicId),

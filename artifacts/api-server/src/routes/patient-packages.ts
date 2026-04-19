@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable, sessionCreditsTable } from "@workspace/db";
+import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable, sessionCreditsTable, financialRecordsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { validateBody } from "../lib/validate.js";
+import { postPackageSale } from "../services/accountingService.js";
 import { z } from "zod/v4";
 
 const paymentStatusEnum = z.enum(["pendente", "pago", "cancelado"]);
@@ -162,6 +163,41 @@ router.post("/", requirePermission("patients.create"), async (req: AuthRequest, 
         clinicId: req.clinicId ?? null,
         notes: `Créditos gerados a partir do pacote: ${name}`,
       });
+    }
+
+    if (Number(price) > 0) {
+      const [financialRecord] = await db.insert(financialRecordsTable).values({
+        type: "receita",
+        amount: String(price),
+        description: `Venda de pacote — ${name}`,
+        category: "Pacote",
+        patientId: resolvedPatientId,
+        procedureId: Number(procedureId),
+        clinicId: req.clinicId ?? null,
+        transactionType: "vendaPacote",
+        status: paymentStatus === "pago" ? "pago" : "pendente",
+        paymentDate: paymentStatus === "pago" ? startDate : null,
+        dueDate: startDate,
+      }).returning();
+
+      const entry = await postPackageSale({
+        clinicId: req.clinicId ?? null,
+        entryDate: startDate,
+        amount: Number(price),
+        paid: paymentStatus === "pago",
+        description: `Venda de pacote — ${name}`,
+        sourceType: "patient_package",
+        sourceId: pp.id,
+        patientId: resolvedPatientId,
+        procedureId: Number(procedureId),
+        patientPackageId: pp.id,
+        financialRecordId: financialRecord.id,
+      });
+
+      await db
+        .update(financialRecordsTable)
+        .set({ accountingEntryId: entry.id, settlementEntryId: paymentStatus === "pago" ? entry.id : null })
+        .where(eq(financialRecordsTable.id, financialRecord.id));
     }
 
     // Auto-create subscription for mensal and faturaConsolidada packages
