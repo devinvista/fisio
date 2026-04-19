@@ -235,3 +235,33 @@ export const bodyMeasurementsTable = pgTable("body_measurements", {
 ]);
 
 export type BodyMeasurement = typeof bodyMeasurementsTable.$inferSelect;
+
+// ─── Patient Photos — acompanhamento fotográfico evolutivo ────────────────────
+export const patientPhotosTable = pgTable("patient_photos", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patientsTable.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id"),
+
+  // Identification
+  takenAt: timestamp("taken_at").defaultNow().notNull(),  // data da sessão fotográfica
+  viewType: text("view_type").notNull(),  // frontal | lateral_d | lateral_e | posterior | detalhe
+  sessionLabel: text("session_label"),   // rótulo livre (ex: "1ª Avaliação", "Mês 2")
+
+  // Storage
+  objectPath: text("object_path").notNull(),
+  originalFilename: text("original_filename"),
+  contentType: text("content_type"),
+  fileSize: integer("file_size"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_patient_photos_patient_id").on(table.patientId),
+  index("idx_patient_photos_taken_at").on(table.takenAt),
+]);
+
+export const insertPatientPhotoSchema = createInsertSchema(patientPhotosTable).omit({ id: true, createdAt: true });
+export type InsertPatientPhoto = z.infer<typeof insertPatientPhotoSchema>;
+export type PatientPhoto = typeof patientPhotosTable.$inferSelect;

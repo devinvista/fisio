@@ -36,7 +36,7 @@ import {
   Check, ArrowUpRight, Zap, X,
   Wallet, TrendingDown, ArrowDownRight,
   Sparkles, Leaf, Droplets, Sun, Dumbbell, Scale, Ruler, FlaskConical,
-  ShieldCheck, Link2,
+  ShieldCheck, Link2, Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +51,7 @@ import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/use-auth";
 import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
+import { PhotosTab } from "./photos-tab";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -7773,8 +7774,14 @@ export default function PatientDetail() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {/* Atestados + Alta + Auditoria row */}
+              {/* Fotos + Atestados + Alta + Auditoria row */}
               <TabsList className="w-full bg-white p-1 rounded-xl shadow-sm border border-dashed border-slate-300 h-auto flex gap-1">
+                <TabsTrigger
+                  value="photos"
+                  className="flex-1 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
+                >
+                  <Camera className="w-3.5 h-3.5 shrink-0" /> Fotos
+                </TabsTrigger>
                 <TabsTrigger
                   value="atestados"
                   className="flex-1 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1.5 data-[state=inactive]:text-slate-500"
@@ -7800,6 +7807,7 @@ export default function PatientDetail() {
 
             <TabsContent value="jornada"><JornadaTab patientId={patientId} onNavigateToTab={setActiveTab} /></TabsContent>
             <TabsContent value="anamnesis"><AnamnesisTab patientId={patientId} /></TabsContent>
+            <TabsContent value="photos"><PhotosTab patientId={patientId} /></TabsContent>
             <TabsContent value="evaluations"><EvaluationsTab patientId={patientId} /></TabsContent>
             <TabsContent value="treatment"><TreatmentPlanTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} /></TabsContent>
             <TabsContent value="evolutions"><EvolutionsTab patientId={patientId} patient={patient ? { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate, phone: patient.phone } : undefined} /></TabsContent>
