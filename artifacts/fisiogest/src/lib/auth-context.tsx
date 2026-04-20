@@ -36,7 +36,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const [clinics, setClinics] = useState<ClinicInfo[]>(() => {
     const stored = localStorage.getItem("fisiogest_clinics");
-    return stored ? JSON.parse(stored) : [];
+    if (!stored) return [];
+    try {
+      return JSON.parse(stored) as ClinicInfo[];
+    } catch {
+      localStorage.removeItem("fisiogest_clinics");
+      return [];
+    }
   });
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [, setLocation] = useLocation();

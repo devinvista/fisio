@@ -190,7 +190,7 @@ export default function Dashboard() {
     );
   };
 
-  const bookingUrl = `${window.location.origin}${BASE}/agendar`;
+  const bookingUrl = `${window.location.origin}${BASE ? BASE + "/" : "/"}agendar`;
 
   const copyBookingUrl = async () => {
     await navigator.clipboard.writeText(bookingUrl);

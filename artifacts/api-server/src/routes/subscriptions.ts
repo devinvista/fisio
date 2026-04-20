@@ -7,10 +7,28 @@ import {
   sessionCreditsTable,
   billingRunLogsTable,
 } from "@workspace/db";
-import { eq, and, desc, gte, lte } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
+import { z } from "zod/v4";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { validateBody } from "../lib/validate.js";
 import { runBilling } from "../services/billingService.js";
+
+const createSubscriptionSchema = z.object({
+  patientId: z.number().int().positive(),
+  procedureId: z.number().int().positive(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD esperado"),
+  billingDay: z.number().int().min(1).max(31).optional(),
+  monthlyAmount: z.number().positive(),
+  notes: z.string().optional().nullable(),
+});
+
+const updateSubscriptionSchema = z.object({
+  status: z.enum(["ativa", "inativa", "cancelada", "pausada"]).optional(),
+  billingDay: z.number().int().min(1).max(31).optional(),
+  monthlyAmount: z.number().positive().optional(),
+  notes: z.string().optional().nullable(),
+});
 
 const router = Router();
 router.use(authMiddleware);
@@ -66,31 +84,26 @@ router.get("/", requirePermission("financial.read"), async (req, res) => {
 });
 
 router.post("/", requirePermission("financial.write"), async (req, res) => {
+  const parsed = validateBody(createSubscriptionSchema, req, res);
+  if (!parsed) return;
+
   try {
     const authReq = req as AuthRequest;
-    const { patientId, procedureId, startDate, billingDay, monthlyAmount, notes } = req.body;
+    const { patientId, procedureId, startDate, billingDay, monthlyAmount, notes } = parsed;
 
-    if (!patientId || !procedureId || !startDate || !monthlyAmount) {
-      res.status(400).json({
-        error: "Bad Request",
-        message: "patientId, procedureId, startDate e monthlyAmount são obrigatórios",
-      });
-      return;
-    }
-
-    const rawDay = billingDay ? parseInt(billingDay) : new Date(startDate + "T12:00:00Z").getUTCDate();
+    const rawDay = billingDay ?? new Date(startDate + "T12:00:00Z").getUTCDate();
     const day = Math.max(1, Math.min(31, rawDay));
 
     const [subscription] = await db
       .insert(patientSubscriptionsTable)
       .values({
-        patientId: parseInt(patientId),
-        procedureId: parseInt(procedureId),
+        patientId,
+        procedureId,
         startDate,
         billingDay: day,
         monthlyAmount: String(monthlyAmount),
         status: "ativa",
-        notes: notes || null,
+        notes: notes ?? null,
         clinicId: authReq.clinicId ?? null,
         nextBillingDate: calcInitialNextBillingDate(startDate, day),
       })
@@ -117,10 +130,13 @@ router.post("/", requirePermission("financial.write"), async (req, res) => {
 });
 
 router.put("/:id", requirePermission("financial.write"), async (req, res) => {
+  const parsed = validateBody(updateSubscriptionSchema, req, res);
+  if (!parsed) return;
+
   try {
     const authReq = req as AuthRequest;
     const id = parseInt(req.params.id as string);
-    const { status, billingDay, monthlyAmount, notes } = req.body;
+    const { status, billingDay, monthlyAmount, notes } = parsed;
 
     const isCancelling = status === "cancelada" || status === "inativa";
     const cancelledAt = isCancelling ? new Date() : undefined;
@@ -132,9 +148,9 @@ router.put("/:id", requirePermission("financial.write"), async (req, res) => {
     const [subscription] = await db
       .update(patientSubscriptionsTable)
       .set({
-        status: status || undefined,
-        billingDay: billingDay ? parseInt(billingDay) : undefined,
-        monthlyAmount: monthlyAmount ? String(monthlyAmount) : undefined,
+        status: status ?? undefined,
+        billingDay: billingDay ?? undefined,
+        monthlyAmount: monthlyAmount !== undefined ? String(monthlyAmount) : undefined,
         notes: notes !== undefined ? notes : undefined,
         cancelledAt,
       })
@@ -173,11 +189,20 @@ router.delete("/:id", requirePermission("financial.write"), async (req, res) => 
 
 router.get("/:id/credits", requirePermission("financial.read"), async (req, res) => {
   try {
+    const authReq = req as AuthRequest;
     const subscriptionId = parseInt(req.params.id as string);
+
+    const clinicCondition = (!authReq.isSuperAdmin && authReq.clinicId)
+      ? and(
+          eq(patientSubscriptionsTable.id, subscriptionId),
+          eq(patientSubscriptionsTable.clinicId, authReq.clinicId),
+        )
+      : eq(patientSubscriptionsTable.id, subscriptionId);
+
     const [subscription] = await db
       .select()
       .from(patientSubscriptionsTable)
-      .where(eq(patientSubscriptionsTable.id, subscriptionId));
+      .where(clinicCondition);
 
     if (!subscription) {
       res.status(404).json({ error: "Not Found" });

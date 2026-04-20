@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, date, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { patientsTable } from "./patients";
@@ -18,7 +18,12 @@ export const patientSubscriptionsTable = pgTable("patient_subscriptions", {
   nextBillingDate: date("next_billing_date"),
   subscriptionType: text("subscription_type").notNull().default("mensal"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_patient_subscriptions_patient_id").on(table.patientId),
+  index("idx_patient_subscriptions_clinic_id").on(table.clinicId),
+  index("idx_patient_subscriptions_status").on(table.status),
+  index("idx_patient_subscriptions_next_billing").on(table.nextBillingDate),
+]);
 
 export const insertPatientSubscriptionSchema = createInsertSchema(patientSubscriptionsTable).omit({ id: true, createdAt: true });
 export type InsertPatientSubscription = z.infer<typeof insertPatientSubscriptionSchema>;

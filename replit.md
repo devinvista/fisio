@@ -421,8 +421,9 @@ Para publicar o projeto no Replit (`.replit.app`):
 ├── scripts/
 │   ├── post-merge.sh                   # Roda após merge de task agents
 │   ├── seed-demo.ts                    # Seed completo (novo clinic) — falha se usuários já existem
-│   └── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
-│   # Nota: backfillAccounting.ts foi removido (migração única já concluída)
+│   ├── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
+│   └── src/                           # (vazio — hello.ts de teste removido)
+│   # Notas: backfillAccounting.ts removido (migração única concluída); middlewares/ vazio removido
 │
 ├── pnpm-workspace.yaml
 └── package.json                        # Scripts raiz: build:libs, typecheck, db:seed-demo
@@ -450,8 +451,8 @@ Todas as tabelas estão no PostgreSQL provisionado pelo Replit. O schema canôni
 | `treatment_plans` | id, patientId (múltiplos por paciente), **clinicId** (FK → clinics), objectives, techniques, frequency, estimatedSessions, status |
 | `evolutions` | id, patientId, appointmentId (FK opcional), description, patientResponse, clinicalNotes, complications, **painScale** (0–10) |
 | `discharge_summaries` | id, patientId (único), dischargeDate, dischargeReason, achievedResults, recommendations |
-| `patient_subscriptions` | id, patientId, procedureId, startDate, billingDay, monthlyAmount, status, clinicId, cancelledAt, nextBillingDate |
-| `session_credits` | id, patientId, procedureId, quantity, usedQuantity, clinicId, notes |
+| `patient_subscriptions` | id, patientId, procedureId, startDate, billingDay, monthlyAmount, status, clinicId, cancelledAt, nextBillingDate — **índices:** patientId, clinicId, status, nextBillingDate |
+| `session_credits` | id, patientId, procedureId, quantity, usedQuantity, clinicId, notes — **índices:** patientId, clinicId |
 | `financial_records` | id, type (receita/despesa), amount, description, category, **status** (pendente/pago/cancelado/estornado), **dueDate** (vencimento), **paymentDate** (data de pagamento), **paymentMethod** (forma de pagamento), transactionType, appointmentId?, patientId?, procedureId?, subscriptionId?, clinicId, **accountingEntryId** (FK → journal entry principal), **recognizedEntryId** (FK → entry de reconhecimento de receita), **settlementEntryId** (FK → entry de liquidação) |
 | `accounting_accounts` | id, clinicId, code (único por clínica), name, type (asset/liability/equity/revenue/expense), normalBalance (debit/credit), isSystem |
 | `accounting_journal_entries` | id, clinicId, entryDate, eventType, description, sourceType, sourceId, status (posted/reversed), patientId?, appointmentId?, procedureId?, patientPackageId?, subscriptionId?, walletTransactionId?, financialRecordId?, reversalOfEntryId? |
@@ -787,3 +788,165 @@ Criadas pelo seed (`pnpm run db:seed-demo`):
 |--------|-------|--------|--------|
 | `admin@fisiogest.com.br` | `123456` | admin | Completo |
 | `mwschuch@gmail.com` | `123456` | admin + profissional | Clínica id=3 |
+
+---
+
+## Análise de Mercado — Sistemas Concorrentes e Melhores Práticas
+
+### Sistemas de referência no mercado brasileiro de gestão clínica
+
+| Sistema | Público-alvo | Diferencial | Fraqueza vs FisioGest |
+|---|---|---|---|
+| **Ninsaúde Clinic** | Clínicas multiespecialidade | Prontuário eletrônico + telemedicina | Financeiro simplificado, sem ledger contábil real |
+| **ClinicWeb** | Fisioterapia/reabilitação | Especializado em COFFITO, SOAP | Agenda e financeiro básicos |
+| **iClinic** | Clínicas em geral | UX polida, boa agenda | SaaS caro, sem assinatura por sessão |
+| **Prontmed** | Médicos e clínicas | Prescrição eletrônica (CFM) | Sem foco em fisioterapia/Pilates |
+| **Clinicorp** | Odontologia e estética | Gestão de pacotes e controle de sessões | Pouco voltado ao COFFITO |
+| **Meetime** | Vendas B2B | CRM clínico | Não é sistema clínico especializado |
+
+### Melhores práticas identificadas
+
+1. **Prontuário estruturado por especialidade** — templates adaptativos (reabilitação, estética facial, estética corporal) ✅ implementado
+2. **Ledger contábil por partidas dobradas** — receita por competência, não por caixa ✅ implementado
+3. **Cobrança automática de mensalidades** — billing scheduler com tolerância ✅ implementado
+4. **Controle de créditos de sessão** — pacotes pré-pagos com consumo rastreado ✅ implementado
+5. **Régua de cobrança** — lembretes automáticos de inadimplência ⏳ próxima prioridade (requer gateway)
+6. **Relatório de aging (inadimplência)** — cálculo de dias em atraso ✅ implementado no frontend
+7. **Multi-clínica com RBAC** — isolamento por clinicId + permissões por papel ✅ implementado
+8. **Portal de agendamento público** — link gerado automaticamente por clínica ✅ implementado
+9. **Telemedicina / videochamada** — integração Zoom/Google Meet ⏳ backlog
+10. **Assinatura digital de prontuários** — conformidade COFFITO Resolução 424/2013 ⏳ backlog
+
+### Lacunas identificadas vs mercado
+
+| Funcionalidade | Status | Prioridade |
+|---|---|---|
+| Régua de cobrança (PIX/boleto automático) | Pendente | Alta — requer gateway |
+| App mobile para pacientes (confirmação, histórico) | Pendente | Alta |
+| Emissão de NFS-e (nota fiscal de serviço) | Pendente | Média |
+| Integração com WhatsApp Business API | Pendente | Alta — lembretes de consulta |
+| Assinatura digital de documentos clínicos | Pendente | Média (COFFITO) |
+| Split de pagamento (clínica + profissional) | Pendente | Média |
+| Dashboard de relatórios com BI exportável | Pendente | Baixa |
+
+---
+
+## Roadmap de Integrações de Pagamento R$ (Mercado Brasileiro)
+
+### Por que o sistema atual é webhook-ready
+
+O schema já tem tudo que os gateways precisam para integração:
+- `financial_records.paymentMethod` → suporta "Pix", "Boleto", "Cartão de Crédito" etc.
+- `financial_records.transactionType` → rastreia origem do pagamento
+- `accounting_journal_entries` + `accounting_journal_lines` → double-entry ledger pronto para reconciliação automática
+- `patient_subscriptions.nextBillingDate` → sincroniza com cobrança recorrente do gateway
+- `billing_run_logs` → log de execuções de billing para auditoria
+
+### Gateways recomendados por caso de uso
+
+#### 1. Asaas (Recomendado Principal)
+- **Ideal para:** Régua de cobrança automática, Pix, Boleto, Cartão, Assinatura
+- **Diferenciais:** PIX com QR code automático, cobranças recorrentes, envio por WhatsApp/SMS/e-mail, webhook de confirmação
+- **Integração:** REST API + webhooks → ao receber `PAYMENT_RECEIVED`, fazer `PATCH /api/financial/records/:id/status` para `pago`
+- **Taxa:** A partir de 1,99% no cartão; Boleto R$1,99; PIX 0,99% (mín. R$0,01)
+- **Endpoint de integração sugerido:** `POST /api/webhooks/asaas`
+
+#### 2. Efí Bank (Gerencianet)
+- **Ideal para:** PIX API (Pix cobrança, Pix dinâmico), Split de pagamento
+- **Diferenciais:** PIX nativo com Open Finance; certificado mTLS necessário; Split nativo para repasse a profissionais
+- **Integração:** API PIX + Webhook `pix.received` → atualiza `financial_records`
+- **Taxa:** PIX 0,9% (mín. R$0,01); Boleto R$1,49; Cartão 2,49%
+
+#### 3. Stripe (Cartão internacional + assinaturas)
+- **Ideal para:** Clínicas com pacientes internacionais ou cobrança de SaaS em USD/EUR
+- **Diferenciais:** Melhor API para assinaturas recorrentes; portais de cliente self-service
+- **Limitação:** Boleto não nativo (necessita Stripe Boleto beta); PIX não suportado
+- **Taxa:** 2,9% + R$0,30 por transação; 0,5% para assinaturas
+
+#### 4. Mercado Pago
+- **Ideal para:** Clínicas menores que querem setup simples
+- **Diferenciais:** Point (maquininha física), QR Code PIX, alta confiança do consumidor
+- **Limitação:** Webhook menos confiável; taxas mais altas para recorrência
+- **Taxa:** 2,99% no cartão; PIX grátis para PF (cobrado para PJ)
+
+### Plano de integração sugerido (ordem de prioridade)
+
+```
+Fase 1 — PIX manual assistido (0 código novo necessário)
+├── Já implementado: campos paymentMethod="Pix" + paymentDate no PATCH /records/:id/status
+└── Clínica registra o PIX recebido manualmente → ledger atualizado automaticamente
+
+Fase 2 — Régua de cobrança (Asaas webhook)
+├── Criar artifacts/api-server/src/routes/webhooks/asaas.ts
+├── Ao criar financial_record pendente: chamar Asaas API para emitir cobrança (Pix/Boleto)
+├── Asaas envia webhook PAYMENT_RECEIVED → PATCH /records/:id/status pago
+└── Criar tabela gateway_charges (id, financialRecordId, gatewayId, externalId, status)
+
+Fase 3 — PIX dinâmico (Efí)
+├── Endpoint POST /api/financial/patients/:id/pix-charge → gera QR code dinâmico
+├── Webhook pix.received → PATCH /records/:id/status pago
+└── Salvar txid em gateway_charges.externalId
+
+Fase 4 — Assinatura via gateway (Asaas/Stripe)
+├── Sincronizar patient_subscriptions com assinatura do gateway
+├── Gateway dispara cobrança mensal → webhook cria financial_record automaticamente
+└── Eliminar billing scheduler manual (billingService.ts)
+```
+
+### Variáveis de ambiente necessárias (quando integrar)
+
+| Variável | Gateway | Descrição |
+|---|---|---|
+| `ASAAS_API_KEY` | Asaas | Chave de API (sandbox: `$aact_*`) |
+| `ASAAS_WEBHOOK_TOKEN` | Asaas | Token de validação de webhooks |
+| `EFI_CLIENT_ID` | Efí | Client ID OAuth |
+| `EFI_CLIENT_SECRET` | Efí | Client Secret OAuth |
+| `EFI_PIX_KEY` | Efí | Chave PIX da conta da clínica |
+| `STRIPE_SECRET_KEY` | Stripe | Secret key (`sk_live_*`) |
+| `STRIPE_WEBHOOK_SECRET` | Stripe | Signing secret para webhooks |
+
+> **Nota:** Nenhuma dessas variáveis existe ainda. Quando integrar, usar o skill `environment-secrets` para adicioná-las via painel do Replit.
+
+---
+
+## Histórico de Correções (Audit Log do Projeto)
+
+### Sessão abril/2026 — Auditoria completa
+
+#### Bugs de segurança corrigidos
+| Bug | Arquivo | Gravidade | Correção |
+|---|---|---|---|
+| Multi-tenancy leak: `GET /subscriptions/:id/credits` sem filtro de clínica | `routes/subscriptions.ts` | **Crítico** | Adicionado `clinicId` na query do subscription lookup |
+| `/records/:id/estorno` sem filtro de clínica | `routes/financial.ts` | **Crítico** | Adicionado `clinicCond(req)` + `postReversal` em transaction |
+
+#### Bugs funcionais corrigidos
+| Bug | Arquivo | Correção |
+|---|---|---|
+| `JSON.parse(stored)` sem try/catch → crash do app em localStorage corrompido | `lib/auth-context.tsx` | Adicionado try/catch + limpeza automática |
+| URL de agendamento `//agendar` quando BASE=`/` | `pages/dashboard.tsx` | Corrigido para `${BASE ? BASE + "/" : "/"}agendar` |
+| Variável `cc` undefined no handler `/dre` | `routes/financial.ts` | Adicionado `const cc = clinicCond(req)` |
+| Permissão `"financial.update"` inexistente em patient-wallet | `routes/financial.ts` | Corrigido para `"financial.write"` |
+
+#### Validação de input melhorada
+| Rota | Arquivo | Correção |
+|---|---|---|
+| `POST /subscriptions` — sem Zod, validação manual frágil | `routes/subscriptions.ts` | Adicionado `createSubscriptionSchema` com Zod |
+| `PUT /subscriptions/:id` — sem Zod, `parseInt` em dados não confiáveis | `routes/subscriptions.ts` | Adicionado `updateSubscriptionSchema` com Zod |
+
+#### Performance — índices de banco adicionados
+| Tabela | Índices adicionados | Impacto |
+|---|---|---|
+| `user_roles` | `userId`, `clinicId` | Verificação de permissão em toda requisição |
+| `session_credits` | `patientId`, `clinicId` | Consulta de créditos por paciente |
+| `patient_subscriptions` | `patientId`, `clinicId`, `status`, `nextBillingDate` | Billing automático + MRR |
+| `patient_packages` | `patientId`, `clinicId` | Prontuário e financeiro do paciente |
+
+#### Dead code e arquivos removidos
+| Arquivo | Motivo |
+|---|---|
+| `artifacts/api-server/src/scripts/backfillAccounting.ts` | Script de migração única já executado |
+| `docs/superpowers/specs/2026-04-19-contabilidade-formal-design.md` | Spec de design já implementado |
+| `artifacts/api-server/src/middlewares/.gitkeep` | Diretório vazio (supersedido por `middleware/`) |
+| `scripts/src/hello.ts` | Arquivo de teste órfão |
+| Função `monthRange()` em `reports.ts` | Declarada e nunca chamada |
+| Query de `records` morta no handler `/dashboard` (financial.ts) | Dados já vindos de `getAccountingTotals` |

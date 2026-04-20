@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { clinicsTable } from "./clinics";
 
@@ -93,7 +93,10 @@ export const userRolesTable = pgTable("user_roles", {
   clinicId: integer("clinic_id").references(() => clinicsTable.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_user_roles_user_id").on(table.userId),
+  index("idx_user_roles_clinic_id").on(table.clinicId),
+]);
 
 export const permissionsTable = pgTable("permissions", {
   id: serial("id").primaryKey(),
