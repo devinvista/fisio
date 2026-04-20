@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { logAudit } from "../lib/auditLog.js";
+import { postReceivableRevenue } from "./accountingService.js";
 
 export interface PolicyRunResult {
   autoConfirmed: number;
@@ -194,10 +195,14 @@ export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
                 .where(eq(proceduresTable.id, appt.procedureId))
                 .limit(1);
 
-              await db.insert(financialRecordsTable).values({
+              const feeAmount = Number(clinic.noShowFeeAmount);
+              const feeDescription = `Taxa de não comparecimento — ${procedure?.name ?? "Procedimento"} · ${patient?.name ?? "Paciente"}`;
+
+              // 1. Cria o registro financeiro operacional
+              const [noShowRecord] = await db.insert(financialRecordsTable).values({
                 type: "receita",
-                amount: clinic.noShowFeeAmount,
-                description: `Taxa de não comparecimento — ${procedure?.name ?? "Procedimento"} · ${patient?.name ?? "Paciente"}`,
+                amount: String(feeAmount),
+                description: feeDescription,
                 category: procedure?.category ?? "Outros",
                 appointmentId: appt.id,
                 patientId: appt.patientId,
@@ -206,7 +211,29 @@ export async function runEndOfDayPolicies(): Promise<PolicyRunResult> {
                 status: "pendente",
                 dueDate: appt.date,
                 clinicId: clinic.id,
+              }).returning();
+
+              // 2. Lança no ledger de partidas dobradas:
+              //    Débito 1.1.2 Contas a Receber / Crédito 4.1.1 Receita de Atendimentos
+              const accountingEntry = await postReceivableRevenue({
+                clinicId: clinic.id,
+                entryDate: appt.date,
+                amount: feeAmount,
+                description: `A receber — ${feeDescription}`,
+                eventType: "no_show_fee",
+                sourceType: "financial_record",
+                sourceId: noShowRecord.id,
+                patientId: appt.patientId,
+                appointmentId: appt.id,
+                procedureId: appt.procedureId,
               });
+
+              // 3. Vincula o lançamento contábil ao registro financeiro
+              await db
+                .update(financialRecordsTable)
+                .set({ accountingEntryId: accountingEntry.id })
+                .where(eq(financialRecordsTable.id, noShowRecord.id));
+
               result.noShowFeesGenerated++;
               result.details.push({ clinicId: clinic.id, action: "no_show_fee_generated", appointmentId: appt.id });
             }

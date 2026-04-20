@@ -950,3 +950,29 @@ Fase 4 — Assinatura via gateway (Asaas/Stripe)
 | `scripts/src/hello.ts` | Arquivo de teste órfão |
 | Função `monthRange()` em `reports.ts` | Declarada e nunca chamada |
 | Query de `records` morta no handler `/dashboard` (financial.ts) | Dados já vindos de `getAccountingTotals` |
+
+### Sessão abril/2026 — Melhorias #2 e #5
+
+#### Melhoria #2 — taxaNoShow integrada ao ledger contábil de partidas dobradas
+| Arquivo | Mudança |
+|---|---|
+| `services/policyService.ts` | `db.insert(financialRecordsTable)` alterado para `.returning()` para capturar o ID inserido |
+| `services/policyService.ts` | Importado `postReceivableRevenue` de `accountingService.ts` |
+| `services/policyService.ts` | Após inserção do registro financeiro: chamada a `postReceivableRevenue` gera lançamento Débito 1.1.2 / Crédito 4.1.1 com `eventType: "no_show_fee"` |
+| `services/policyService.ts` | `accountingEntryId` do lançamento gravado de volta no `financial_records` via `db.update` |
+
+Antes: taxa de no-show gerava apenas linha em `financial_records` mas **não aparecia no DRE nem no Razão Contábil**.
+Depois: taxa aparece corretamente no **Contas a Receber**, **Receita de Serviços** e no **DRE** do período.
+
+#### Melhoria #5 — prazo de vencimento de recebíveis configurável por clínica
+| Arquivo | Mudança |
+|---|---|
+| `lib/db/src/schema/clinics.ts` | Novo campo `defaultDueDays integer NOT NULL DEFAULT 3` adicionado |
+| DB (migration) | `pnpm run push` aplicou coluna `default_due_days` na tabela `clinics` |
+| `routes/appointments.ts` | Em `applyBillingRules()`: hardcoded `addDaysToDate(appointmentDate, 3)` substituído por query da clínica (`clinicsTable.defaultDueDays`) |
+| `pages/configuracoes.tsx` | Interface `Clinic`: campo `defaultDueDays?: number \| null` adicionado |
+| `pages/configuracoes.tsx` | Estado do formulário, useEffect e handleSubmit: campo `defaultDueDays` incluído |
+| `pages/configuracoes.tsx` | UI: novo campo "Prazo de vencimento de recebíveis" no card de Políticas de Agendamento com preview dinâmico |
+
+Antes: todos os recebíveis por sessão venciam sempre em +3 dias, sem possibilidade de configuração.
+Depois: cada clínica define seu prazo (0–90 dias) diretamente nas configurações.

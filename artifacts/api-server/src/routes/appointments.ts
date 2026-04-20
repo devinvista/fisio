@@ -204,13 +204,24 @@ async function applyBillingRules(
   const patientName = details.patient?.name ?? "Paciente";
   const today = todayBRT();
   const appointmentDate: string = (details as any).date ?? today;
-  const dueDatePorSessao = addDaysToDate(appointmentDate, 3);
 
   const confirmedStatuses = ["compareceu", "concluido"];
   const canceledStatuses = ["cancelado"];
   const absenceCreditStatuses = ["cancelado", "faltou"];
 
   const resolvedClinicId = clinicId ?? details.clinicId ?? null;
+
+  // Busca prazo de vencimento configurado pela clínica (padrão: 3 dias)
+  let clinicDueDays = 3;
+  if (resolvedClinicId) {
+    const [clinicSettings] = await db
+      .select({ defaultDueDays: clinicsTable.defaultDueDays })
+      .from(clinicsTable)
+      .where(eq(clinicsTable.id, resolvedClinicId))
+      .limit(1);
+    clinicDueDays = clinicSettings?.defaultDueDays ?? 3;
+  }
+  const dueDatePorSessao = addDaysToDate(appointmentDate, clinicDueDays);
 
   // Resolve effective price: clinic override takes precedence over base procedure price
   let effectivePrice = String(procedure.price);

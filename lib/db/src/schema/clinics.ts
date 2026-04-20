@@ -22,6 +22,8 @@ export const clinicsTable = pgTable("clinics", {
   autoConfirmHours: integer("auto_confirm_hours"),
   noShowFeeEnabled: boolean("no_show_fee_enabled").notNull().default(false),
   noShowFeeAmount: text("no_show_fee_amount"),
+  // Prazo padrão de vencimento de recebíveis gerados por sessão (dias após o atendimento)
+  defaultDueDays: integer("default_due_days").notNull().default(3),
 });
 
 export const insertClinicSchema = createInsertSchema(clinicsTable).omit({ id: true, createdAt: true });
