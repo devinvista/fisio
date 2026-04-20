@@ -39,7 +39,7 @@ import {
   ShieldCheck, Link2, Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea as Textarea } from "@/components/ui/voice-textarea";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
