@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, WheelEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
@@ -43,12 +43,19 @@ import {
   Loader2,
   ImageOff,
   ZoomIn,
+  ZoomOut,
   Calendar,
   Tag,
   Info,
+  Download,
+  Pencil,
+  Check,
+  RotateCcw,
+  ImagePlus,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import imageCompression from "browser-image-compression";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +80,12 @@ interface PhotoSession {
   dateKey: string;
   label: string | null;
   photos: PatientPhoto[];
+}
+
+interface FileEntry {
+  file: File;
+  previewUrl: string;
+  viewType: ViewType;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -102,7 +115,21 @@ const VIEW_COLORS: Record<ViewType, string> = {
 };
 
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024;
-const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+const ALLOWED_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
+const COMPRESSION_OPTIONS = {
+  maxSizeMB: 1.5,
+  maxWidthOrHeight: 2400,
+  useWebWorker: true,
+  preserveExif: true,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -125,7 +152,9 @@ function groupBySession(photos: PatientPhoto[]): PhotoSession[] {
 
 function formatDate(isoDate: string): string {
   try {
-    return format(parseISO(isoDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    return format(parseISO(isoDate), "dd 'de' MMMM 'de' yyyy", {
+      locale: ptBR,
+    });
   } catch {
     return isoDate;
   }
@@ -137,21 +166,41 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function autoAssignViews(files: File[]): FileEntry[] {
+  const entries: FileEntry[] = [];
+  let viewIdx = 0;
+  for (const file of files) {
+    entries.push({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      viewType: VIEW_ORDER[viewIdx % VIEW_ORDER.length],
+    });
+    viewIdx++;
+  }
+  return entries;
+}
+
 // ─── AuthImage — fetches private GCS objects with Bearer token ────────────────
 
-function AuthImage({
+interface AuthImageHandle {
+  getBlobUrl: () => string | null;
+}
+
+const AuthImage = ({
   objectPath,
   alt,
   className,
   style,
   draggable,
+  onBlobReady,
 }: {
   objectPath: string;
   alt: string;
   className?: string;
   style?: React.CSSProperties;
   draggable?: boolean;
-}) {
+  onBlobReady?: (url: string) => void;
+}) => {
   const { token } = useAuth();
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -177,6 +226,7 @@ function AuthImage({
         if (cancelled) return;
         blobUrl = URL.createObjectURL(blob);
         setSrc(blobUrl);
+        onBlobReady?.(blobUrl);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -190,14 +240,20 @@ function AuthImage({
 
   if (error)
     return (
-      <div className={`bg-slate-100 flex items-center justify-center ${className ?? ""}`} style={style}>
+      <div
+        className={`bg-slate-100 flex items-center justify-center ${className ?? ""}`}
+        style={style}
+      >
         <ImageOff className="w-5 h-5 text-slate-300" />
       </div>
     );
 
   if (!src)
     return (
-      <div className={`bg-slate-100 animate-pulse ${className ?? ""}`} style={style} />
+      <div
+        className={`bg-slate-100 animate-pulse ${className ?? ""}`}
+        style={style}
+      />
     );
 
   return (
@@ -209,7 +265,7 @@ function AuthImage({
       draggable={draggable}
     />
   );
-}
+};
 
 // ─── Before/After Slider ──────────────────────────────────────────────────────
 
@@ -286,15 +342,12 @@ function BeforeAfterSlider({
         updatePosition(e.touches[0].clientX);
       }}
     >
-      {/* After (right) — full width */}
       <AuthImage
         objectPath={afterPath}
         alt="Depois"
         className="absolute inset-0 w-full h-full object-cover"
         draggable={false}
       />
-
-      {/* Before (left) — clipped */}
       <div
         className="absolute inset-0 overflow-hidden"
         style={{ width: `${position}%` }}
@@ -307,8 +360,6 @@ function BeforeAfterSlider({
           draggable={false}
         />
       </div>
-
-      {/* Divider */}
       <div
         className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg z-10 pointer-events-none"
         style={{ left: `${position}%` }}
@@ -318,8 +369,6 @@ function BeforeAfterSlider({
           <ChevronRight className="w-3 h-3 text-primary absolute right-1" />
         </div>
       </div>
-
-      {/* Labels */}
       <div className="absolute top-3 left-3 z-20 pointer-events-none">
         <span className="px-2 py-1 bg-black/60 text-white text-xs rounded-md backdrop-blur-sm">
           {beforeLabel}
@@ -330,8 +379,6 @@ function BeforeAfterSlider({
           {afterLabel}
         </span>
       </div>
-
-      {/* Drag hint */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <span className="px-3 py-1 bg-black/50 text-white text-xs rounded-full backdrop-blur-sm">
           Arraste para comparar
@@ -355,29 +402,28 @@ function UploadModal({
   onSuccess: () => void;
 }) {
   const { toast } = useToast();
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [viewType, setViewType] = useState<ViewType>("frontal");
+  const [entries, setEntries] = useState<FileEntry[]>([]);
   const [takenAt, setTakenAt] = useState(
     () => new Date().toISOString().split("T")[0]
   );
   const [sessionLabel, setSessionLabel] = useState("");
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [compressing, setCompressing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
-    setFiles([]);
-    setPreviews((prev) => {
-      prev.forEach(URL.revokeObjectURL);
+    setEntries((prev) => {
+      prev.forEach((e) => URL.revokeObjectURL(e.previewUrl));
       return [];
     });
-    setViewType("frontal");
     setTakenAt(new Date().toISOString().split("T")[0]);
     setSessionLabel("");
     setNotes("");
     setProgress({ done: 0, total: 0 });
+    setIsDragOver(false);
   };
 
   const handleClose = () => {
@@ -385,32 +431,90 @@ function UploadModal({
     onClose();
   };
 
+  const processFiles = useCallback(
+    async (allFiles: File[]) => {
+      const valid = allFiles.filter(
+        (f) => ALLOWED_PHOTO_TYPES.has(f.type) && f.size <= MAX_PHOTO_SIZE
+      );
+      const rejected = allFiles.length - valid.length;
+      if (rejected > 0) {
+        toast({
+          title: `${rejected} arquivo(s) ignorado(s)`,
+          description: "Use JPG, PNG, WebP ou HEIC com até 15MB por foto.",
+          variant: "destructive",
+        });
+      }
+      if (valid.length === 0) return;
+
+      const newEntries = autoAssignViews(valid);
+
+      setEntries((prev) => {
+        prev.forEach((e) => URL.revokeObjectURL(e.previewUrl));
+        return newEntries;
+      });
+    },
+    [toast]
+  );
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const allFiles = Array.from(e.target.files ?? []);
-    const selected = allFiles.filter((f) => ALLOWED_PHOTO_TYPES.has(f.type) && f.size <= MAX_PHOTO_SIZE);
-    const rejected = allFiles.length - selected.length;
-    if (rejected > 0) {
-      toast({
-        title: `${rejected} arquivo(s) ignorado(s)`,
-        description: "Use JPG, PNG, WebP ou HEIC com até 15MB por foto.",
-        variant: "destructive",
-      });
-    }
-    setFiles(selected);
-    setPreviews((prev) => {
-      prev.forEach(URL.revokeObjectURL);
-      return selected.map(URL.createObjectURL);
+    processFiles(allFiles);
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const allFiles = Array.from(e.dataTransfer.files);
+    processFiles(allFiles);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const updateEntryView = (idx: number, viewType: ViewType) => {
+    setEntries((prev) =>
+      prev.map((e, i) => (i === idx ? { ...e, viewType } : e))
+    );
+  };
+
+  const removeEntry = (idx: number) => {
+    setEntries((prev) => {
+      URL.revokeObjectURL(prev[idx].previewUrl);
+      return prev.filter((_, i) => i !== idx);
     });
   };
 
-  const uploadSingle = async (file: File): Promise<void> => {
+  const uploadSingle = async (
+    file: File,
+    viewType: ViewType
+  ): Promise<void> => {
+    let fileToUpload = file;
+    if (file.type !== "image/heic" && file.type !== "image/heif") {
+      try {
+        const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
+        fileToUpload = new File([compressed], file.name, {
+          type: compressed.type || file.type,
+        });
+      } catch {
+        // fall back to original
+      }
+    }
+
     const urlRes = await apiFetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: file.name,
-        size: file.size,
-        contentType: file.type,
+        name: fileToUpload.name,
+        size: fileToUpload.size,
+        contentType: fileToUpload.type,
       }),
     });
     if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
@@ -418,8 +522,8 @@ function UploadModal({
 
     const putRes = await fetch(uploadURL, {
       method: "PUT",
-      headers: { "Content-Type": file.type },
-      body: file,
+      headers: { "Content-Type": fileToUpload.type },
+      body: fileToUpload,
     });
     if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
 
@@ -429,8 +533,8 @@ function UploadModal({
       body: JSON.stringify({
         objectPath,
         originalFilename: file.name,
-        contentType: file.type,
-        fileSize: file.size,
+        contentType: fileToUpload.type,
+        fileSize: fileToUpload.size,
         viewType,
         takenAt: `${takenAt}T12:00:00.000Z`,
         sessionLabel: sessionLabel || null,
@@ -441,14 +545,14 @@ function UploadModal({
   };
 
   const handleUpload = async () => {
-    if (files.length === 0) return;
+    if (entries.length === 0) return;
     setUploading(true);
-    setProgress({ done: 0, total: files.length });
+    setProgress({ done: 0, total: entries.length });
     let errors = 0;
-    for (let i = 0; i < files.length; i++) {
+    for (let i = 0; i < entries.length; i++) {
       try {
-        await uploadSingle(files[i]);
-        setProgress({ done: i + 1, total: files.length });
+        await uploadSingle(entries[i].file, entries[i].viewType);
+        setProgress({ done: i + 1, total: entries.length });
       } catch (err) {
         console.error(err);
         errors++;
@@ -456,12 +560,12 @@ function UploadModal({
     }
     setUploading(false);
     if (errors === 0) {
-      toast({ title: `${files.length} foto(s) enviada(s) com sucesso!` });
+      toast({ title: `${entries.length} foto(s) enviada(s) com sucesso!` });
       onSuccess();
       handleClose();
     } else {
       toast({
-        title: `${files.length - errors} de ${files.length} enviadas`,
+        title: `${entries.length - errors} de ${entries.length} enviadas`,
         description: `${errors} arquivo(s) falharam.`,
         variant: "destructive",
       });
@@ -470,51 +574,49 @@ function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-primary" /> Adicionar Fotos
           </DialogTitle>
           <DialogDescription>
-            Selecione as imagens e informe a vista e a data da sessão fotográfica.
+            Selecione as imagens, ajuste a vista de cada uma e informe a data da sessão.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* File picker */}
+          {/* Drop Zone */}
           <div>
             <Label>Imagens *</Label>
             <div
-              className="mt-1.5 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors"
+              className={`mt-1.5 border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                isDragOver
+                  ? "border-primary bg-primary/10"
+                  : "border-slate-200 hover:border-primary/40 hover:bg-primary/5"
+              }`}
               onClick={() => fileRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
             >
-              {previews.length === 0 ? (
+              {entries.length === 0 ? (
                 <>
                   <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   <p className="text-sm text-slate-500">
-                    Clique para selecionar ou arraste aqui
+                    {isDragOver
+                      ? "Solte as imagens aqui"
+                      : "Clique para selecionar ou arraste aqui"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    JPG, PNG, WebP · máx. 15MB por arquivo
+                    JPG, PNG, WebP · máx. 15MB · comprimido automaticamente
                   </p>
                 </>
               ) : (
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {previews.map((url, i) => (
-                    <div key={i} className="relative">
-                      <img
-                        src={url}
-                        alt=""
-                        className="w-20 h-20 object-cover rounded-lg border"
-                      />
-                      <span className="absolute -top-1.5 -right-1.5 bg-primary text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                        {i + 1}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="w-20 h-20 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400">
-                    <Upload className="w-5 h-5" />
-                  </div>
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <ImagePlus className="w-4 h-4 text-primary" />
+                  <span>
+                    {entries.length} foto(s) selecionada(s) — clique ou arraste para substituir
+                  </span>
                 </div>
               )}
               <input
@@ -528,26 +630,64 @@ function UploadModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Vista *</Label>
-              <Select
-                value={viewType}
-                onValueChange={(v) => setViewType(v as ViewType)}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VIEW_ORDER.map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {VIEW_LABELS[v]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Per-file view assignment */}
+          {entries.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs text-slate-500">
+                Ajuste a vista de cada foto individualmente
+              </Label>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {entries.map((entry, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 bg-slate-50 rounded-lg p-2 border border-slate-200"
+                  >
+                    <img
+                      src={entry.previewUrl}
+                      alt=""
+                      className="w-14 h-14 object-cover rounded-md border border-slate-200 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-xs text-slate-600 truncate font-medium"
+                        title={entry.file.name}
+                      >
+                        {entry.file.name}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {formatBytes(entry.file.size)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 w-36">
+                      <Select
+                        value={entry.viewType}
+                        onValueChange={(v) => updateEntryView(idx, v as ViewType)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VIEW_ORDER.map((v) => (
+                            <SelectItem key={v} value={v} className="text-xs">
+                              {VIEW_LABELS[v]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <button
+                      onClick={() => removeEntry(idx)}
+                      className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
 
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Data da Sessão *</Label>
               <Input
@@ -558,17 +698,16 @@ function UploadModal({
                 max={new Date().toISOString().split("T")[0]}
               />
             </div>
-          </div>
-
-          <div>
-            <Label>Rótulo da Sessão (opcional)</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="Ex: Avaliação Inicial, Mês 1, Pós-tratamento…"
-              value={sessionLabel}
-              onChange={(e) => setSessionLabel(e.target.value)}
-              maxLength={100}
-            />
+            <div>
+              <Label>Rótulo da Sessão (opcional)</Label>
+              <Input
+                className="mt-1.5"
+                placeholder="Ex: Avaliação Inicial, Mês 1…"
+                value={sessionLabel}
+                onChange={(e) => setSessionLabel(e.target.value)}
+                maxLength={100}
+              />
+            </div>
           </div>
 
           <div>
@@ -576,7 +715,7 @@ function UploadModal({
             <Textarea
               className="mt-1.5 resize-none"
               rows={2}
-              placeholder="Notas clínicas sobre esta foto…"
+              placeholder="Notas clínicas sobre esta sessão…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               maxLength={1000}
@@ -584,9 +723,19 @@ function UploadModal({
           </div>
 
           {uploading && (
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Enviando {progress.done + 1} de {progress.total}…
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Enviando foto {progress.done + 1} de {progress.total}…
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                <div
+                  className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${(progress.done / progress.total) * 100}%`,
+                  }}
+                />
+              </div>
             </div>
           )}
 
@@ -602,14 +751,14 @@ function UploadModal({
             <Button
               className="flex-1"
               onClick={handleUpload}
-              disabled={files.length === 0 || uploading}
+              disabled={entries.length === 0 || uploading}
             >
               {uploading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Upload className="w-4 h-4 mr-2" />
               )}
-              Enviar {files.length > 1 ? `${files.length} fotos` : "foto"}
+              Enviar {entries.length > 1 ? `${entries.length} fotos` : "foto"}
             </Button>
           </div>
         </div>
@@ -618,76 +767,335 @@ function UploadModal({
   );
 }
 
-// ─── Photo Lightbox ───────────────────────────────────────────────────────────
+// ─── Photo Lightbox with Zoom + Download + Edit View ─────────────────────────
 
 function PhotoLightbox({
   photo,
   onClose,
   onDelete,
+  onUpdated,
 }: {
   photo: PatientPhoto;
   onClose: () => void;
   onDelete: () => void;
+  onUpdated: (updated: PatientPhoto) => void;
 }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  // Zoom/pan state
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
+  const imageWrapRef = useRef<HTMLDivElement>(null);
+
+  // Edit state
+  const [editing, setEditing] = useState(false);
+  const [editViewType, setEditViewType] = useState<ViewType>(photo.viewType as ViewType);
+  const [editNotes, setEditNotes] = useState(photo.notes ?? "");
+  const [editLabel, setEditLabel] = useState(photo.sessionLabel ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const resetZoom = () => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setScale((s) => Math.max(1, Math.min(5, s + delta)));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale <= 1) return;
+    isPanning.current = true;
+    lastPos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning.current) return;
+    const dx = e.clientX - lastPos.current.x;
+    const dy = e.clientY - lastPos.current.y;
+    lastPos.current = { x: e.clientX, y: e.clientY };
+    setOffset((o) => ({ x: o.x + dx, y: o.y + dy }));
+  };
+
+  const handleMouseUp = () => {
+    isPanning.current = false;
+  };
+
+  useEffect(() => {
+    resetZoom();
+  }, [photo.id]);
+
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download =
+      photo.originalFilename ??
+      `foto-${photo.viewType}-${photo.takenAt.split("T")[0]}.jpg`;
+    a.click();
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch(
+        `/api/patients/${photo.patientId}/photos/${photo.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            viewType: editViewType,
+            notes: editNotes || null,
+            sessionLabel: editLabel || null,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error();
+      const updated: PatientPhoto = await res.json();
+      onUpdated(updated);
+      setEditing(false);
+      toast({ title: "Foto atualizada com sucesso." });
+    } catch {
+      toast({ title: "Erro ao salvar alterações.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
       <Dialog open onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-2xl p-0 overflow-hidden">
-          <div className="relative bg-black">
-            <AuthImage
-              objectPath={photo.objectPath}
-              alt={VIEW_LABELS[photo.viewType as ViewType]}
-              className="w-full max-h-[75vh] object-contain"
-            />
-            <button
-              onClick={onClose}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+          {/* Image area with zoom */}
+          <div
+            ref={imageWrapRef}
+            className="relative bg-black overflow-hidden"
+            style={{
+              height: "60vh",
+              cursor: scale > 1 ? "grab" : "default",
+            }}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            <div
+              style={{
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                transformOrigin: "center center",
+                transition: isPanning.current ? "none" : "transform 0.1s ease",
+                width: "100%",
+                height: "100%",
+              }}
             >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className={`text-xs ${VIEW_COLORS[photo.viewType as ViewType]}`}
-                >
-                  {VIEW_LABELS[photo.viewType as ViewType]}
-                </Badge>
-                <span className="text-sm text-slate-500 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {formatDate(photo.takenAt)}
-                </span>
-                {photo.sessionLabel && (
-                  <span className="text-sm text-slate-500 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5" />
-                    {photo.sessionLabel}
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-1" /> Excluir
-              </Button>
+              <AuthImage
+                objectPath={photo.objectPath}
+                alt={VIEW_LABELS[photo.viewType as ViewType]}
+                className="w-full h-full object-contain"
+                onBlobReady={setBlobUrl}
+                draggable={false}
+              />
             </div>
-            {photo.notes && (
-              <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 flex gap-2">
-                <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                {photo.notes}
-              </p>
+
+            {/* Top controls */}
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 z-20">
+              <button
+                onClick={() => setScale((s) => Math.min(5, s + 0.5))}
+                className="w-7 h-7 rounded-md bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                title="Ampliar"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() =>
+                  setScale((s) => {
+                    const n = Math.max(1, s - 0.5);
+                    if (n === 1) setOffset({ x: 0, y: 0 });
+                    return n;
+                  })
+                }
+                className="w-7 h-7 rounded-md bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                title="Reduzir"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              {scale !== 1 && (
+                <button
+                  onClick={resetZoom}
+                  className="w-7 h-7 rounded-md bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                  title="Redefinir zoom"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {scale !== 1 && (
+                <span className="px-1.5 py-0.5 bg-black/60 text-white text-xs rounded-md">
+                  {Math.round(scale * 100)}%
+                </span>
+              )}
+            </div>
+
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-20">
+              {blobUrl && (
+                <button
+                  onClick={handleDownload}
+                  className="w-7 h-7 rounded-md bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                  title="Baixar foto"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="w-7 h-7 rounded-md bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {scale === 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                <span className="px-2 py-1 bg-black/50 text-white text-xs rounded-full backdrop-blur-sm">
+                  Scroll para ampliar
+                </span>
+              </div>
             )}
-            {photo.originalFilename && (
-              <p className="text-xs text-slate-400">
-                {photo.originalFilename}
-                {photo.fileSize && ` · ${formatBytes(photo.fileSize)}`}
-              </p>
+          </div>
+
+          {/* Info / Edit panel */}
+          <div className="p-4 space-y-3">
+            {!editing ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${VIEW_COLORS[photo.viewType as ViewType]}`}
+                    >
+                      {VIEW_LABELS[photo.viewType as ViewType]}
+                    </Badge>
+                    <span className="text-sm text-slate-500 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {formatDate(photo.takenAt)}
+                    </span>
+                    {photo.sessionLabel && (
+                      <span className="text-sm text-slate-500 flex items-center gap-1">
+                        <Tag className="w-3.5 h-3.5" />
+                        {photo.sessionLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-500 hover:text-slate-700 hover:bg-slate-100 h-8 px-2"
+                      onClick={() => setEditing(true)}
+                    >
+                      <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" /> Excluir
+                    </Button>
+                  </div>
+                </div>
+                {photo.notes && (
+                  <p className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 flex gap-2">
+                    <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                    {photo.notes}
+                  </p>
+                )}
+                {photo.originalFilename && (
+                  <p className="text-xs text-slate-400">
+                    {photo.originalFilename}
+                    {photo.fileSize && ` · ${formatBytes(photo.fileSize)}`}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-slate-700">
+                  Editar informações da foto
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Vista</Label>
+                    <Select
+                      value={editViewType}
+                      onValueChange={(v) => setEditViewType(v as ViewType)}
+                    >
+                      <SelectTrigger className="mt-1 h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VIEW_ORDER.map((v) => (
+                          <SelectItem key={v} value={v} className="text-xs">
+                            {VIEW_LABELS[v]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Rótulo de Sessão</Label>
+                    <Input
+                      className="mt-1 h-8 text-xs"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      maxLength={100}
+                      placeholder="Ex: Avaliação Inicial"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Observações</Label>
+                  <Textarea
+                    className="mt-1 resize-none text-xs"
+                    rows={2}
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    maxLength={1000}
+                    placeholder="Notas clínicas sobre esta foto…"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setEditing(false)}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleSaveEdit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Salvar
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </DialogContent>
@@ -870,9 +1278,11 @@ function CompareModal({
 function SessionCard({
   session,
   onPhotoDeleted,
+  onPhotoUpdated,
 }: {
   session: PhotoSession;
   onPhotoDeleted: (photoId: number) => void;
+  onPhotoUpdated: (updated: PatientPhoto) => void;
 }) {
   const [lightbox, setLightbox] = useState<PatientPhoto | null>(null);
 
@@ -935,6 +1345,10 @@ function SessionCard({
           photo={lightbox}
           onClose={() => setLightbox(null)}
           onDelete={() => onPhotoDeleted(lightbox.id)}
+          onUpdated={(updated) => {
+            onPhotoUpdated(updated);
+            setLightbox(updated);
+          }}
         />
       )}
     </>
@@ -961,9 +1375,10 @@ export function PhotosTab({ patientId }: { patientId: number }) {
 
   const deleteMutation = useMutation({
     mutationFn: async (photoId: number) => {
-      const res = await apiFetch(`/api/patients/${patientId}/photos/${photoId}`, {
-        method: "DELETE",
-      });
+      const res = await apiFetch(
+        `/api/patients/${patientId}/photos/${photoId}`,
+        { method: "DELETE" }
+      );
       if (!res.ok) throw new Error("Falha ao excluir foto");
     },
     onSuccess: () => {
@@ -974,6 +1389,17 @@ export function PhotosTab({ patientId }: { patientId: number }) {
       toast({ title: "Erro ao excluir foto.", variant: "destructive" });
     },
   });
+
+  const handlePhotoUpdated = useCallback(
+    (updated: PatientPhoto) => {
+      queryClient.setQueryData<PatientPhoto[]>(
+        ["patient-photos", patientId],
+        (old) =>
+          old?.map((p) => (p.id === updated.id ? updated : p)) ?? []
+      );
+    },
+    [queryClient, patientId]
+  );
 
   const sessions = groupBySession(photos);
 
@@ -1071,6 +1497,7 @@ export function PhotosTab({ patientId }: { patientId: number }) {
               key={session.dateKey}
               session={session}
               onPhotoDeleted={(id) => deleteMutation.mutate(id)}
+              onPhotoUpdated={handlePhotoUpdated}
             />
           ))}
         </div>

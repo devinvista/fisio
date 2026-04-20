@@ -28,6 +28,7 @@ const createPhotoSchema = z.object({
 });
 
 const updatePhotoSchema = z.object({
+  viewType: z.enum(VIEW_TYPES).optional(),
   sessionLabel: z.string().max(100).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
 });
