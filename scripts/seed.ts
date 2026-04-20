@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import * as schema from "../db/schema/index.js";
+import * as schema from "../lib/db/src/schema/index.js";
 
 const { Pool } = pg;
 

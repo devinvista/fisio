@@ -344,15 +344,14 @@ Para publicar o projeto no Replit (`.replit.app`):
 │   │   │   │   ├── layout/app-layout.tsx
 │   │   │   │   ├── error-boundary.tsx
 │   │   │   │   ├── logo-mark.tsx       # SVG logo da marca
-│   │   │   │   └── ui/                 # Componentes shadcn/ui
+│   │   │   │   └── ui/                 # Componentes shadcn/ui (+ voice-textarea.tsx)
+│   │   │   │       └── voice-textarea.tsx # Textarea com ditado por voz (Web Speech API, pt-BR)
 │   │   │   └── lib/
 │   │   │       ├── auth-context.tsx    # AuthProvider + AuthContext (sem useAuth)
 │   │   │       ├── use-auth.ts         # Hook useAuth() — importar sempre daqui
 │   │   │       ├── permissions.ts      # Definição de permissões RBAC
 │   │   │       ├── masks.ts            # maskCpf, maskPhone, maskCnpj
 │   │   │       └── utils.ts            # cn() e utilitários gerais
-│   │   ├── hooks/
-│   │   │   └── useAuthRedirect.ts      # Redireciona autenticados para /dashboard
 │   │   ├── index.html                  # lang="pt-BR"
 │   │   └── vite.config.ts              # proxy /api → 8080, port=$PORT, base=$BASE_PATH
 │   │
@@ -415,18 +414,17 @@ Para publicar o projeto no Replit (`.replit.app`):
 │   └── api-spec/                       # Especificação OpenAPI (lib/api-spec/openapi.yaml)
 │
 ├── db/                                 # Migrations SQL geradas pelo drizzle-kit
-│   ├── index.ts                        # Conexão Drizzle (usada por scripts externos)
 │   └── migrations/                     # Arquivos SQL versionados (0000_*.sql …)
 │
 ├── scripts/
 │   ├── post-merge.sh                   # Roda após merge de task agents
+│   ├── seed.ts                         # Seed legado (schema pré-multi-tenant) — usar seed-demo.ts
 │   ├── seed-demo.ts                    # Seed completo (novo clinic) — falha se usuários já existem
-│   ├── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
-│   └── src/                           # (vazio — hello.ts de teste removido)
-│   # Notas: backfillAccounting.ts removido (migração única concluída); middlewares/ vazio removido
+│   └── seed-financial.ts              # Seed financeiro incremental (usa dados existentes)
+│   # Notas: backfillAccounting.ts removido; middlewares/ removido; scripts/src/ removido
 │
 ├── pnpm-workspace.yaml
-└── package.json                        # Scripts raiz: build:libs, typecheck, db:seed-demo
+└── package.json                        # Scripts raiz: build:libs, build, start, typecheck, db:seed-demo
 ```
 
 ---
@@ -976,3 +974,46 @@ Depois: taxa aparece corretamente no **Contas a Receber**, **Receita de Serviço
 
 Antes: todos os recebíveis por sessão venciam sempre em +3 dias, sem possibilidade de configuração.
 Depois: cada clínica define seu prazo (0–90 dias) diretamente nas configurações.
+
+---
+
+### Sessão abril/2026 — Auditoria completa #2 (análise de bugs, TypeScript, rotas, dead code)
+
+#### Bugs corrigidos
+| Bug | Arquivo | Gravidade | Correção |
+|---|---|---|---|
+| Import `../db/schema/index.js` para caminho inexistente | `scripts/seed.ts` | **Crítico** — seed falharia ao executar | Corrigido para `../lib/db/src/schema/index.js` |
+| Script `build` referenciava `vite build --config vite.config.ts && tsx server/build.ts` (arquivos inexistentes) | `package.json` | **Médio** — `pnpm run build` falharia | Corrigido para `build:libs + filter build` de cada artifact |
+| Script `start` referenciava `node dist/server.cjs` (caminho inexistente) | `package.json` | **Médio** — start de produção falharia | Corrigido para `node artifacts/api-server/dist/index.cjs` |
+| `db/index.ts` importava de `./schema` que não existe | `db/index.ts` | **Médio** — arquivo morto quebrado | Arquivo removido |
+
+#### Scripts raiz corrigidos
+| Script | Antes (errado) | Depois (correto) |
+|---|---|---|
+| `build` | `vite build --config vite.config.ts && tsx server/build.ts` | `pnpm run build:libs && pnpm --filter @workspace/fisiogest run build && pnpm --filter @workspace/api-server run build` |
+| `start` | `NODE_ENV=production node dist/server.cjs` | `NODE_ENV=production node artifacts/api-server/dist/index.cjs` |
+
+#### Dead code e arquivos removidos
+| Arquivo | Motivo |
+|---|---|
+| `artifacts/fisiogest/src/hooks/useAuthRedirect.ts` | Hook sem nenhum uso no projeto (0 importações) |
+| `scripts/src/hello.ts` | Stub de teste órfão (`console.log("Hello from @workspace/scripts")`) |
+| `scripts/tsconfig.json` | Cobria apenas `scripts/src/` (agora vazio e removido) |
+| `scripts/src/` | Diretório removido após remoção do único arquivo |
+| `deploy/index.cjs` | Binário de 1.5MB desatualizado — gerado pelo `pnpm run build` via `artifacts/api-server/dist/index.cjs` |
+| `db/index.ts` | Stub quebrado que importava de `./schema` inexistente |
+
+#### Funcionalidade adicionada — Ditado por voz (Web Speech API)
+| Arquivo | Descrição |
+|---|---|
+| `artifacts/fisiogest/src/components/ui/voice-textarea.tsx` | Novo componente `VoiceTextarea` — drop-in replacement de `Textarea` com microfone |
+| `artifacts/fisiogest/src/pages/patients/[id].tsx` | Import trocado: `Textarea` → `VoiceTextarea as Textarea` — todos os ~50 campos clínicos recebem voz |
+| `artifacts/fisiogest/src/index.css` | Keyframe `@keyframes voice-bar` para animação de barras de áudio |
+
+**Comportamento do VoiceTextarea:**
+- Ícone de microfone aparece no hover do campo (canto inferior direito)
+- Linguagem: `pt-BR` — reconhece termos clínicos brasileiros
+- Modo contínuo (`continuous: true`) + resultados parciais em tempo real
+- Texto transcrito é **acumulado** (não substitui o existente)
+- Fallback silencioso em navegadores sem suporte (Safari, Firefox antigo)
+- Suporte completo: Chrome, Edge
