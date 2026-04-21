@@ -1,4 +1,5 @@
 import { useParams, useLocation } from "wouter";
+import { apiFetch } from "@/lib/api";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useGetPatient,
@@ -1103,14 +1104,10 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [textForm, setTextForm] = useState({ examTitle: "", resultText: "" });
 
-  const token = () => localStorage.getItem("fisiogest_token");
-
   const { data: attachments = [], isLoading } = useQuery<ExamAttachment[]>({
     queryKey: [`/api/patients/${patientId}/attachments`],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/attachments`, {
-        headers: { Authorization: `Bearer ${token()}` },
-      });
+      const res = await apiFetch(`/api/patients/${patientId}/attachments`);
       if (!res.ok) throw new Error("Falha ao carregar anexos");
       return res.json();
     },
@@ -1123,9 +1120,9 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
     }
     setSavingText(true);
     try {
-      const res = await fetch(`/api/patients/${patientId}/attachments`, {
+      const res = await apiFetch(`/api/patients/${patientId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ examTitle: textForm.examTitle || null, resultText: textForm.resultText }),
       });
       if (!res.ok) throw new Error("Falha ao salvar resultado");
@@ -1155,9 +1152,9 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
     setUploading(true);
     setAddMode(null);
     try {
-      const sigRes = await fetch("/api/storage/uploads/request-url", {
+      const sigRes = await apiFetch("/api/storage/uploads/request-url", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type, folder: "fisiogest/attachments" }),
       });
       if (!sigRes.ok) throw new Error("Falha ao obter parâmetros de upload");
@@ -1178,9 +1175,9 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
       const uploadData = await uploadRes.json();
       const objectPath: string = uploadData.secure_url;
 
-      const metaRes = await fetch(`/api/patients/${patientId}/attachments`, {
+      const metaRes = await apiFetch(`/api/patients/${patientId}/attachments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ originalFilename: file.name, contentType: file.type, fileSize: file.size, objectPath }),
       });
       if (!metaRes.ok) throw new Error("Falha ao registrar anexo");
@@ -1204,7 +1201,9 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
       const a = document.createElement("a");
       a.href = url;
       a.download = att.originalFilename;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       URL.revokeObjectURL(url);
     } catch {
       toast({ title: "Erro ao baixar", description: "Não foi possível baixar o arquivo.", variant: "destructive" });
@@ -1214,9 +1213,8 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
   const handleDelete = async (att: ExamAttachment) => {
     setDeletingId(att.id);
     try {
-      const res = await fetch(`/api/patients/${patientId}/attachments/${att.id}`, {
+      const res = await apiFetch(`/api/patients/${patientId}/attachments/${att.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token()}` },
       });
       if (!res.ok) throw new Error();
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/attachments`] });
