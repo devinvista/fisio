@@ -23,20 +23,11 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { todayBRT, nowBRT, lastDayOfMonth } from "../lib/dateUtils.js";
-
-/**
- * Calcula a próxima data de cobrança para o mês seguinte ao informado,
- * respeitando meses curtos (ex.: billingDay 31 em fevereiro → último dia).
- */
-function calcNextBillingDate(billingDay: number, currentYear: number, currentMonth: number): string {
-  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
-  const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
-  const lastDayOfNextMonth = new Date(nextYear, nextMonth, 0).getDate();
-  const effectiveDay = Math.min(billingDay, lastDayOfNextMonth);
-  const mm = String(nextMonth).padStart(2, "0");
-  const dd = String(effectiveDay).padStart(2, "0");
-  return `${nextYear}-${mm}-${dd}`;
-}
+import {
+  calcNextBillingDate,
+  effectiveBillingDay,
+  isWithinBillingWindow,
+} from "./billing/billingDateUtils.js";
 
 export interface BillingResult {
   processed: number;
@@ -54,28 +45,6 @@ interface BillingDetail {
   amount: number;
   action: "generated" | "skipped_already_billed" | "skipped_wrong_day" | "error";
   reason?: string;
-}
-
-/**
- * Retorna o effective billing day para um dado mês/ano.
- * billingDay 31 em fevereiro → último dia de fevereiro.
- */
-function effectiveBillingDay(billingDay: number, year: number, month: number): number {
-  const lastDay = new Date(year, month, 0).getDate();
-  return Math.min(billingDay, lastDay);
-}
-
-/**
- * Verifica se hoje (em BRT) está dentro da janela de cobrança (billingDay ± toleranceDays para trás).
- * Garante que nunca avança para o mês seguinte.
- */
-function isWithinBillingWindow(
-  billingDay: number,
-  brtToday: { year: number; month: number; day: number },
-  toleranceDays: number = 3
-): boolean {
-  const effective = effectiveBillingDay(billingDay, brtToday.year, brtToday.month);
-  return brtToday.day >= effective && brtToday.day <= effective + toleranceDays;
 }
 
 export async function runBilling(options: {

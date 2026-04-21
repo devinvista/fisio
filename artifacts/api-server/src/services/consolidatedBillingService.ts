@@ -20,24 +20,11 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { todayBRT, nowBRT, lastDayOfMonth } from "../lib/dateUtils.js";
-
-function calcNextBillingDate(billingDay: number, year: number, month: number): string {
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear  = month === 12 ? year + 1 : year;
-  const lastDay   = new Date(nextYear, nextMonth, 0).getDate();
-  const day = Math.min(billingDay, lastDay);
-  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function effectiveBillingDay(billingDay: number, year: number, month: number): number {
-  const lastDay = new Date(year, month, 0).getDate();
-  return Math.min(billingDay, lastDay);
-}
-
-function isWithinBillingWindow(billingDay: number, brtToday: { year: number; month: number; day: number }, toleranceDays = 3): boolean {
-  const effective = effectiveBillingDay(billingDay, brtToday.year, brtToday.month);
-  return brtToday.day >= effective && brtToday.day <= effective + toleranceDays;
-}
+import {
+  calcNextBillingDate,
+  effectiveBillingDay,
+  isWithinBillingWindow,
+} from "./billing/billingDateUtils.js";
 
 export interface ConsolidatedBillingResult {
   processed: number;
