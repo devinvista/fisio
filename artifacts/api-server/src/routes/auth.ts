@@ -406,6 +406,14 @@ router.get("/me", authMiddleware, async (req: AuthRequest, res) => {
     const activeClinicId = req.clinicId ?? null;
     const activeClinic = clinics.find((c) => c.id === activeClinicId) ?? null;
 
+    // Plano + features da clínica ativa (para feature-gating no frontend)
+    const { getPlanLimits } = await import("../middleware/subscription.js");
+    const { resolveFeatures } = await import("@workspace/db");
+    const subscription = activeClinicId ? await getPlanLimits(activeClinicId) : null;
+    const features = subscription
+      ? Array.from(resolveFeatures(subscription.planName))
+      : [];
+
     res.json({
       id: user.id,
       name: user.name,
@@ -414,6 +422,8 @@ router.get("/me", authMiddleware, async (req: AuthRequest, res) => {
       clinicId: activeClinicId,
       isSuperAdmin: user.isSuperAdmin,
       clinics,
+      subscription,
+      features,
       createdAt: user.createdAt,
     });
   } catch (err) {

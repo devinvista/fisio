@@ -4,9 +4,11 @@ import { auditLogTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware } from "../middleware/auth.js";
 import { requireSuperAdmin } from "../middleware/rbac.js";
+import { requireFeature } from "../middleware/plan-features.js";
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireFeature("module.audit_log"));
 
 router.get("/patients/:patientId", requireSuperAdmin(), async (req, res) => {
   try {

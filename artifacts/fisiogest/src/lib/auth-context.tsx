@@ -3,6 +3,20 @@ import { useLocation } from "wouter";
 import { getCurrentUser } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
 import { resolvePermissions, type Permission } from "@/lib/permissions";
+import { planHasFeature, type Feature, type PlanTier } from "@/lib/plan-features";
+
+export interface SubscriptionInfo {
+  planId: number;
+  planName: string;
+  status: string;
+  paymentStatus: string;
+  trialEndDate: string | null;
+  currentPeriodEnd: string | null;
+  maxProfessionals: number | null;
+  maxPatients: number | null;
+  maxSchedules: number | null;
+  maxUsers: number | null;
+}
 
 export interface ClinicInfo {
   id: number;
@@ -17,11 +31,15 @@ interface AuthContextType {
   clinicId: number | null;
   clinics: ClinicInfo[];
   isSuperAdmin: boolean;
+  subscription: SubscriptionInfo | null;
+  features: Feature[];
+  planName: PlanTier | null;
   login: (token: string, user: User, clinics?: ClinicInfo[]) => void;
   logout: () => void;
   switchClinic: (clinicId: number) => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   hasRole: (role: string) => boolean;
+  hasFeature: (feature: Feature) => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -57,6 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await getCurrentUser() as any;
         setUser(userData);
         setIsSuperAdmin(userData.isSuperAdmin ?? false);
+        setSubscription(userData.subscription ?? null);
+        setFeatures(userData.features ?? []);
         if (userData.clinicId !== undefined) setClinicId(userData.clinicId);
         if (userData.clinics) {
           setClinics(userData.clinics);
@@ -147,6 +169,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return ((user as any).roles ?? []).includes(role);
   };
 
+  const hasFeature = (feature: Feature): boolean => {
+    if (isSuperAdmin) return true;
+    if (features.length > 0) return features.includes(feature);
+    // Fallback: deriva do nome do plano se /me ainda não retornou features
+    return planHasFeature(subscription?.planName ?? null, feature);
+  };
+
+  const planName = (subscription?.planName as PlanTier | undefined) ?? null;
+
   return (
     <AuthContext.Provider
       value={{
@@ -156,11 +187,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clinicId,
         clinics,
         isSuperAdmin,
+        subscription,
+        features,
+        planName,
         login,
         logout,
         switchClinic,
         hasPermission,
         hasRole,
+        hasFeature,
       }}
     >
       {children}

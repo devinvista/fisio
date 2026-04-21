@@ -4,9 +4,11 @@ import { recurringExpensesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireFeature } from "../middleware/plan-features.js";
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireFeature("module.recurring_expenses"));
 
 router.get("/", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {

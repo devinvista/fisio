@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/use-auth";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useEffect } from "react";
 import type { Permission } from "@/lib/permissions";
+import { FeatureRoute } from "@/components/guards/feature-route";
 
 import LandingPage from "./pages/landing";
 import Login from "./pages/login";
@@ -161,7 +162,7 @@ function Router() {
         {() => <PermissionRoute component={Procedimentos} permission="procedures.manage" />}
       </Route>
       <Route path="/pacotes">
-        {() => <PermissionRoute component={Pacotes} permission="procedures.manage" />}
+        {() => <FeatureRoute component={Pacotes} feature="module.patient_packages" />}
       </Route>
       <Route path="/financeiro">
         {() => <PermissionRoute component={Financial} permission="financial.read" />}
