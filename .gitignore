@@ -94,3 +94,4 @@ attached_assets/
 /.vs/fisio/FileContentIndex/8ff00b50-d3b9-4b51-b279-e9734225a051.vsidx
 /.agents/skills/brainstorming/scripts/stop-server.sh
 *.vsidx
+deploy/

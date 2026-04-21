@@ -1,79 +1,121 @@
 # FisioGest Pro — Deploy no Hostinger
 
-## Pré-requisitos
-
-- Hostinger com plano **Node.js** (Business ou superior)
-- Banco de dados **PostgreSQL** provisionado (pode ser Hostinger Database ou externo)
-- Node.js **20+** selecionado no painel do Hostinger
+Pacote pronto para publicação em hospedagem **Hostinger Node.js** (planos Business ou superior).
 
 ---
 
-## Passos para implantação
+## 1. Pré-requisitos
 
-### 1. Enviar os arquivos
+- Hostinger com plano que suporte **Node.js 20+**
+- Banco **PostgreSQL** já provisionado (Hostinger Database, Neon, Supabase ou outro)
+- Acesso SSH ao servidor (para rodar `npm install` e `npm start`)
 
-Envie todo o conteúdo desta pasta via **Gerenciador de Arquivos** ou **FTP** para o diretório raiz do seu domínio (normalmente `public_html/` ou o diretório configurado para Node.js no Hostinger).
+---
 
-### 2. Instalar dependências
+## 2. Estrutura do pacote
 
-No terminal SSH do Hostinger, dentro do diretório onde enviou os arquivos:
-
-```bash
-npm install
+```
+deploy/
+├── index.cjs                                  ← bundle do servidor (Express)
+├── package.json                               ← dependências de produção
+├── .env.example                               ← modelo de variáveis de ambiente
+├── README-hostinger.md                        ← este arquivo
+└── artifacts/
+    └── fisiogest/dist/public/                 ← frontend compilado (HTML + JS + CSS)
+        ├── index.html
+        └── assets/
 ```
 
-### 3. Configurar variáveis de ambiente
+> ⚠️ **Importante:** mantenha esta estrutura intacta. O servidor procura o frontend em `artifacts/fisiogest/dist/public/` relativo ao diretório onde `node index.cjs` é executado.
 
-No painel do Hostinger (Node.js App → Environment Variables), configure:
+---
 
-| Variável       | Valor                                                |
-|----------------|------------------------------------------------------|
-| `PORT`         | `3000` (ou a porta padrão do Hostinger)              |
-| `NODE_ENV`     | `production`                                         |
-| `DATABASE_URL` | `postgresql://usuario:senha@host:5432/nome_do_banco` |
-| `JWT_SECRET`   | Chave aleatória longa (mínimo 64 caracteres)         |
-| `CORS_ORIGIN`  | `https://seudominio.com.br`                          |
+## 3. Passo a passo
 
-> **Dica de segurança:** Gere o JWT_SECRET com: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+### 3.1. Enviar arquivos
 
-### 4. Configurar o ponto de entrada
+Envie **todo o conteúdo** desta pasta (`deploy/`) para o diretório raiz da aplicação no Hostinger (geralmente `public_html/` ou o diretório configurado em **Node.js App → Application Root**) via:
 
-No painel do Hostinger em **Node.js → Application**, defina:
+- **Gerenciador de Arquivos** (descompactar o ZIP no painel)
+- **FTP/SFTP**
 
-- **Entry point:** `index.cjs`
+### 3.2. Instalar dependências
+
+No SSH, dentro do diretório onde os arquivos foram enviados:
+
+```bash
+npm install --omit=dev
+```
+
+### 3.3. Configurar variáveis de ambiente
+
+No painel **Hostinger → Node.js App → Environment Variables**, configure (use `.env.example` como referência):
+
+| Variável         | Obrigatória | Descrição                                                       |
+|------------------|-------------|-----------------------------------------------------------------|
+| `PORT`           | Sim         | Porta exposta (Hostinger geralmente injeta automaticamente)     |
+| `NODE_ENV`       | Sim         | `production`                                                    |
+| `DATABASE_URL`   | Sim         | String de conexão PostgreSQL                                    |
+| `JWT_SECRET`     | Sim         | Chave aleatória ≥ 64 caracteres                                 |
+| `CORS_ORIGIN`    | Sim         | Domínio do frontend, ex.: `https://app.suaclinica.com.br`       |
+| `CLOUDINARY_URL` | Opcional    | Necessário apenas para upload de fotos/evoluções                |
+
+> Gere o `JWT_SECRET` com:
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+> ```
+
+### 3.4. Configurar o entry point
+
+No painel **Hostinger → Node.js App → Application**:
+
+- **Entry point / Startup file:** `index.cjs`
 - **Node.js version:** `20` ou superior
 
-### 5. Iniciar a aplicação
+### 3.5. Iniciar a aplicação
 
 ```bash
 npm start
 ```
 
-Ou pelo painel do Hostinger, clique em **Restart** / **Start**.
-
-### 6. Criar as tabelas do banco de dados (primeira vez)
-
-O servidor cria as tabelas automaticamente ao iniciar em produção. Verifique os logs para confirmar.
+ou clicando em **Restart App** no painel do Hostinger.
 
 ---
 
-## Estrutura do pacote
+## 4. Pós-deploy
 
-```
-fisiogest-pro/
-├── index.cjs                        ← Servidor compilado (API + servidor de arquivos)
-├── artifacts/
-│   └── fisiogest/
-│       └── dist/
-│           └── public/              ← Frontend React compilado
-├── package.json                     ← Somente dependências de produção
-├── .env.example                     ← Exemplo de variáveis de ambiente
-└── README-hostinger.md              ← Este arquivo
-```
+### 4.1. Sincronizar schema do banco (uma vez)
 
-## Observações
+O bundle **não** inclui o `drizzle-kit`. Para sincronizar o schema na primeira execução, use uma das opções:
 
-- O servidor Express serve tanto a API (`/api/*`) quanto o frontend React como SPA.
-- Todas as rotas não-API redirecionam para o `index.html` (React Router).
-- O banco de dados PostgreSQL deve ser acessível a partir do servidor do Hostinger.
-- As migrações do banco de dados são aplicadas automaticamente na inicialização.
+- **Opção A (recomendada):** rode `pnpm run db:push` na sua máquina local apontando `DATABASE_URL` para o banco de produção
+- **Opção B:** restaure um dump do banco de desenvolvimento direto no servidor PostgreSQL
+
+### 4.2. Verificar funcionamento
+
+Acesse `https://seudominio.com.br/` — deve abrir a landing page. Em `/login` é possível autenticar.
+
+Endpoint de health check da API: `GET /api/health` (deve retornar `200 OK`).
+
+---
+
+## 5. Atualizações futuras
+
+Para publicar uma nova versão:
+
+1. Gere um novo ZIP com este pacote atualizado
+2. Faça backup do banco antes de subir
+3. Substitua os arquivos no servidor (preserve `node_modules/` se as dependências não mudaram)
+4. Reinicie a aplicação no painel
+
+---
+
+## 6. Solução de problemas
+
+| Sintoma                                          | Causa provável                      | Ação                                                  |
+|--------------------------------------------------|-------------------------------------|-------------------------------------------------------|
+| Erro `ENOENT: index.html`                        | Estrutura de pastas alterada        | Restaurar `artifacts/fisiogest/dist/public/`          |
+| Tela branca / 404 nos assets                     | Domínio CORS errado                 | Ajustar `CORS_ORIGIN`                                 |
+| `Connection terminated`                          | Banco indisponível ou SSL incorreto | Verificar `DATABASE_URL` e adicionar `?sslmode=require` se necessário |
+| `JWT_SECRET must be set`                         | Variável faltando                   | Configurar no painel Hostinger                        |
+| Upload de fotos falha                            | `CLOUDINARY_URL` ausente            | Configurar Cloudinary                                 |
