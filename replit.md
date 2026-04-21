@@ -1060,3 +1060,29 @@ Depois: cada clínica define seu prazo (0–90 dias) diretamente nas configuraç
 - Texto transcrito é **acumulado**, não substitui o existente.
 - Fallback transparente em navegadores sem `SpeechRecognition` (Safari, Firefox antigos): renderiza um `<textarea>` simples.
 - Suporte completo: Chrome, Edge.
+
+### Sessão abril/2026 — Limpeza de arquivos duplicados, obsoletos e não utilizados
+
+#### Pastas/arquivos removidos
+| Item | Motivo |
+|---|---|
+| `artifacts/api-server/src/middlewares/` (com `.gitkeep`) | Pasta vazia, duplicata de `middleware/` (singular, que é a usada) |
+| `artifacts/api-server/src/lib/objectStorage.ts` | Legacy do Replit Object Storage — substituído por Cloudinary |
+| `artifacts/api-server/src/lib/objectAcl.ts` | Legacy do Replit Object Storage — substituído por Cloudinary |
+
+#### Componentes shadcn/ui removidos (29 arquivos não importados em lugar nenhum)
+`accordion`, `aspect-ratio`, `avatar`, `breadcrumb`, `button-group`, `carousel`, `chart`, `collapsible`, `context-menu`, `drawer`, `empty`, `field`, `form`, `hover-card`, `input-group`, `input-otp`, `item`, `kbd`, `menubar`, `navigation-menu`, `pagination`, `progress`, `radio-group`, `resizable`, `scroll-area`, `sidebar`, `sonner`, `spinner`, `toggle-group`.
+
+Verificado que nenhum dos 29 era importado por outro componente UI nem por nenhuma página/feature.
+
+#### Dependências npm removidas (órfãs após limpeza dos componentes)
+`@radix-ui/react-accordion`, `@radix-ui/react-aspect-ratio`, `@radix-ui/react-avatar`, `@radix-ui/react-collapsible`, `@radix-ui/react-context-menu`, `@radix-ui/react-hover-card`, `@radix-ui/react-menubar`, `@radix-ui/react-navigation-menu`, `@radix-ui/react-progress`, `@radix-ui/react-radio-group`, `@radix-ui/react-scroll-area`, `@radix-ui/react-toggle-group`, `embla-carousel-react`, `input-otp`, `react-resizable-panels`, `sonner`, `vaul`.
+
+`recharts` foi mantido (usado em `relatorios.tsx`, `financial/index.tsx`, `patients/[id].tsx`).
+
+#### Não-duplicações confirmadas (parecem mas não são)
+- `auth-context.tsx` (Provider + Context) e `use-auth.ts` (hook) — separados intencionalmente para o Vite Fast Refresh funcionar corretamente.
+- `pages/financial/index.tsx` (rota `/financeiro`) — não há duplicata; é a única página financeira.
+- `lib/api-zod` e `lib/api-spec` — `api-spec` contém o `openapi.yaml` (fonte) e `api-zod` é gerado a partir dele.
+
+Resultado: typecheck OK, app reinicia normal, lockfile reduzido.
