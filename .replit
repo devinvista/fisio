@@ -33,13 +33,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm run build:libs && (PORT=8080 pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/fisiogest run dev)"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "webview"
+waitForPort = 8080
 
 [agent]
 stack = "PNPM_WORKSPACE"
