@@ -17,6 +17,15 @@ import {
   postReceivableSettlement,
   postReversal,
 } from "../../services/accountingService.js";
+import {
+  RECEIVABLE_TYPES,
+  isActiveFinancialRecord,
+  isRevenueSummaryRecord,
+  monthDateRange,
+  monthlyCreditQuantity,
+  recordDateFilter,
+  revenueSummarySql,
+} from "../../services/financialReportsService.js";
 import { z } from "zod/v4";
 
 const createRecordSchema = z.object({
@@ -76,10 +85,6 @@ async function assertPatientInClinic(patientId: number, req: AuthRequest): Promi
   return !!p;
 }
 
-function monthlyCreditQuantity(sessionsPerWeek?: number | null): number {
-  return Math.max(1, Number(sessionsPerWeek ?? 1) * 4);
-}
-
 async function resolvePackageForSubscription(sub: typeof patientSubscriptionsTable.$inferSelect, clinicId?: number | null) {
   const conditions = [
     eq(patientPackagesTable.patientId, sub.patientId),
@@ -103,43 +108,9 @@ async function resolvePackageForSubscription(sub: typeof patientSubscriptionsTab
 
 const router = Router();
 router.use(authMiddleware);
-
-const RECEIVABLE_TYPES = ["creditoAReceber", "cobrancaSessao", "cobrancaMensal", "faturaConsolidada"];
-
-function isActiveFinancialRecord(status: string): boolean {
-  return status !== "estornado" && status !== "cancelado";
-}
-
-function isRevenueSummaryRecord(record: typeof financialRecordsTable.$inferSelect): boolean {
-  const nonCompetencyTypes = ["depositoCarteira", "vendaPacote", "pagamento", "faturaConsolidada"];
-  return record.type === "receita"
-    && isActiveFinancialRecord(record.status)
-    && !nonCompetencyTypes.includes(record.transactionType ?? "");
-}
-
-function revenueSummarySql() {
-  return and(
-    eq(financialRecordsTable.type, "receita"),
-    sql`${financialRecordsTable.status} NOT IN ('estornado', 'cancelado')`,
-    sql`(${financialRecordsTable.transactionType} IS NULL OR ${financialRecordsTable.transactionType} NOT IN ('depositoCarteira', 'vendaPacote', 'pagamento', 'faturaConsolidada'))`
-  )!;
-}
-
-function monthDateRange(year: number, month: number): { startDate: string; endDate: string } {
-  return monthDateRangeBRT(year, month);
-}
-
-// Unified date filter used by every financial endpoint:
-//  1. paymentDate in range (normal paid records)
-//  2. paymentDate IS NULL but dueDate in range (pending/unpaid records)
-//  3. Both null → fall back to createdAt (legacy records without any date)
-function recordDateFilter(startDate: string, endDate: string) {
-  return or(
-    and(isNotNull(financialRecordsTable.paymentDate), gte(financialRecordsTable.paymentDate, startDate), lte(financialRecordsTable.paymentDate, endDate)),
-    and(isNull(financialRecordsTable.paymentDate), isNotNull(financialRecordsTable.dueDate), gte(financialRecordsTable.dueDate, startDate), lte(financialRecordsTable.dueDate, endDate)),
-    and(isNull(financialRecordsTable.paymentDate), isNull(financialRecordsTable.dueDate), gte(sql`DATE(${financialRecordsTable.createdAt})`, startDate), lte(sql`DATE(${financialRecordsTable.createdAt})`, endDate))
-  )!;
-}
+// Helper functions (RECEIVABLE_TYPES, isActiveFinancialRecord, isRevenueSummaryRecord,
+// revenueSummarySql, monthDateRange, recordDateFilter, monthlyCreditQuantity)
+// were extracted to ../../services/financialReportsService.ts
 
 router.get("/dashboard", requirePermission("financial.read"), async (req: AuthRequest, res) => {
   try {

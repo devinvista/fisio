@@ -86,15 +86,17 @@ import {
 } from "lucide-react";
 import { ROLES, ROLE_LABELS } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { Sparkles } from "lucide-react";
+import { PlanoSection } from "./plano-section";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");
 
-type Section = "clinica" | "usuarios" | "agendas";
+type Section = "clinica" | "usuarios" | "agendas" | "plano";
 
 function getHashSection(): Section {
   const h = window.location.hash.replace("#", "");
-  if (h === "usuarios" || h === "agendas" || h === "clinica") return h;
+  if (h === "usuarios" || h === "agendas" || h === "clinica" || h === "plano") return h;
   return "clinica";
 }
 
@@ -1723,7 +1725,7 @@ interface SectionConfig {
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  permission: "settings.manage" | "users.manage";
+  permission: "settings.manage" | "users.manage" | null;
 }
 
 const SECTIONS: SectionConfig[] = [
@@ -1748,6 +1750,13 @@ const SECTIONS: SectionConfig[] = [
     icon: CalendarDays,
     permission: "settings.manage",
   },
+  {
+    id: "plano",
+    label: "Plano",
+    description: "Plano contratado e upgrades",
+    icon: Sparkles,
+    permission: null,
+  },
 ];
 
 /* ─── Main Page ─────────────────────────────────────────────── */
@@ -1756,7 +1765,7 @@ export default function Configuracoes() {
   const { hasPermission } = useAuth();
   const [activeSection, setActiveSection] = useState<Section>(getHashSection);
 
-  const visibleSections = SECTIONS.filter((s) => hasPermission(s.permission));
+  const visibleSections = SECTIONS.filter((s) => s.permission === null || hasPermission(s.permission));
 
   const currentSection = visibleSections.find((s) => s.id === activeSection) ?? visibleSections[0];
 
@@ -1867,6 +1876,7 @@ export default function Configuracoes() {
             {currentSection?.id === "clinica" && <ClinicaSection />}
             {currentSection?.id === "usuarios" && <UsuariosSection />}
             {currentSection?.id === "agendas" && <AgendasSection />}
+            {currentSection?.id === "plano" && <PlanoSection />}
           </div>
         </div>
       </div>

@@ -17,7 +17,9 @@
     "db:generate": "drizzle-kit generate --config lib/db/drizzle.config.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
-    "typecheck": "pnpm run build:libs && tsc --noEmit -p artifacts/fisiogest/tsconfig.json && tsc --noEmit -p artifacts/api-server/tsconfig.json"
+    "typecheck": "pnpm run build:libs && tsc --noEmit -p artifacts/fisiogest/tsconfig.json && tsc --noEmit -p artifacts/api-server/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -110,8 +112,8 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "drizzle-kit": "^0.31.9",
-    "esbuild": "^0.27.3",
     "embla-carousel-react": "^8.6.0",
+    "esbuild": "^0.27.3",
     "framer-motion": "^12.23.24",
     "input-otp": "^1.4.2",
     "lucide-react": "0.545.0",
@@ -130,6 +132,7 @@
     "typescript": "~5.9.2",
     "vaul": "^1.1.2",
     "vite": "^7.3.0",
+    "vitest": "^4.1.5",
     "wouter": "^3.3.5"
   }
 }

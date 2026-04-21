@@ -51,6 +51,8 @@ import { format, differenceInYears, differenceInDays, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/use-auth";
+import { FeatureGate } from "@/components/guards/feature-gate";
+import { PlanBadge } from "@/components/guards/plan-badge";
 import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 import { PhotosTab } from "./photos-tab";
 import {
@@ -5982,13 +5984,30 @@ function SubscriptionsSection({ patientId }: { patientId: number }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-base font-semibold text-slate-800">Assinaturas / Mensalidades</h4>
-          <p className="text-xs text-slate-500">{subscriptions.length} assinatura(s) vinculada(s)</p>
+        <div className="flex items-center gap-2">
+          <div>
+            <h4 className="text-base font-semibold text-slate-800">Assinaturas / Mensalidades</h4>
+            <p className="text-xs text-slate-500">{subscriptions.length} assinatura(s) vinculada(s)</p>
+          </div>
+          <FeatureGate
+            feature="module.patient_subscriptions"
+            fallback={<PlanBadge feature="module.patient_subscriptions" />}
+          >
+            {null}
+          </FeatureGate>
         </div>
-        <Button size="sm" className="h-8 rounded-xl" onClick={() => setShowForm(!showForm)}>
-          <Plus className="w-3.5 h-3.5 mr-1" />{showForm ? "Cancelar" : "Nova Assinatura"}
-        </Button>
+        <FeatureGate
+          feature="module.patient_subscriptions"
+          fallback={
+            <Button size="sm" variant="outline" className="h-8 rounded-xl gap-2" disabled>
+              <Plus className="w-3.5 h-3.5" /> Indisponível no plano
+            </Button>
+          }
+        >
+          <Button size="sm" className="h-8 rounded-xl" onClick={() => setShowForm(!showForm)}>
+            <Plus className="w-3.5 h-3.5 mr-1" />{showForm ? "Cancelar" : "Nova Assinatura"}
+          </Button>
+        </FeatureGate>
       </div>
 
       {showForm && (
