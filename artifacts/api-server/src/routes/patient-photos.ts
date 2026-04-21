@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { patientPhotosTable } from "@workspace/db";
+import { patientPhotosTable, appointmentsTable, proceduresTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -25,25 +25,48 @@ const createPhotoSchema = z.object({
   takenAt: z.string().datetime().optional(),
   sessionLabel: z.string().max(100).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
+  appointmentId: z.number().int().positive().nullable().optional(),
 });
 
 const updatePhotoSchema = z.object({
   viewType: z.enum(VIEW_TYPES).optional(),
   sessionLabel: z.string().max(100).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
+  appointmentId: z.number().int().positive().nullable().optional(),
 });
 
-// GET /patients/:patientId/photos — list all photos
+// GET /patients/:patientId/photos — list all photos with optional appointment details
 router.get("/", authMiddleware, requirePermission("medical.read"), async (req: Request, res: Response) => {
   try {
     const patientId = parseIntParam(req.params.patientId, res, "Paciente");
     if (patientId === null) return;
 
-    const photos = await db
-      .select()
+    const rows = await db
+      .select({
+        photo: patientPhotosTable,
+        appointment: {
+          id: appointmentsTable.id,
+          date: appointmentsTable.date,
+          startTime: appointmentsTable.startTime,
+          status: appointmentsTable.status,
+        },
+        procedure: {
+          id: proceduresTable.id,
+          name: proceduresTable.name,
+        },
+      })
       .from(patientPhotosTable)
+      .leftJoin(appointmentsTable, eq(patientPhotosTable.appointmentId, appointmentsTable.id))
+      .leftJoin(proceduresTable, eq(appointmentsTable.procedureId, proceduresTable.id))
       .where(eq(patientPhotosTable.patientId, patientId))
       .orderBy(desc(patientPhotosTable.takenAt));
+
+    const photos = rows.map(({ photo, appointment, procedure }) => ({
+      ...photo,
+      appointmentDetails: appointment?.id
+        ? { ...appointment, procedure: procedure?.id ? procedure : null }
+        : null,
+    }));
 
     res.json(photos);
   } catch (error) {
@@ -62,7 +85,7 @@ router.post("/", authMiddleware, requirePermission("medical.write"), async (req:
     const body = validateBody(createPhotoSchema, req.body, res);
     if (!body) return;
 
-    const { objectPath, originalFilename, contentType, fileSize, viewType, takenAt, sessionLabel, notes } = body;
+    const { objectPath, originalFilename, contentType, fileSize, viewType, takenAt, sessionLabel, notes, appointmentId } = body;
 
     const [photo] = await db.insert(patientPhotosTable).values({
       patientId,
@@ -75,6 +98,7 @@ router.post("/", authMiddleware, requirePermission("medical.write"), async (req:
       takenAt: takenAt ? new Date(takenAt) : new Date(),
       sessionLabel,
       notes,
+      appointmentId: appointmentId ?? null,
     }).returning();
 
     res.status(201).json(photo);
@@ -125,7 +149,7 @@ router.delete("/:photoId", authMiddleware, requirePermission("medical.write"), a
   }
 });
 
-// PATCH /patients/:patientId/photos/:photoId — update notes/label
+// PATCH /patients/:patientId/photos/:photoId — update viewType/notes/label/appointmentId
 router.patch("/:photoId", authMiddleware, requirePermission("medical.write"), async (req: Request, res: Response) => {
   try {
     const patientId = parseIntParam(req.params.patientId, res, "Paciente");

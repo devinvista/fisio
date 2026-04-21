@@ -247,6 +247,9 @@ export const patientPhotosTable = pgTable("patient_photos", {
   viewType: text("view_type").notNull(),  // frontal | lateral_d | lateral_e | posterior | detalhe
   sessionLabel: text("session_label"),   // rótulo livre (ex: "1ª Avaliação", "Mês 2")
 
+  // Link to appointment
+  appointmentId: integer("appointment_id"),
+
   // Storage
   objectPath: text("object_path").notNull(),
   originalFilename: text("original_filename"),
