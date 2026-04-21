@@ -9,6 +9,7 @@ const ALLOWED_TYPES = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/jpeg",
+  "image/jpg",
   "image/png",
   "image/webp",
   "image/gif",

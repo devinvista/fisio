@@ -1086,3 +1086,24 @@ Verificado que nenhum dos 29 era importado por outro componente UI nem por nenhu
 - `lib/api-zod` e `lib/api-spec` — `api-spec` contém o `openapi.yaml` (fonte) e `api-zod` é gerado a partir dele.
 
 Resultado: typecheck OK, app reinicia normal, lockfile reduzido.
+
+### Sessão abril/2026 — Bug "erro ao enviar foto" (upload de fotos do paciente)
+
+#### Causa raiz
+Inconsistência de tipos MIME entre o frontend e o endpoint de assinatura (`/api/storage/uploads/request-url`):
+- Frontend e schema do `/photos` aceitam tanto `image/jpeg` quanto `image/jpg`.
+- O endpoint `/api/storage/uploads/request-url` aceitava **apenas** `image/jpeg` na lista `ALLOWED_TYPES`.
+- Alguns navegadores (notadamente Safari iOS e algumas câmeras Android) reportam `image/jpg` como tipo do arquivo `.jpg`. Resultado: o servidor retornava **400 "Tipo de arquivo não permitido"** já no primeiro passo do upload, e a UI mostrava apenas `1 arquivo(s) falharam` sem dizer o motivo.
+
+#### Correções
+| Arquivo | Mudança |
+|---|---|
+| `artifacts/api-server/src/routes/storage.ts` | Adicionado `image/jpg` à lista `ALLOWED_TYPES` |
+| `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Helper `normalizeContentType` converte `image/jpg` → `image/jpeg` antes de qualquer envio (defensa em profundidade) |
+| `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Helper `extractApiError` lê o JSON de erro da resposta e propaga `message`/`error` do backend para o `throw` |
+| `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Toast de falha agora **mostra a mensagem real** do erro (até 2 arquivos por toast) em vez de apenas a contagem |
+| `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Falha do Cloudinary tenta extrair `data.error.message` da resposta JSON da API deles |
+
+#### Resultado
+- Uploads de `.jpg` voltam a funcionar em todos os navegadores.
+- Quando algo falhar no futuro, o usuário verá o motivo real (ex.: "Tipo de arquivo não permitido", "Token inválido", "Cloudinary respondeu HTTP 401: Invalid signature") em vez de uma mensagem genérica.

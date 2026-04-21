@@ -746,21 +746,36 @@ function UploadModal({
     if (appt) setTakenAt(appt.date);
   }, [linkedAppointmentId, appointments]);
 
+  // Normalize MIME type: some browsers report "image/jpg" instead of "image/jpeg"
+  const normalizeContentType = (type: string): string => (type === "image/jpg" ? "image/jpeg" : type);
+
+  const extractApiError = async (res: Response, fallback: string): Promise<string> => {
+    try {
+      const data = await res.json();
+      return data?.message || data?.error || fallback;
+    } catch {
+      return `${fallback} (HTTP ${res.status})`;
+    }
+  };
+
   const uploadSingle = async (file: File, viewType: ViewType): Promise<void> => {
     let fileToUpload = file;
     if (file.type !== "image/heic" && file.type !== "image/heif") {
       try {
         const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
-        fileToUpload = new File([compressed], file.name, { type: compressed.type || file.type });
+        const compressedType = normalizeContentType(compressed.type || file.type);
+        fileToUpload = new File([compressed], file.name, { type: compressedType });
       } catch { /* use original */ }
     }
+
+    const contentType = normalizeContentType(fileToUpload.type || file.type);
 
     const sigRes = await apiFetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: fileToUpload.name, size: fileToUpload.size, contentType: fileToUpload.type, folder: "fisiogest/patient-photos" }),
+      body: JSON.stringify({ name: fileToUpload.name, size: fileToUpload.size, contentType, folder: "fisiogest/patient-photos" }),
     });
-    if (!sigRes.ok) throw new Error("Falha ao obter parâmetros de upload");
+    if (!sigRes.ok) throw new Error(await extractApiError(sigRes, "Falha ao obter parâmetros de upload"));
     const { signature, timestamp, cloud_name, api_key, folder } = await sigRes.json();
 
     const formData = new FormData();
@@ -774,7 +789,14 @@ function UploadModal({
       method: "POST",
       body: formData,
     });
-    if (!uploadRes.ok) throw new Error("Falha ao enviar foto ao Cloudinary");
+    if (!uploadRes.ok) {
+      let cloudinaryMsg = `Cloudinary respondeu HTTP ${uploadRes.status}`;
+      try {
+        const data = await uploadRes.json();
+        cloudinaryMsg = data?.error?.message || cloudinaryMsg;
+      } catch {/* ignore */}
+      throw new Error(`Falha no envio para Cloudinary: ${cloudinaryMsg}`);
+    }
     const uploadData = await uploadRes.json();
     const objectPath: string = uploadData.secure_url;
 
@@ -784,7 +806,7 @@ function UploadModal({
       body: JSON.stringify({
         objectPath,
         originalFilename: file.name,
-        contentType: fileToUpload.type,
+        contentType,
         fileSize: fileToUpload.size,
         viewType,
         takenAt: `${takenAt}T12:00:00.000Z`,
@@ -793,24 +815,26 @@ function UploadModal({
         appointmentId: linkedAppointmentId !== "none" ? parseInt(linkedAppointmentId) : null,
       }),
     });
-    if (!metaRes.ok) throw new Error("Falha ao salvar metadados");
+    if (!metaRes.ok) throw new Error(await extractApiError(metaRes, "Falha ao salvar metadados"));
   };
 
   const handleUpload = async () => {
     if (entries.length === 0) return;
     setUploading(true);
     setProgress({ done: 0, total: entries.length });
-    let errors = 0;
+    const failures: string[] = [];
     for (let i = 0; i < entries.length; i++) {
       try {
         await uploadSingle(entries[i].file, entries[i].viewType);
         setProgress({ done: i + 1, total: entries.length });
       } catch (err) {
-        console.error(err);
-        errors++;
+        const msg = err instanceof Error ? err.message : "Erro desconhecido";
+        console.error(`Falha ao enviar foto "${entries[i].file.name}":`, err);
+        failures.push(`${entries[i].file.name}: ${msg}`);
       }
     }
     setUploading(false);
+    const errors = failures.length;
     if (errors === 0) {
       toast({ title: `${entries.length} foto(s) enviada(s) com sucesso!` });
       onSuccess();
@@ -818,7 +842,7 @@ function UploadModal({
     } else {
       toast({
         title: `${entries.length - errors} de ${entries.length} enviadas`,
-        description: `${errors} arquivo(s) falharam.`,
+        description: failures.slice(0, 2).join(" — ") + (failures.length > 2 ? ` (e mais ${failures.length - 2})` : ""),
         variant: "destructive",
       });
     }
