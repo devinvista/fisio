@@ -5,4 +5,4 @@ generated = []
 id = "KeIrPETYyCoD4gBbEKjit"
 uri = "file://fisiogest-hostinger.zip"
 type = "unspecified"
-title = "fisiogest-hostinger.zip — Build de Produção"
+title = "fisiogest-hostinger.zip — Deploy para Hostinger"
