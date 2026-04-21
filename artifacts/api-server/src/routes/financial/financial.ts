@@ -2,11 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { financialRecordsTable, appointmentsTable, proceduresTable, patientSubscriptionsTable, sessionCreditsTable, patientsTable, procedureCostsTable, schedulesTable, recurringExpensesTable, patientPackagesTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, lt, gt, inArray, isNotNull, isNull, or, count, desc } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { logAudit } from "../lib/auditLog.js";
-import { monthDateRangeBRT, nowBRT, todayBRT } from "../lib/dateUtils.js";
-import { validateBody, positiveNumber } from "../lib/validate.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { logAudit } from "../../lib/auditLog.js";
+import { monthDateRangeBRT, nowBRT, todayBRT } from "../../lib/dateUtils.js";
+import { validateBody, positiveNumber } from "../../lib/validate.js";
 import {
   ACCOUNT_CODES,
   allocateReceivable,
@@ -16,7 +16,7 @@ import {
   postReceivableRevenue,
   postReceivableSettlement,
   postReversal,
-} from "../services/accountingService.js";
+} from "../../services/accountingService.js";
 import { z } from "zod/v4";
 
 const createRecordSchema = z.object({

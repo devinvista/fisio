@@ -2,10 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { schedulesTable, usersTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { requireActiveSubscription, getPlanLimits } from "../middleware/subscription.js";
-import { validateBody } from "../lib/validate.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { requireActiveSubscription, getPlanLimits } from "../../middleware/subscription.js";
+import { validateBody } from "../../lib/validate.js";
 import { z } from "zod/v4";
 
 const scheduleTypeEnum = z.enum(["clinic", "professional"]);

@@ -12,8 +12,8 @@ import {
   patientPackagesTable,
 } from "@workspace/db";
 import { eq, and, or, gt, count } from "drizzle-orm";
-import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
-import { logAudit } from "../lib/auditLog.js";
+import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
+import { logAudit } from "../../lib/auditLog.js";
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);

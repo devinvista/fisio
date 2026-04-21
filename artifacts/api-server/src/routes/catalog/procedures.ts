@@ -2,10 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { proceduresTable, procedureCostsTable, appointmentsTable, financialRecordsTable, schedulesTable } from "@workspace/db";
 import { eq, and, count, ilike, isNull, or, sql, gte, lte } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
 import type { Role } from "@workspace/db";
-import { validateBody, optionalPositiveNumber } from "../lib/validate.js";
+import { validateBody, optionalPositiveNumber } from "../../lib/validate.js";
 import { z } from "zod/v4";
 
 const procedureCategoryEnum = z.enum(["Reabilitação", "Estética", "Pilates", "Outro"]);

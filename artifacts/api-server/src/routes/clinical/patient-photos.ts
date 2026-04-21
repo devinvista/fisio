@@ -2,11 +2,11 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { patientPhotosTable, appointmentsTable, proceduresTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { deleteCloudinaryAsset, extractPublicId } from "../lib/cloudinary.js";
+import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { deleteCloudinaryAsset, extractPublicId } from "../../lib/cloudinary.js";
 import { z } from "zod/v4";
-import { parseIntParam, validateBody } from "../lib/validate.js";
+import { parseIntParam, validateBody } from "../../lib/validate.js";
 
 const router = Router({ mergeParams: true });
 

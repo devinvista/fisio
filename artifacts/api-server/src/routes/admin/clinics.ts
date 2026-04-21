@@ -4,11 +4,11 @@ import { clinicsTable, usersTable, userRolesTable } from "@workspace/db";
 import { subscriptionPlansTable, clinicSubscriptionsTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { eq, and, desc, asc } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requireSuperAdmin, requirePermission } from "../middleware/rbac.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requireSuperAdmin, requirePermission } from "../../middleware/rbac.js";
 import bcrypt from "bcryptjs";
-import { generateToken } from "../middleware/auth.js";
-import { todayBRT } from "../lib/dateUtils.js";
+import { generateToken } from "../../middleware/auth.js";
+import { todayBRT } from "../../lib/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);

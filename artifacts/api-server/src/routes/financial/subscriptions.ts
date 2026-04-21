@@ -9,11 +9,11 @@ import {
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod/v4";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { requireFeature } from "../middleware/plan-features.js";
-import { validateBody } from "../lib/validate.js";
-import { runBilling } from "../services/billingService.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { requireFeature } from "../../middleware/plan-features.js";
+import { validateBody } from "../../lib/validate.js";
+import { runBilling } from "../../services/billingService.js";
 
 const createSubscriptionSchema = z.object({
   patientId: z.number().int().positive(),

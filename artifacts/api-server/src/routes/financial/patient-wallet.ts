@@ -17,11 +17,11 @@ import {
   financialRecordsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { validateBody } from "../lib/validate.js";
-import { todayBRT } from "../lib/dateUtils.js";
-import { postWalletDeposit } from "../services/accountingService.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { validateBody } from "../../lib/validate.js";
+import { todayBRT } from "../../lib/dateUtils.js";
+import { postWalletDeposit } from "../../services/accountingService.js";
 import { z } from "zod/v4";
 
 const router = Router({ mergeParams: true });

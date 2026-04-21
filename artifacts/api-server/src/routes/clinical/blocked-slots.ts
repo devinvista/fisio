@@ -2,8 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { blockedSlotsTable, schedulesTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, isNull, or } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
 import { randomUUID } from "crypto";
 
 const router = Router();

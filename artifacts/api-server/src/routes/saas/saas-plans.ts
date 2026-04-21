@@ -2,12 +2,12 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { subscriptionPlansTable, clinicSubscriptionsTable, clinicsTable, patientsTable, usersTable, userRolesTable, schedulesTable, clinicPaymentHistoryTable } from "@workspace/db";
 import { eq, desc, asc, count, and, sql, gte, lte } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requireSuperAdmin } from "../middleware/rbac.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requireSuperAdmin } from "../../middleware/rbac.js";
 import { z } from "zod/v4";
-import { validateBody } from "../lib/validate.js";
-import { todayBRT, addDays } from "../lib/dateUtils.js";
-import { runSubscriptionCheck } from "../services/subscriptionService.js";
+import { validateBody } from "../../lib/validate.js";
+import { todayBRT, addDays } from "../../lib/dateUtils.js";
+import { runSubscriptionCheck } from "../../services/subscriptionService.js";
 
 const router = Router();
 router.use(authMiddleware);

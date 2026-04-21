@@ -15,11 +15,11 @@ import {
   bodyMeasurementsTable,
 } from "@workspace/db";
 import { eq, desc, or, and } from "drizzle-orm";
-import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { deleteCloudinaryAsset, extractPublicId } from "../lib/cloudinary.js";
-import { logAudit } from "../lib/auditLog.js";
-import { validateBody } from "../lib/validate.js";
+import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { deleteCloudinaryAsset, extractPublicId } from "../../lib/cloudinary.js";
+import { logAudit } from "../../lib/auditLog.js";
+import { validateBody } from "../../lib/validate.js";
 import { z } from "zod/v4";
 
 const anamnesisSchema = z.object({

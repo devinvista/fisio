@@ -2,11 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, patientSubscriptionsTable, sessionCreditsTable, financialRecordsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { requireFeature } from "../middleware/plan-features.js";
-import { validateBody } from "../lib/validate.js";
-import { postPackageSale } from "../services/accountingService.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { requireFeature } from "../../middleware/plan-features.js";
+import { validateBody } from "../../lib/validate.js";
+import { postPackageSale } from "../../services/accountingService.js";
 import { z } from "zod/v4";
 
 const paymentStatusEnum = z.enum(["pendente", "pago", "cancelado"]);

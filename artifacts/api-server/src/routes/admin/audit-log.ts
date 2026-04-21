@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { auditLogTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { authMiddleware } from "../middleware/auth.js";
-import { requireSuperAdmin } from "../middleware/rbac.js";
-import { requireFeature } from "../middleware/plan-features.js";
+import { authMiddleware } from "../../middleware/auth.js";
+import { requireSuperAdmin } from "../../middleware/rbac.js";
+import { requireFeature } from "../../middleware/plan-features.js";
 
 const router = Router();
 router.use(authMiddleware);

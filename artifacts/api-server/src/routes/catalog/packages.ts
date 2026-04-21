@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { packagesTable, proceduresTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { validateBody } from "../lib/validate.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { validateBody } from "../../lib/validate.js";
 import { z } from "zod/v4";
 
 const packageTypeEnum = z.enum(["sessoes", "mensal", "faturaConsolidada"]);

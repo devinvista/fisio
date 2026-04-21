@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { requireFeature } from "../middleware/plan-features.js";
+import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { requireFeature } from "../../middleware/plan-features.js";
 
 const router = Router();
 router.use(authMiddleware);

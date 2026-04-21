@@ -2,11 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { patientsTable, appointmentsTable, financialRecordsTable } from "@workspace/db";
 import { eq, ilike, or, and, sql, desc, isNull, count } from "drizzle-orm";
-import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
-import { requirePermission } from "../middleware/rbac.js";
-import { requireActiveSubscription, getPlanLimits } from "../middleware/subscription.js";
-import { logAudit } from "../lib/auditLog.js";
-import { parseIntParam, validateBody } from "../lib/validate.js";
+import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
+import { requirePermission } from "../../middleware/rbac.js";
+import { requireActiveSubscription, getPlanLimits } from "../../middleware/subscription.js";
+import { logAudit } from "../../lib/auditLog.js";
+import { parseIntParam, validateBody } from "../../lib/validate.js";
 import { z } from "zod/v4";
 
 // Accepts a valid YYYY-MM-DD string, an empty string (treated as null), or null/undefined.
