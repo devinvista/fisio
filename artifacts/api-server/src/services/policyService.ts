@@ -25,7 +25,7 @@ import {
   financialRecordsTable,
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { logAudit } from "../lib/auditLog.js";
+import { logAudit } from "../utils/auditLog.js";
 import { postReceivableRevenue } from "./accountingService.js";
 
 export interface PolicyRunResult {

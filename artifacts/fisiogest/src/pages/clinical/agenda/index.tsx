@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/utils/api";
 import { AppLayout } from "@/components/layout/app-layout";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import {
   useListAppointments,
   useUpdateAppointment,
@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import {

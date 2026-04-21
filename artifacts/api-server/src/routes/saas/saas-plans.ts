@@ -5,8 +5,8 @@ import { eq, desc, asc, count, and, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requireSuperAdmin } from "../../middleware/rbac.js";
 import { z } from "zod/v4";
-import { validateBody } from "../../lib/validate.js";
-import { todayBRT, addDays } from "../../lib/dateUtils.js";
+import { validateBody } from "../../utils/validate.js";
+import { todayBRT, addDays } from "../../utils/dateUtils.js";
 import { runSubscriptionCheck } from "../../services/subscriptionService.js";
 
 const router = Router();

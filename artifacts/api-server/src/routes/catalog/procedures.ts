@@ -5,7 +5,7 @@ import { eq, and, count, ilike, isNull, or, sql, gte, lte } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
 import type { Role } from "@workspace/db";
-import { validateBody, optionalPositiveNumber } from "../../lib/validate.js";
+import { validateBody, optionalPositiveNumber } from "../../utils/validate.js";
 import { z } from "zod/v4";
 
 const procedureCategoryEnum = z.enum(["Reabilitação", "Estética", "Pilates", "Outro"]);

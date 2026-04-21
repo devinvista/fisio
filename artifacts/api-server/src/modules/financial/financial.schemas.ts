@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { positiveNumber } from "../../lib/validate.js";
+import { positiveNumber } from "../../utils/validate.js";
 
 export const createRecordSchema = z.object({
   type: z.enum(["receita", "despesa"]).default("despesa"),

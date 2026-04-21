@@ -18,7 +18,7 @@ import {
   Globe,
   Plus,
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/utils/api";
 import {
   useUpdateAppointment,
   useDeleteAppointment,
@@ -44,7 +44,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { DatePickerPTBR, TimeInputPTBR } from "@/components/ui/date-picker-ptbr";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 import { STATUS_CONFIG } from "../constants";
 import type { Appointment } from "../types";
 

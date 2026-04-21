@@ -5,8 +5,8 @@ import { usersTable, userRolesTable, clinicsTable } from "@workspace/db";
 import type { Role } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth.js";
-import { validateBody } from "../lib/validate.js";
-import { todayBRT } from "../lib/dateUtils.js";
+import { validateBody } from "../utils/validate.js";
+import { todayBRT } from "../utils/dateUtils.js";
 import { z } from "zod/v4";
 import { subscriptionPlansTable, clinicSubscriptionsTable, couponsTable, couponUsesTable } from "@workspace/db";
 

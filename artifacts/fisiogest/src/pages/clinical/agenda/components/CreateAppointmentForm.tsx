@@ -17,13 +17,13 @@ import {
   ArrowRight,
   ClipboardList,
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/utils/api";
 import {
   useListPatients,
   useListProcedures,
   useCreateAppointment,
 } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { DatePickerPTBR, TimeInputPTBR } from "@/components/ui/date-picker-ptbr";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 import { DAYS_OF_WEEK } from "../constants";
 import type { TreatmentPlan, PlanProcedureForAgenda } from "../types";
 

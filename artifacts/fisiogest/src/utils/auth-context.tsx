@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useLocation } from "wouter";
 import { getCurrentUser } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
-import { resolvePermissions, type Permission } from "@/lib/permissions";
-import { planHasFeature, type Feature, type PlanTier } from "@/lib/plan-features";
+import { resolvePermissions, type Permission } from "@/utils/permissions";
+import { planHasFeature, type Feature, type PlanTier } from "@/utils/plan-features";
 
 export interface SubscriptionInfo {
   planId: number;

@@ -19,8 +19,8 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
-import { validateBody } from "../../lib/validate.js";
-import { todayBRT } from "../../lib/dateUtils.js";
+import { validateBody } from "../../utils/validate.js";
+import { todayBRT } from "../../utils/dateUtils.js";
 import { postWalletDeposit } from "../../services/accountingService.js";
 import { z } from "zod/v4";
 

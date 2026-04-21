@@ -11,7 +11,7 @@ import {
   schedulesTable,
   subscriptionPlansTable,
 } from "@workspace/db";
-import { todayBRT } from "../lib/dateUtils.js";
+import { todayBRT } from "../utils/dateUtils.js";
 import { eq, and, sql, desc, or, isNull, gt, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 

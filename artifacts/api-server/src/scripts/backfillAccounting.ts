@@ -10,7 +10,7 @@ import {
   postWalletDeposit,
   postWalletUsage,
 } from "../services/accountingService.js";
-import { todayBRT } from "../lib/dateUtils.js";
+import { todayBRT } from "../utils/dateUtils.js";
 
 const RECEIVABLE_TYPES = ["creditoAReceber", "cobrancaSessao", "cobrancaMensal", "faturaConsolidada", "pendenteFatura"];
 const INACTIVE_STATUSES = ["cancelado", "estornado"];

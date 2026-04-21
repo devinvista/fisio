@@ -58,8 +58,8 @@ import {
   Globe,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { maskCpf, maskPhone, maskCnpj } from "@/lib/masks";
-import { apiFetch } from "@/lib/api";
+import { maskCpf, maskPhone, maskCnpj } from "@/utils/masks";
+import { apiFetch } from "@/utils/api";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");

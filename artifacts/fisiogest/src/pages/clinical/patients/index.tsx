@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useListPatients, useCreatePatient } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +27,9 @@ import {
   MapPin,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
+import { maskCpf, maskPhone, displayCpf } from "@/utils/masks";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 
 type ViewMode = "cards" | "list";
 type SortField = "name" | "birthDate" | "phone" | "email" | "profession";

@@ -3,8 +3,8 @@ import { db } from "@workspace/db";
 import { couponsTable, couponUsesTable, clinicSubscriptionsTable, subscriptionPlansTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
-import { validateBody } from "../../lib/validate.js";
-import { todayBRT } from "../../lib/dateUtils.js";
+import { validateBody } from "../../utils/validate.js";
+import { todayBRT } from "../../utils/dateUtils.js";
 import { z } from "zod/v4";
 
 const router = Router();

@@ -1,5 +1,5 @@
 import { useParams, useLocation } from "wouter";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/utils/api";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   useGetPatient,
@@ -50,9 +50,9 @@ import { useToast } from "@/hooks/use-toast";
 import { format, differenceInYears, differenceInDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { PlanBadge } from "@/components/guards/plan-badge";
-import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
+import { maskCpf, maskPhone, displayCpf } from "@/utils/masks";
 import { PhotosTab } from "./photos-tab";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,

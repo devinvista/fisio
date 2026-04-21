@@ -2,11 +2,11 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth-context";
-import { useAuth } from "@/lib/use-auth";
+import { AuthProvider } from "@/utils/auth-context";
+import { useAuth } from "@/utils/use-auth";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useEffect } from "react";
-import type { Permission } from "@/lib/permissions";
+import type { Permission } from "@/utils/permissions";
 import { FeatureRoute } from "@/components/guards/feature-route";
 
 import LandingPage from "./pages/landing";

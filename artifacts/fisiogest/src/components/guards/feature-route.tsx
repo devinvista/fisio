@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/use-auth";
-import type { Feature } from "@/lib/plan-features";
+import { useAuth } from "@/utils/use-auth";
+import type { Feature } from "@/utils/plan-features";
 
 interface FeatureRouteProps {
   component: React.ComponentType;

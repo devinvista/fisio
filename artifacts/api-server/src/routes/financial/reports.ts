@@ -4,7 +4,7 @@ import { financialRecordsTable, appointmentsTable, proceduresTable } from "@work
 import { and, eq, sql, gte, lte, lt } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
-import { nowBRT } from "../../lib/dateUtils.js";
+import { nowBRT } from "../../utils/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);

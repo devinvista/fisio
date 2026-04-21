@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useLogin } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Stethoscope, Loader2, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { maskCpf } from "@/lib/masks";
+import { maskCpf } from "@/utils/masks";
 
 function looksLikeCpf(value: string): boolean {
   return /^\d/.test(value.trim()) && !value.includes("@");

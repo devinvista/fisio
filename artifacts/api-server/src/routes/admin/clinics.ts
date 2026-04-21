@@ -8,7 +8,7 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requireSuperAdmin, requirePermission } from "../../middleware/rbac.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../../middleware/auth.js";
-import { todayBRT } from "../../lib/dateUtils.js";
+import { todayBRT } from "../../utils/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);

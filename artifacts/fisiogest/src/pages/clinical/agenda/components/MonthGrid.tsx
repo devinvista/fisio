@@ -10,7 +10,7 @@ import {
   isToday,
 } from "date-fns";
 import { Lock, Plus, Globe, Ban } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 import type { Appointment, BlockedSlot } from "../types";
 
 export function MonthGrid({

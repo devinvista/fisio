@@ -4,7 +4,7 @@ import { appointmentsTable, patientsTable, proceduresTable, financialRecordsTabl
 import { eq, and, sql, gte, gt, lte, isNull } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { todayBRT, nowBRT, monthDateRangeBRT } from "../lib/dateUtils.js";
+import { todayBRT, nowBRT, monthDateRangeBRT } from "../utils/dateUtils.js";
 
 const router = Router();
 router.use(authMiddleware);

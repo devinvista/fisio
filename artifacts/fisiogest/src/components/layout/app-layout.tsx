@@ -1,8 +1,8 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/utils/api";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -30,9 +30,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher";
-import { ROLE_LABELS } from "@/lib/permissions";
-import type { Permission, Role } from "@/lib/permissions";
-import type { Feature } from "@/lib/plan-features";
+import { ROLE_LABELS } from "@/utils/permissions";
+import type { Permission, Role } from "@/utils/permissions";
+import type { Feature } from "@/utils/plan-features";
 import { PlanBadge } from "@/components/guards/plan-badge";
 import { Lock } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";

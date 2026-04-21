@@ -10,9 +10,9 @@ import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
 import { resolvePermissions } from "@workspace/db";
 import type { Role } from "@workspace/db";
-import { todayBRT } from "../../lib/dateUtils.js";
-import { parseIntParam, validateBody } from "../../lib/validate.js";
-import { logAudit } from "../../lib/auditLog.js";
+import { todayBRT } from "../../utils/dateUtils.js";
+import { parseIntParam, validateBody } from "../../utils/validate.js";
+import { logAudit } from "../../utils/auditLog.js";
 import {
   addMinutes, timeToMinutes, minutesToTime, addDaysToDate,
 } from "./appointments.helpers.js";

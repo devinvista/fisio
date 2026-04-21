@@ -13,7 +13,7 @@ import {
 } from "@workspace/db";
 import { eq, and, or, gt, count } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
-import { logAudit } from "../../lib/auditLog.js";
+import { logAudit } from "../../utils/auditLog.js";
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);

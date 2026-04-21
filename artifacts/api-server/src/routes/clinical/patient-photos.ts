@@ -4,9 +4,9 @@ import { patientPhotosTable, appointmentsTable, proceduresTable } from "@workspa
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
-import { deleteCloudinaryAsset, extractPublicId } from "../../lib/cloudinary.js";
+import { deleteCloudinaryAsset, extractPublicId } from "../../utils/cloudinary.js";
 import { z } from "zod/v4";
-import { parseIntParam, validateBody } from "../../lib/validate.js";
+import { parseIntParam, validateBody } from "../../utils/validate.js";
 
 const router = Router({ mergeParams: true });
 

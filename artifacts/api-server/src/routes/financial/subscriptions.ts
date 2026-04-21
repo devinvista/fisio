@@ -12,7 +12,7 @@ import { z } from "zod/v4";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
 import { requireFeature } from "../../middleware/plan-features.js";
-import { validateBody } from "../../lib/validate.js";
+import { validateBody } from "../../utils/validate.js";
 import { runBilling } from "../../services/billingService.js";
 
 const createSubscriptionSchema = z.object({

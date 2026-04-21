@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Crown, Sparkles, Star, Zap } from "lucide-react";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch } from "@/lib/api";
-import type { PlanTier } from "@/lib/plan-features";
+import { apiFetch } from "@/utils/api";
+import type { PlanTier } from "@/utils/plan-features";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
 const API_BASE = BASE.replace(/\/$/, "").replace(/\/[^/]+$/, "");

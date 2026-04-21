@@ -7,7 +7,7 @@ import { eq, and, isNotNull, count } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../../middleware/auth.js";
 import { requirePermission } from "../../middleware/rbac.js";
 import { requireActiveSubscription, getPlanLimits } from "../../middleware/subscription.js";
-import { validateBody } from "../../lib/validate.js";
+import { validateBody } from "../../utils/validate.js";
 import { z } from "zod/v4";
 
 const rolesEnum = z.enum(["admin", "profissional", "secretaria"]);

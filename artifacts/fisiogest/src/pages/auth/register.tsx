@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useRegister } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/use-auth";
+import { useAuth } from "@/utils/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Stethoscope, Loader2, ArrowLeft, Building2, UserRound, Check, Package, ChevronRight, Tag, CheckCircle2, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { maskCpf } from "@/lib/masks";
-import { cn } from "@/lib/utils";
+import { maskCpf } from "@/utils/masks";
+import { cn } from "@/utils/utils";
 
 type ProfileType = "clinica" | "autonomo";
 

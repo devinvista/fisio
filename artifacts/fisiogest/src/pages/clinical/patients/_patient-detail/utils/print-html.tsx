@@ -3,7 +3,7 @@ import { useState } from "react";
   import { ptBR } from "date-fns/locale";
   import { Loader2, FileText } from "lucide-react";
   import { Button } from "@/components/ui/button";
-  import { useAuth } from "@/lib/use-auth";
+  import { useAuth } from "@/utils/use-auth";
   import type { PatientBasic, ClinicInfo, PlanProcedureItem } from "../types";
   import { todayBRTDate, formatDateTime } from "./format";
 

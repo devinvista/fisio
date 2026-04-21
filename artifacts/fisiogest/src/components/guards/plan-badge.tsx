@@ -1,5 +1,5 @@
-import type { Feature, PlanTier } from "@/lib/plan-features";
-import { PLAN_FEATURES } from "@/lib/plan-features";
+import type { Feature, PlanTier } from "@/utils/plan-features";
+import { PLAN_FEATURES } from "@/utils/plan-features";
 
 interface PlanBadgeProps {
   feature: Feature;

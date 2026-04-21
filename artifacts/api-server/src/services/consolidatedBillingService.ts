@@ -19,7 +19,7 @@ import {
   proceduresTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { todayBRT, nowBRT, lastDayOfMonth } from "../lib/dateUtils.js";
+import { todayBRT, nowBRT, lastDayOfMonth } from "../utils/dateUtils.js";
 import {
   calcNextBillingDate,
   effectiveBillingDay,
