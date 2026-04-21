@@ -1037,3 +1037,26 @@ Depois: cada clínica define seu prazo (0–90 dias) diretamente nas configuraç
 | `handleDownload` no lightbox usava `<a download>` apontando direto pra URL do Cloudinary; navegador ignora `download` em cross-origin e abre a imagem em vez de baixar | `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | **Médio** — recurso de download não funcionava | Faz `fetch` → `blob` → `URL.createObjectURL` antes do clique |
 | Parâmetro `cellIndex` não usado em `GridCell` | `photos-tab.tsx` | Baixo (ruído) | Removido |
 | Imagens da grade sem lazy-loading — pacientes com muitas sessões carregavam tudo de uma vez | `photos-tab.tsx` (`CloudinaryImage`) | Baixo (perf) | Adicionado `loading="lazy"` + `decoding="async"` |
+
+### Sessão abril/2026 — Auditoria do componente de Ditado por Voz (`VoiceTextarea`)
+
+#### Bugs corrigidos
+| Bug | Gravidade | Correção |
+|---|---|---|
+| Sem cleanup ao desmontar — `SpeechRecognition` continuava rodando se a página/aba mudasse durante a gravação, prendendo o microfone | **Alto** — privacidade/UX | `useEffect` de cleanup chama `recognition.abort()` |
+| Texto parcial (interim) descartado ao parar — usuário perdia frases inteiras se clicasse no botão antes do reconhecedor finalizar | **Alto** — perda de dados | `stopRecording` agora faz commit do interim antes de chamar `stop()` |
+| Erros silenciosos — `not-allowed` (permissão), `audio-capture` (sem mic), `no-speech`, `network` não davam feedback | **Médio** — UX confusa | Mensagens em pt-BR exibidas abaixo do campo via `role="alert"` |
+| Race condition no double-click do mic — `recognition.start()` lançava `InvalidStateError` se chamado antes do anterior terminar | **Médio** | Flag `startingRef` + guard `isRecording` evita reentrada |
+| Separador de espaço incompleto — Chrome retorna chunks com espaço inicial, gerando espaço duplo | Baixo | Helper `joinTranscript` normaliza espaços nas duas pontas |
+| Evento sintético sem `name` — quebraria integrações futuras com bibliotecas de form | Baixo | Propriedade `name` propagada para o target sintético e para o `<textarea>` |
+| Tipos `Window.SpeechRecognition` declarados como obrigatórios — TypeScript não pegaria casos de browser sem suporte | Baixo | Marcados como opcionais (`?:`) |
+
+#### Acessibilidade
+- Botão do microfone ganhou `aria-label` e `aria-pressed`.
+- Mensagem de erro com `role="alert"` para leitores de tela.
+
+#### Comportamento confirmado (sem alteração)
+- `lang: "pt-BR"`, `continuous: true`, `interimResults: true`.
+- Texto transcrito é **acumulado**, não substitui o existente.
+- Fallback transparente em navegadores sem `SpeechRecognition` (Safari, Firefox antigos): renderiza um `<textarea>` simples.
+- Suporte completo: Chrome, Edge.
