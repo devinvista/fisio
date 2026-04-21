@@ -1017,3 +1017,23 @@ Depois: cada clínica define seu prazo (0–90 dias) diretamente nas configuraç
 - Texto transcrito é **acumulado** (não substitui o existente)
 - Fallback silencioso em navegadores sem suporte (Safari, Firefox antigo)
 - Suporte completo: Chrome, Edge
+
+### Sessão abril/2026 — Auditoria da funcionalidade de Fotos + Cloudinary
+
+#### Arquitetura de upload de fotos
+1. Frontend (`photos-tab.tsx`) comprime imagem com `browser-image-compression` (≤1.5MB, 2400px).
+2. Frontend chama `POST /api/storage/uploads/request-url` → backend gera assinatura via Cloudinary SDK.
+3. Frontend faz upload **direto** ao Cloudinary (`https://api.cloudinary.com/v1_1/{cloud}/image/upload`) com a assinatura — arquivo nunca passa pelo backend.
+4. Frontend salva metadados em `POST /api/patients/:id/photos` com `secure_url` retornado pelo Cloudinary.
+5. Delete: backend chama `cloudinary.uploader.destroy(publicId)` antes de remover do banco.
+
+#### Variáveis de ambiente
+- Aceita `CLOUDINARY_URL` (`cloudinary://API_KEY:API_SECRET@CLOUD_NAME`) **ou** as três individuais (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`). `cloudinary.ts` faz parsing automático do URL único quando as individuais não estão presentes.
+
+#### Bugs corrigidos nesta auditoria
+| Bug | Arquivo | Gravidade | Correção |
+|---|---|---|---|
+| `extractPublicId` deixava segmentos de transformação (`c_fill,w_500`, `f_auto`) dentro do public_id, fazendo `deleteCloudinaryAsset` falhar e gerar assets órfãos | `artifacts/api-server/src/lib/cloudinary.ts` | **Médio** — vazamento silencioso de armazenamento | Loop que remove segmentos de transformação antes do `vXXX` |
+| `handleDownload` no lightbox usava `<a download>` apontando direto pra URL do Cloudinary; navegador ignora `download` em cross-origin e abre a imagem em vez de baixar | `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | **Médio** — recurso de download não funcionava | Faz `fetch` → `blob` → `URL.createObjectURL` antes do clique |
+| Parâmetro `cellIndex` não usado em `GridCell` | `photos-tab.tsx` | Baixo (ruído) | Removido |
+| Imagens da grade sem lazy-loading — pacientes com muitas sessões carregavam tudo de uma vez | `photos-tab.tsx` (`CloudinaryImage`) | Baixo (perf) | Adicionado `loading="lazy"` + `decoding="async"` |

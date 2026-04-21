@@ -52,11 +52,27 @@ export async function deleteCloudinaryAsset(publicId: string): Promise<void> {
 export function extractPublicId(cloudinaryUrl: string): string | null {
   try {
     const url = new URL(cloudinaryUrl);
-    const parts = url.pathname.split("/");
+    const parts = url.pathname.split("/").filter(Boolean);
     const uploadIdx = parts.findIndex((p) => p === "upload");
     if (uploadIdx === -1) return null;
-    const afterUpload = parts.slice(uploadIdx + 1);
-    if (afterUpload[0]?.startsWith("v")) afterUpload.shift();
+    let afterUpload = parts.slice(uploadIdx + 1);
+
+    // Skip transformation segments (e.g. "c_fill,w_500", "f_auto", "q_auto:good").
+    // Transformation segments come before the version (vXXXXX) or before the folder/public_id.
+    // They contain commas or are short prefix_value tokens like c_fill, f_auto, w_500.
+    while (
+      afterUpload.length > 1 &&
+      /^[a-z]{1,3}_/i.test(afterUpload[0]) &&
+      !/^v\d+$/.test(afterUpload[0])
+    ) {
+      afterUpload = afterUpload.slice(1);
+    }
+
+    // Skip version segment (v + digits).
+    if (afterUpload[0] && /^v\d+$/.test(afterUpload[0])) afterUpload = afterUpload.slice(1);
+
+    if (afterUpload.length === 0) return null;
+
     const withExt = afterUpload.join("/");
     return withExt.replace(/\.[^/.]+$/, "");
   } catch {

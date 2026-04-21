@@ -261,6 +261,8 @@ const CloudinaryImage = ({
       className={className}
       style={style}
       draggable={draggable}
+      loading="lazy"
+      decoding="async"
       onError={() => setError(true)}
     />
   );
@@ -352,7 +354,6 @@ function BeforeAfterSlider({
 // ─── Grid Cell — single photo picker for 2×2 grid ────────────────────────────
 
 function GridCell({
-  cellIndex,
   sessions,
   sessionKey,
   viewType,
@@ -361,7 +362,6 @@ function GridCell({
   label,
   labelColor,
 }: {
-  cellIndex: number;
   sessions: PhotoSession[];
   sessionKey: string;
   viewType: ViewType;
@@ -598,7 +598,6 @@ function CompareModal({
               {gridCells.map((cell, idx) => (
                 <GridCell
                   key={idx}
-                  cellIndex={idx}
                   sessions={sessions}
                   sessionKey={cell.sessionKey}
                   viewType={cell.viewType}
@@ -1028,12 +1027,23 @@ function PhotoLightbox({
 
   useEffect(() => { resetZoom(); setEditing(false); }, [photo.id]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!blobUrl) return;
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = photo.originalFilename ?? `foto-${photo.viewType}-${photo.takenAt.split("T")[0]}.jpg`;
-    a.click();
+    try {
+      const res = await fetch(blobUrl);
+      if (!res.ok) throw new Error("Falha ao baixar a foto");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = photo.originalFilename ?? `foto-${photo.viewType}-${photo.takenAt.split("T")[0]}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Erro ao baixar a foto.", variant: "destructive" });
+    }
   };
 
   const handleSaveEdit = async () => {
