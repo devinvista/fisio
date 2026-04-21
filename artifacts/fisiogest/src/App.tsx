@@ -10,20 +10,20 @@ import type { Permission } from "@/lib/permissions";
 import { FeatureRoute } from "@/components/guards/feature-route";
 
 import LandingPage from "./pages/landing";
-import Login from "./pages/login";
-import Register from "./pages/register";
+import Login from "./pages/auth/login";
+import Register from "./pages/auth/register";
 import Dashboard from "./pages/dashboard";
-import Agenda from "./pages/agenda";
-import PatientsList from "./pages/patients/index";
-import PatientDetail from "./pages/patients/[id]";
+import Agenda from "./pages/clinical/agenda";
+import PatientsList from "./pages/clinical/patients/index";
+import PatientDetail from "./pages/clinical/patients/[id]";
+import Agendar from "./pages/clinical/agendar";
+import Procedimentos from "./pages/catalog/procedimentos";
+import Pacotes from "./pages/catalog/pacotes";
 import Financial from "./pages/financial/index";
-import Procedimentos from "./pages/procedimentos";
-import Pacotes from "./pages/pacotes";
-import Relatorios from "./pages/relatorios";
-import Clinicas from "./pages/clinicas";
-import Configuracoes from "./pages/configuracoes";
-import Agendar from "./pages/agendar";
-import SuperAdmin from "./pages/superadmin";
+import Relatorios from "./pages/financial/relatorios";
+import Clinicas from "./pages/saas/clinicas";
+import SuperAdmin from "./pages/saas/superadmin";
+import Configuracoes from "./pages/settings/configuracoes";
 import NotFound from "./pages/not-found";
 
 const originalFetch = window.fetch;
@@ -180,7 +180,7 @@ function Router() {
         {() => <HashRedirect hash="agendas" />}
       </Route>
       <Route path="/clinicas">
-        {() => <PermissionRoute component={Clinicas} permission="clinics.manage" />}
+        {() => <FeatureRoute component={Clinicas} feature="module.multi_clinic" />}
       </Route>
       <Route path="/superadmin">
         {() => <SuperAdminRoute component={SuperAdmin} />}

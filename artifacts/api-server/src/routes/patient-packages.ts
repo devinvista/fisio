@@ -4,6 +4,7 @@ import { patientPackagesTable, packagesTable, proceduresTable, patientsTable, pa
 import { eq, and } from "drizzle-orm";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireFeature } from "../middleware/plan-features.js";
 import { validateBody } from "../lib/validate.js";
 import { postPackageSale } from "../services/accountingService.js";
 import { z } from "zod/v4";
@@ -36,6 +37,7 @@ const updatePatientPackageSchema = z.object({
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
+router.use(requireFeature("module.patient_packages"));
 
 function calcNextBillingDate(startDate: string, billingDay: number): string {
   const start = new Date(startDate + "T12:00:00Z");

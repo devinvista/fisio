@@ -32,6 +32,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher";
 import { ROLE_LABELS } from "@/lib/permissions";
 import type { Permission, Role } from "@/lib/permissions";
+import type { Feature } from "@/lib/plan-features";
+import { PlanBadge } from "@/components/guards/plan-badge";
+import { Lock } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
@@ -145,6 +148,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   permission: Permission | null;
   anyPermission?: Permission[];
+  /** Feature do plano necessária. Item vira "trancado" (com badge) se o plano não inclui. */
+  feature?: Feature;
   hideSuperAdmin?: boolean;
   superAdminOnly?: boolean;
 }
@@ -154,7 +159,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
   { href: "/pacientes", label: "Pacientes", icon: Users, permission: "patients.read" },
   { href: "/procedimentos", label: "Procedimentos", icon: Activity, permission: "procedures.manage" },
-  { href: "/pacotes", label: "Pacotes", icon: Package, permission: "procedures.manage" },
+  { href: "/pacotes", label: "Pacotes", icon: Package, permission: "procedures.manage", feature: "module.patient_packages" },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, permission: "financial.read" },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, permission: "reports.read" },
   {
@@ -164,7 +169,7 @@ const NAV_ITEMS: NavItem[] = [
     permission: null,
     anyPermission: ["settings.manage", "users.manage"],
   },
-  { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage" },
+  { href: "/clinicas", label: "Clínicas", icon: Building2, permission: "clinics.manage", feature: "module.multi_clinic" },
   { href: "/superadmin", label: "SuperAdmin", icon: ShieldCheck, permission: null, superAdminOnly: true },
 ];
 
@@ -181,6 +186,7 @@ interface SidebarContentProps {
   user: { name?: string; roles?: string[] } | null;
   logout: () => void;
   hasPermission: (p: Permission) => boolean;
+  hasFeature: (f: Feature) => boolean;
   clinics: unknown[];
   isSuperAdmin: boolean;
   location: string;
@@ -194,6 +200,7 @@ function SidebarContent({
   user,
   logout,
   hasPermission,
+  hasFeature,
   clinics,
   isSuperAdmin,
   location,
@@ -202,6 +209,8 @@ function SidebarContent({
   isMobile = false,
   onNavigate,
 }: SidebarContentProps) {
+  // Itens que o usuário tem permissão de papel para ver. Itens sem feature do
+  // plano permanecem visíveis mas marcados como "trancados" (upsell).
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.superAdminOnly) return isSuperAdmin;
     if (item.hideSuperAdmin && isSuperAdmin) return false;
@@ -209,7 +218,10 @@ function SidebarContent({
       ? item.anyPermission.some((p) => hasPermission(p))
       : item.permission === null || hasPermission(item.permission);
     return hasAccess;
-  });
+  }).map((item) => ({
+    ...item,
+    locked: !!item.feature && !hasFeature(item.feature),
+  }));
 
   const roleLabels = ((user as any)?.roles ?? [])
     .map((r: string) => ROLE_LABELS[r as Role] ?? r)
@@ -269,19 +281,27 @@ function SidebarContent({
                         href={item.href}
                         onClick={onNavigate}
                         className={`
-                          flex items-center justify-center rounded-xl p-3 transition-all duration-200
+                          relative flex items-center justify-center rounded-xl p-3 transition-all duration-200
                           ${
                             isActive
                               ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                              : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
+                              : item.locked
+                                ? "text-sidebar-foreground/40 hover:bg-white/5"
+                                : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
                           }
                         `}
                       >
                         <item.icon className="h-5 w-5" />
+                        {item.locked && (
+                          <Lock className="absolute -top-0.5 -right-0.5 h-3 w-3 text-amber-400" />
+                        )}
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="font-medium">
                       {item.label}
+                      {item.locked && item.feature && (
+                        <span className="ml-2"><PlanBadge feature={item.feature} /></span>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -297,13 +317,22 @@ function SidebarContent({
                     ${
                       isActive
                         ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                        : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
+                        : item.locked
+                          ? "text-sidebar-foreground/40 hover:bg-white/5"
+                          : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-white"
                     }
                   `}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
                   <span className="truncate">{item.label}</span>
-                  {isActive && <ChevronRight className="ml-auto h-4 w-4 opacity-60" />}
+                  {item.locked && item.feature ? (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <PlanBadge feature={item.feature} />
+                      <Lock className="h-3.5 w-3.5 text-amber-400/80" />
+                    </span>
+                  ) : (
+                    isActive && <ChevronRight className="ml-auto h-4 w-4 opacity-60" />
+                  )}
                 </Link>
               );
             })}
@@ -432,7 +461,7 @@ function BottomNav({ location, hasPermission, onOpenMenu }: BottomNavProps) {
 }
 
 export function AppLayout({ children, title }: AppLayoutProps) {
-  const { user, logout, hasPermission, clinics, isSuperAdmin } = useAuth();
+  const { user, logout, hasPermission, hasFeature, clinics, isSuperAdmin } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -458,6 +487,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
     user,
     logout,
     hasPermission,
+    hasFeature,
     clinics,
     isSuperAdmin,
     location,

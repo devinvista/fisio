@@ -11,6 +11,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod/v4";
 import { authMiddleware, AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { requireFeature } from "../middleware/plan-features.js";
 import { validateBody } from "../lib/validate.js";
 import { runBilling } from "../services/billingService.js";
 
@@ -32,6 +33,7 @@ const updateSubscriptionSchema = z.object({
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requireFeature("module.patient_subscriptions"));
 
 function calcInitialNextBillingDate(startDate: string, billingDay: number): string {
   const start = new Date(startDate + "T12:00:00Z");
