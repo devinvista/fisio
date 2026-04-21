@@ -1,5 +1,14 @@
 import { v2 as cloudinary } from "cloudinary";
 
+if (process.env.CLOUDINARY_URL && (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET)) {
+  try {
+    const parsed = new URL(process.env.CLOUDINARY_URL);
+    process.env.CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || parsed.hostname;
+    process.env.CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || decodeURIComponent(parsed.username);
+    process.env.CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || decodeURIComponent(parsed.password);
+  } catch {}
+}
+
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
   throw new Error("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET são obrigatórios.");
 }
