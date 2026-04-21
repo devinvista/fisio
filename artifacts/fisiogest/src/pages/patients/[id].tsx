@@ -1152,26 +1152,19 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
     setUploading(true);
     setAddMode(null);
     try {
-      const sigRes = await apiFetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type, folder: "fisiogest/attachments" }),
-      });
-      if (!sigRes.ok) throw new Error("Falha ao obter parâmetros de upload");
-      const { signature, timestamp, cloud_name, api_key, folder } = await sigRes.json();
-
+      // Server-side proxy upload (avoids browser→Cloudinary CORS / adblock issues).
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("signature", signature);
-      formData.append("timestamp", String(timestamp));
-      formData.append("api_key", api_key);
-      formData.append("folder", folder);
+      formData.append("folder", "fisiogest/attachments");
 
-      const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/auto/upload`, {
+      const uploadRes = await apiFetch("/api/storage/uploads/proxy", {
         method: "POST",
         body: formData,
       });
-      if (!uploadRes.ok) throw new Error("Falha ao enviar arquivo");
+      if (!uploadRes.ok) {
+        const data = await uploadRes.json().catch(() => ({}));
+        throw new Error(data?.message || data?.error || `Falha ao enviar arquivo (HTTP ${uploadRes.status})`);
+      }
       const uploadData = await uploadRes.json();
       const objectPath: string = uploadData.secure_url;
 

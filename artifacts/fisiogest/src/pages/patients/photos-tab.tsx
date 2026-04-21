@@ -770,33 +770,16 @@ function UploadModal({
 
     const contentType = normalizeContentType(fileToUpload.type || file.type);
 
-    const sigRes = await apiFetch("/api/storage/uploads/request-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: fileToUpload.name, size: fileToUpload.size, contentType, folder: "fisiogest/patient-photos" }),
-    });
-    if (!sigRes.ok) throw new Error(await extractApiError(sigRes, "Falha ao obter parâmetros de upload"));
-    const { signature, timestamp, cloud_name, api_key, folder } = await sigRes.json();
-
+    // Server-side proxy upload to avoid browser→Cloudinary CORS / adblock issues.
     const formData = new FormData();
     formData.append("file", fileToUpload);
-    formData.append("signature", signature);
-    formData.append("timestamp", String(timestamp));
-    formData.append("api_key", api_key);
-    formData.append("folder", folder);
+    formData.append("folder", "fisiogest/patient-photos");
 
-    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+    const uploadRes = await apiFetch("/api/storage/uploads/proxy", {
       method: "POST",
       body: formData,
     });
-    if (!uploadRes.ok) {
-      let cloudinaryMsg = `Cloudinary respondeu HTTP ${uploadRes.status}`;
-      try {
-        const data = await uploadRes.json();
-        cloudinaryMsg = data?.error?.message || cloudinaryMsg;
-      } catch {/* ignore */}
-      throw new Error(`Falha no envio para Cloudinary: ${cloudinaryMsg}`);
-    }
+    if (!uploadRes.ok) throw new Error(await extractApiError(uploadRes, "Falha no envio do arquivo"));
     const uploadData = await uploadRes.json();
     const objectPath: string = uploadData.secure_url;
 

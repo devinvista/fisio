@@ -1104,6 +1104,27 @@ Inconsistência de tipos MIME entre o frontend e o endpoint de assinatura (`/api
 | `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Toast de falha agora **mostra a mensagem real** do erro (até 2 arquivos por toast) em vez de apenas a contagem |
 | `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | Falha do Cloudinary tenta extrair `data.error.message` da resposta JSON da API deles |
 
-#### Resultado
+#### Resultado da rodada 1
 - Uploads de `.jpg` voltam a funcionar em todos os navegadores.
 - Quando algo falhar no futuro, o usuário verá o motivo real (ex.: "Tipo de arquivo não permitido", "Token inválido", "Cloudinary respondeu HTTP 401: Invalid signature") em vez de uma mensagem genérica.
+
+#### Rodada 2 — `NetworkError when attempting to fetch resource`
+Mesmo após a correção de MIME, o usuário continuou recebendo `NetworkError when attempting to fetch resource` ao enviar fotos. Esta mensagem específica do Firefox quase sempre indica que o navegador (ou uma extensão de privacidade/adblocker tipo uBlock Origin / Brave Shields) bloqueou a chamada direta para `api.cloudinary.com`.
+
+**Solução: proxy server-side.** Em vez do fluxo `browser → Cloudinary direto` (que requer assinatura no FE e está sujeito a bloqueio por extensões), o arquivo agora trafega como `browser → api-server → Cloudinary`.
+
+| Arquivo | Mudança |
+|---|---|
+| `artifacts/api-server/package.json` | Adicionadas deps `multer` e `@types/multer` |
+| `artifacts/api-server/src/routes/storage.ts` | Nova rota `POST /api/storage/uploads/proxy` (auth + multer memoryStorage com limite 20MB) que recebe multipart, valida MIME (incluindo normalização `image/jpg` → `image/jpeg`), e usa `cloudinary.uploader.upload_stream({ resource_type: "auto" })` |
+| `artifacts/api-server/src/routes/storage.ts` | Error handler do multer (LIMIT_FILE_SIZE → HTTP 413 com mensagem amigável) |
+| `artifacts/fisiogest/src/pages/patients/photos-tab.tsx` | `uploadSingle` substituiu o fluxo de duas etapas (assinatura + upload direto) por um único POST multipart para `/api/storage/uploads/proxy` |
+| `artifacts/fisiogest/src/pages/patients/[id].tsx` (ExamAttachments) | Mesma migração: agora usa `/api/storage/uploads/proxy` em vez de chamar Cloudinary direto |
+
+**Vantagens da arquitetura nova:**
+- Imune a bloqueio de adblockers/CORS (chamada interna `same-origin`).
+- `api_key` e `api_secret` do Cloudinary nunca são expostos ao navegador.
+- Validação real do tipo MIME no servidor (não só do nome reportado pelo browser).
+- Erros do Cloudinary são logados no servidor (`console.error`) e retornados ao FE como JSON estruturado (`{ error, message }`), aparecendo no toast.
+
+**O que ficou para trás (mas mantido por compat):** o endpoint `/api/storage/uploads/request-url` (assinatura) ainda existe — não é mais usado pelo FE, mas pode ser útil futuramente para uploads gigantes onde valha a pena pular o servidor.

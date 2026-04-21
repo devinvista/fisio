@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import multer from "multer";
 import { authMiddleware } from "../middleware/auth.js";
-import { generateUploadSignature } from "../lib/cloudinary.js";
+import { generateUploadSignature, cloudinary } from "../lib/cloudinary.js";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,11 @@ const ALLOWED_TYPES = [
 ];
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_SIZE_BYTES },
+});
 
 router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Response) => {
   const { name, size, contentType, folder } = req.body;
@@ -45,6 +51,68 @@ router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Re
     console.error("Error generating Cloudinary upload signature:", error);
     res.status(500).json({ error: "Falha ao gerar parâmetros de upload" });
   }
+});
+
+// Server-side proxy upload — bypasses browser→Cloudinary CORS/adblock issues.
+// Accepts multipart/form-data with field "file" and optional "folder".
+router.post(
+  "/uploads/proxy",
+  authMiddleware,
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "Arquivo é obrigatório (campo 'file')" });
+      return;
+    }
+
+    const contentType = file.mimetype === "image/jpg" ? "image/jpeg" : file.mimetype;
+
+    if (!ALLOWED_TYPES.includes(contentType)) {
+      res.status(400).json({ error: `Tipo de arquivo não permitido: ${contentType}` });
+      return;
+    }
+
+    const folder = (req.body.folder as string) || "fisiogest/uploads";
+
+    try {
+      const result = await new Promise<{ secure_url: string; bytes: number; format: string }>(
+        (resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder, resource_type: "auto" },
+            (err, data) => {
+              if (err || !data) return reject(err ?? new Error("Cloudinary retornou resposta vazia"));
+              resolve(data as { secure_url: string; bytes: number; format: string });
+            },
+          );
+          stream.end(file.buffer);
+        },
+      );
+
+      res.json({
+        secure_url: result.secure_url,
+        bytes: result.bytes,
+        format: result.format,
+      });
+    } catch (err) {
+      console.error("Cloudinary upload (proxy) failed:", err);
+      const message = err instanceof Error ? err.message : "Falha desconhecida";
+      res.status(502).json({ error: "Falha ao enviar para Cloudinary", message });
+    }
+  },
+);
+
+// Multer error handler (e.g. file too large) — must come after the route.
+router.use((err: unknown, _req: Request, res: Response, _next: (e?: unknown) => void) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: `Arquivo muito grande (máx. ${MAX_SIZE_BYTES / 1024 / 1024}MB)` });
+      return;
+    }
+    res.status(400).json({ error: err.message });
+    return;
+  }
+  res.status(500).json({ error: "Internal Server Error" });
 });
 
 export default router;
