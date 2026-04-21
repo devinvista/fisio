@@ -1,0 +1,146 @@
+Análise da Estrutura do Projeto — FisioGest
+Visão Geral
+Você tem um monorepo pnpm bem organizado em camadas, com 3 artefatos (api-server, fisiogest web, mockup-sandbox) e 4 bibliotecas compartilhadas (db, api-spec, api-zod, api-client-react). A base é sólida e segue padrões modernos (Drizzle + Zod + OpenAPI/Orval + React 19 + Vite). Mas existem alguns pontos de tensão claros que vão atrapalhar conforme a equipe e o produto crescerem.
+
+Pontos Fortes
+Separação correta de camadas: schema do banco (lib/db), contratos zod (lib/api-zod), cliente React gerado (lib/api-client-react) e spec OpenAPI (lib/api-spec) — esse é o padrão "contract-first" que o mercado adota (Stripe, Shopify, etc.).
+Workspace pnpm com TypeScript project references (tsconfig.base.json + build:libs) — build incremental correto.
+Schemas Drizzle modularizados por domínio em lib/db/src/schema/ (clinics, patients, financial, etc.) — excelente.
+Middleware de auth, RBAC e subscription isolados — boa separação de responsabilidades.
+Scheduler centralizado com cron jobs nomeados.
+Problemas Críticos
+1. Páginas-monstro no frontend
+Estes arquivos estão fora de qualquer padrão saudável:
+
+Arquivo	Linhas
+pages/superadmin.tsx	3.015
+pages/procedimentos.tsx	1.684
+pages/pacotes.tsx	881
+pages/relatorios.tsx	760
+pages/dashboard.tsx	537
+Padrão de mercado: páginas raramente passam de 200–300 linhas. Cada um desses arquivos provavelmente concentra: data fetching, mutations, estado de UI, formulários, modais, tabelas, gráficos e regras de negócio.
+
+Sugestão:
+
+pages/superadmin/
+  index.tsx            (apenas roteamento + layout, ~100 linhas)
+  components/
+    ClinicsTab.tsx
+    PlansTab.tsx
+    BillingTab.tsx
+    ...
+  hooks/
+    useSuperadminMetrics.ts
+  schemas/
+    clinic-form.schema.ts
+
+Quebrar por abas/seções e extrair hooks de dados.
+
+2. Pasta pages/ mistura convenções
+Algumas rotas são arquivos soltos (agenda.tsx, pacotes.tsx), outras são pastas (patients/, financial/). Padronize: uma pasta por feature, mesmo que tenha só index.tsx hoje. Facilita adicionar components/, hooks/, __tests__/ depois.
+
+3. Rotas backend muito grandes
+saas-plans.ts (763 linhas) e public.ts (748 linhas) misturam handlers HTTP + lógica de negócio + queries. Total de ~11k linhas em routes/.
+
+Padrão recomendado (estilo "feature module"):
+
+src/modules/
+  saas-plans/
+    saas-plans.routes.ts      (apenas Express handlers)
+    saas-plans.service.ts     (regras de negócio)
+    saas-plans.repository.ts  (queries Drizzle)
+    saas-plans.schemas.ts     (validação)
+
+Você já tem services/ (billing, accounting, subscription, policy) — só falta mover toda lógica das rotas para lá e deixar a rota como controller fino.
+
+4. services/ está subutilizado
+Só 5 services para 24 arquivos de rota. Sinal claro de que a lógica está vazando para os controllers.
+
+5. Falta camada de repositório
+Queries Drizzle estão espalhadas dentro das rotas. Centralize por domínio em repositories/ para poder trocar/testar/cachear sem mexer em controllers.
+
+6. Sem testes
+Não vi __tests__/, *.test.ts nem vitest.config.ts. Para um SaaS com cobrança automática, RBAC, multi-tenant e cron jobs financeiros, isso é risco real. Mínimo recomendado:
+
+Vitest para unit tests dos services (especialmente billingService, consolidatedBillingService, policyService).
+Supertest para integração nas rotas críticas (auth, billing, subscriptions).
+7. Duplicação lib/ raiz vs artifacts/*/src/lib/
+Você tem lib/ (libs do workspace) e artifacts/fisiogest/src/lib/ + artifacts/api-server/src/lib/. Ok, são coisas diferentes, mas o nome conflita. Renomeie as internas para utils/ ou helpers/ para evitar confusão mental:
+
+artifacts/fisiogest/src/utils/   (era lib/)
+artifacts/api-server/src/utils/  (era lib/)
+lib/                             (workspace packages, mantém)
+
+8. Pasta superadmin/ vazia em pages/
+pages/superadmin/ existe vazia, e pages/superadmin.tsx tem 3k linhas. Sinal de refactor abandonado — termine.
+
+9. Secrets em arquivos versionáveis
+.env e o bloco [userenv.shared] em .replit contêm JWT_SECRET, DATABASE_URL e CLOUDINARY_URL em texto puro. Mesmo que o .replit seja privado, é má prática. Use o gerenciador de secrets do Replit e remova do código. Inclusive recomendo trocar essas chaves agora, já que ficaram expostas no repositório.
+
+10. attached_assets/ com 59 imagens na raiz
+Pasta de upload temporário virou cemitério. Mova o que é asset real para public/images/ (com nomes semânticos) e apague o resto. Adicione ao .gitignore se for área de staging.
+
+11. fisiogest-hostinger.zip (2.8 MB) versionado
+Artefato de build não deve ficar no Git. Adicione ao .gitignore e remova do histórico.
+
+Melhorias Recomendadas (priorizadas)
+Alta prioridade
+Quebrar superadmin.tsx, procedimentos.tsx, pacotes.tsx em sub-componentes por aba/seção.
+Mover lógica de negócio das routes/ para services/ e criar repositories/ para queries.
+Adicionar Vitest com testes para os services financeiros e o scheduler.
+Remover secrets dos arquivos versionados e rotacionar as chaves expostas.
+Média prioridade
+Padronizar pages/ como sempre-pasta (feature folders).
+Renomear src/lib/ interna para src/utils/.
+Adicionar ESLint + Prettier com config compartilhada na raiz (vi prettier instalado mas não vi config).
+Adicionar error tracking (Sentry) — você tem error-boundary.tsx, mas sem telemetria não adianta.
+Baixa prioridade / longo prazo
+CI/CD (GitHub Actions): typecheck + tests + build em PR.
+Storybook para os 28 componentes de ui/ + componentes de domínio.
+Rate-limiting por rota (você tem express-rate-limit, aplique seletivamente em login/register).
+Migrations versionadas com drizzle-kit generate em vez de só push (você tem o script, mas confirme que está sendo usado em produção — push direto em prod é arriscado).
+OpenTelemetry ou pelo menos pino com correlation IDs para rastrear requests entre frontend e backend.
+Estrutura-alvo sugerida (resumo)
+artifacts/
+  api-server/src/
+    modules/                  ← novo: feature modules
+      patients/
+        patients.routes.ts
+        patients.service.ts
+        patients.repository.ts
+        patients.schemas.ts
+        __tests__/
+      billing/
+      saas-plans/
+      ...
+    middleware/
+    scheduler/                ← quebrar scheduler.ts em jobs/
+      jobs/
+        billing.job.ts
+        autoConfirm.job.ts
+      index.ts
+    utils/                    ← era lib/
+    app.ts
+    index.ts
+  fisiogest/src/
+    pages/
+      superadmin/
+        index.tsx
+        components/
+        hooks/
+      procedimentos/
+      pacotes/
+      ...
+    components/
+      ui/                     (design system)
+      domain/                 ← novo: agrupar por domínio
+        patients/
+        appointments/
+        billing/
+      layout/
+    hooks/
+    utils/                    ← era lib/
+    schemas/                  ← validações de form
+lib/                          (mantém — workspace packages)
+  db/  api-spec/  api-zod/  api-client-react/
+
