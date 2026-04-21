@@ -1155,20 +1155,28 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
     setUploading(true);
     setAddMode(null);
     try {
-      const urlRes = await fetch("/api/storage/uploads/request-url", {
+      const sigRes = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type, folder: "fisiogest/attachments" }),
       });
-      if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
-      const { uploadURL, objectPath } = await urlRes.json();
+      if (!sigRes.ok) throw new Error("Falha ao obter parâmetros de upload");
+      const { signature, timestamp, cloud_name, api_key, folder } = await sigRes.json();
 
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("signature", signature);
+      formData.append("timestamp", String(timestamp));
+      formData.append("api_key", api_key);
+      formData.append("folder", folder);
+
+      const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/auto/upload`, {
+        method: "POST",
+        body: formData,
       });
-      if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+      if (!uploadRes.ok) throw new Error("Falha ao enviar arquivo");
+      const uploadData = await uploadRes.json();
+      const objectPath: string = uploadData.secure_url;
 
       const metaRes = await fetch(`/api/patients/${patientId}/attachments`, {
         method: "POST",
@@ -1189,9 +1197,7 @@ function ExamAttachmentsSection({ patientId }: { patientId: number }) {
   const handleDownload = async (att: ExamAttachment) => {
     if (!att.objectPath || !att.originalFilename) return;
     try {
-      const res = await fetch(`/api/storage${att.objectPath}`, {
-        headers: { Authorization: `Bearer ${token()}` },
-      });
+      const res = await fetch(att.objectPath);
       if (!res.ok) throw new Error("Falha ao baixar arquivo");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

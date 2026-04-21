@@ -4,12 +4,11 @@ import { patientPhotosTable, appointmentsTable, proceduresTable } from "@workspa
 import { eq, desc, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { deleteCloudinaryAsset, extractPublicId } from "../lib/cloudinary.js";
 import { z } from "zod/v4";
 import { parseIntParam, validateBody } from "../lib/validate.js";
 
 const router = Router({ mergeParams: true });
-const objectStorageService = new ObjectStorageService();
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB
@@ -17,7 +16,7 @@ const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB
 const VIEW_TYPES = ["frontal", "lateral_d", "lateral_e", "posterior", "detalhe"] as const;
 
 const createPhotoSchema = z.object({
-  objectPath: z.string().min(1).regex(/^\/objects\//, "Caminho do arquivo inválido"),
+  objectPath: z.string().min(1).url("URL do arquivo inválida"),
   originalFilename: z.string().optional(),
   contentType: z.enum(ALLOWED_IMAGE_TYPES as [string, ...string[]]).optional(),
   fileSize: z.number().int().positive().max(MAX_PHOTO_SIZE).optional(),
@@ -126,10 +125,10 @@ router.delete("/:photoId", authMiddleware, requirePermission("medical.write"), a
     }
 
     try {
-      const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
-      await objectFile.delete();
+      const publicId = extractPublicId(existing.objectPath);
+      if (publicId) await deleteCloudinaryAsset(publicId);
     } catch (storageErr) {
-      console.error("Falha ao excluir foto do storage (continuando com remoção do banco):", storageErr);
+      console.error("Falha ao excluir foto do Cloudinary (continuando com remoção do banco):", storageErr);
     }
 
     const [deleted] = await db

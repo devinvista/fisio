@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect, WheelEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -222,9 +221,9 @@ function appointmentLabel(appt: AppointmentOption): string {
   return `${dateStr} ${appt.startTime} — ${proc} (${status})`;
 }
 
-// ─── AuthImage ────────────────────────────────────────────────────────────────
+// ─── CloudinaryImage ──────────────────────────────────────────────────────────
 
-const AuthImage = ({
+const CloudinaryImage = ({
   objectPath,
   alt,
   className,
@@ -239,42 +238,11 @@ const AuthImage = ({
   draggable?: boolean;
   onBlobReady?: (url: string) => void;
 }) => {
-  const { token } = useAuth();
-  const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    let blobUrl: string | null = null;
-    let cancelled = false;
-
-    setError(false);
-    setSrc(null);
-
-    if (!token) {
-      setError(true);
-      return;
-    }
-
-    apiFetch(`/api/storage${objectPath}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("not ok");
-        return res.blob();
-      })
-      .then((blob) => {
-        if (cancelled) return;
-        blobUrl = URL.createObjectURL(blob);
-        setSrc(blobUrl);
-        onBlobReady?.(blobUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
-
-    return () => {
-      cancelled = true;
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
-  }, [objectPath, token]);
+    if (onBlobReady) onBlobReady(objectPath);
+  }, [objectPath, onBlobReady]);
 
   if (error)
     return (
@@ -286,21 +254,14 @@ const AuthImage = ({
       </div>
     );
 
-  if (!src)
-    return (
-      <div
-        className={`bg-slate-100 animate-pulse ${className ?? ""}`}
-        style={style}
-      />
-    );
-
   return (
     <img
-      src={src}
+      src={objectPath}
       alt={alt}
       className={className}
       style={style}
       draggable={draggable}
+      onError={() => setError(true)}
     />
   );
 };
@@ -365,9 +326,9 @@ function BeforeAfterSlider({
       onMouseDown={(e) => { isDragging.current = true; updatePosition(e.clientX); }}
       onTouchStart={(e) => { isDragging.current = true; updatePosition(e.touches[0].clientX); }}
     >
-      <AuthImage objectPath={afterPath} alt="Depois" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+      <CloudinaryImage objectPath={afterPath} alt="Depois" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
       <div className="absolute inset-0 overflow-hidden" style={{ width: `${position}%` }}>
-        <AuthImage objectPath={beforePath} alt="Antes" className="absolute inset-0 object-cover" style={{ width: containerWidth || "100%", height: "100%" }} draggable={false} />
+        <CloudinaryImage objectPath={beforePath} alt="Antes" className="absolute inset-0 object-cover" style={{ width: containerWidth || "100%", height: "100%" }} draggable={false} />
       </div>
       <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg z-10 pointer-events-none" style={{ left: `${position}%` }}>
         <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-9 h-9 rounded-full bg-white shadow-xl border-2 border-primary flex items-center justify-center">
@@ -448,7 +409,7 @@ function GridCell({
       </Select>
       <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50" style={{ aspectRatio: "3/4" }}>
         {photo ? (
-          <AuthImage
+          <CloudinaryImage
             objectPath={photo.objectPath}
             alt={VIEW_LABELS[viewType]}
             className="w-full h-full object-cover"
@@ -795,20 +756,28 @@ function UploadModal({
       } catch { /* use original */ }
     }
 
-    const urlRes = await apiFetch("/api/storage/uploads/request-url", {
+    const sigRes = await apiFetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: fileToUpload.name, size: fileToUpload.size, contentType: fileToUpload.type }),
+      body: JSON.stringify({ name: fileToUpload.name, size: fileToUpload.size, contentType: fileToUpload.type, folder: "fisiogest/patient-photos" }),
     });
-    if (!urlRes.ok) throw new Error("Falha ao obter URL de upload");
-    const { uploadURL, objectPath } = await urlRes.json();
+    if (!sigRes.ok) throw new Error("Falha ao obter parâmetros de upload");
+    const { signature, timestamp, cloud_name, api_key, folder } = await sigRes.json();
 
-    const putRes = await fetch(uploadURL, {
-      method: "PUT",
-      headers: { "Content-Type": fileToUpload.type },
-      body: fileToUpload,
+    const formData = new FormData();
+    formData.append("file", fileToUpload);
+    formData.append("signature", signature);
+    formData.append("timestamp", String(timestamp));
+    formData.append("api_key", api_key);
+    formData.append("folder", folder);
+
+    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+      method: "POST",
+      body: formData,
     });
-    if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+    if (!uploadRes.ok) throw new Error("Falha ao enviar foto ao Cloudinary");
+    const uploadData = await uploadRes.json();
+    const objectPath: string = uploadData.secure_url;
 
     const metaRes = await apiFetch(`/api/patients/${patientId}/photos`, {
       method: "POST",
@@ -1113,7 +1082,7 @@ function PhotoLightbox({
             onMouseLeave={() => { isPanning.current = false; }}
           >
             <div style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: "center center", transition: isPanning.current ? "none" : "transform 0.1s ease", width: "100%", height: "100%" }}>
-              <AuthImage objectPath={photo.objectPath} alt={VIEW_LABELS[photo.viewType]} className="w-full h-full object-contain" onBlobReady={setBlobUrl} draggable={false} />
+              <CloudinaryImage objectPath={photo.objectPath} alt={VIEW_LABELS[photo.viewType]} className="w-full h-full object-contain" onBlobReady={setBlobUrl} draggable={false} />
             </div>
             {/* Zoom controls */}
             <div className="absolute top-3 left-3 flex items-center gap-1.5 z-20">
@@ -1299,7 +1268,7 @@ function SessionCard({
                 className="group relative aspect-[3/4] rounded-lg overflow-hidden border border-slate-200 hover:border-primary/40 hover:shadow-md transition-all"
                 onClick={() => setLightbox(photo)}
               >
-                <AuthImage objectPath={photo.objectPath} alt={VIEW_LABELS[viewType]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <CloudinaryImage objectPath={photo.objectPath} alt={VIEW_LABELS[viewType]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <ZoomIn className="w-5 h-5 text-white drop-shadow" />

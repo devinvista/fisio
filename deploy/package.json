@@ -9,10 +9,9 @@
     "start": "node index.cjs"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.19.0",
+    "cloudinary": "^2.9.0",
     "cookie-parser": "^1.4.7",
     "express-rate-limit": "^8.3.1",
-    "google-auth-library": "^10.6.2",
     "node-cron": "^4.2.1"
   }
 }

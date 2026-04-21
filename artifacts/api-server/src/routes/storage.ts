@@ -1,10 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { generateUploadSignature } from "../lib/cloudinary.js";
 
 const router: IRouter = Router();
-const objectStorageService = new ObjectStorageService();
 
 const ALLOWED_TYPES = [
   "application/pdf",
@@ -21,7 +19,7 @@ const ALLOWED_TYPES = [
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
 router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Response) => {
-  const { name, size, contentType } = req.body;
+  const { name, size, contentType, folder } = req.body;
 
   if (!name || !size || !contentType) {
     res.status(400).json({ error: "name, size e contentType são obrigatórios" });
@@ -39,72 +37,12 @@ router.post("/uploads/request-url", authMiddleware, async (req: Request, res: Re
   }
 
   try {
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-    res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
+    const uploadFolder = folder || "fisiogest/uploads";
+    const params = await generateUploadSignature(uploadFolder);
+    res.json(params);
   } catch (error) {
-    console.error("Error generating upload URL:", error);
-    res.status(500).json({ error: "Falha ao gerar URL de upload" });
-  }
-});
-
-router.get("/public-objects/{*filePath}", async (req: Request, res: Response) => {
-  try {
-    const raw = (req.params as Record<string, string | string[]>).filePath ?? "";
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-
-    if (!filePath || filePath.includes("..") || filePath.startsWith("/")) {
-      res.status(400).json({ error: "Caminho de arquivo inválido" });
-      return;
-    }
-
-    const file = await objectStorageService.searchPublicObject(filePath);
-    if (!file) {
-      res.status(404).json({ error: "Arquivo não encontrado" });
-      return;
-    }
-
-    const response = await objectStorageService.downloadObject(file);
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
-  } catch (error) {
-    console.error("Error serving public object:", error);
-    res.status(500).json({ error: "Falha ao servir arquivo" });
-  }
-});
-
-router.get("/objects/{*objPath}", authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const rawObj = (req.params as Record<string, string | string[]>).objPath ?? "";
-    const wildcardParam = Array.isArray(rawObj) ? rawObj.join("/") : rawObj;
-    const objectPath = `/objects/${wildcardParam}`;
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    const response = await objectStorageService.downloadObject(objectFile);
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
-  } catch (error) {
-    if (error instanceof ObjectNotFoundError) {
-      res.status(404).json({ error: "Arquivo não encontrado" });
-      return;
-    }
-    console.error("Error serving object:", error);
-    res.status(500).json({ error: "Falha ao servir arquivo" });
+    console.error("Error generating Cloudinary upload signature:", error);
+    res.status(500).json({ error: "Falha ao gerar parâmetros de upload" });
   }
 });
 

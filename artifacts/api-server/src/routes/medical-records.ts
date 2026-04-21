@@ -17,7 +17,7 @@ import {
 import { eq, desc, or, and } from "drizzle-orm";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { deleteCloudinaryAsset, extractPublicId } from "../lib/cloudinary.js";
 import { logAudit } from "../lib/auditLog.js";
 import { validateBody } from "../lib/validate.js";
 import { z } from "zod/v4";
@@ -954,8 +954,6 @@ router.post("/financial", requirePermission("financial.write"), async (req: Requ
 
 // ─── Exam Attachments ─────────────────────────────────────────────────────────
 
-const objectStorageService = new ObjectStorageService();
-
 type PAttach = { patientId: string; attachmentId: string };
 
 router.get("/attachments", requirePermission("medical.read"), async (req: Request<P>, res) => {
@@ -1032,11 +1030,11 @@ router.delete("/attachments/:attachmentId", requirePermission("medical.write"), 
 
     try {
       if (existing.objectPath) {
-        const objectFile = await objectStorageService.getObjectEntityFile(existing.objectPath);
-        await objectFile.delete();
+        const publicId = extractPublicId(existing.objectPath);
+        if (publicId) await deleteCloudinaryAsset(publicId);
       }
     } catch (storageErr) {
-      console.error("Falha ao excluir arquivo do storage (continuando com remoção do banco):", storageErr);
+      console.error("Falha ao excluir arquivo do Cloudinary (continuando com remoção do banco):", storageErr);
     }
 
     await db.delete(examAttachmentsTable).where(eq(examAttachmentsTable.id, attachmentId));
