@@ -51,7 +51,6 @@ import { format, differenceInYears, differenceInDays, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale";
 import { DatePickerPTBR } from "@/components/ui/date-picker-ptbr";
 import { useAuth } from "@/lib/use-auth";
-import { FeatureGate } from "@/components/guards/feature-gate";
 import { PlanBadge } from "@/components/guards/plan-badge";
 import { maskCpf, maskPhone, displayCpf } from "@/lib/masks";
 import { PhotosTab } from "./photos-tab";
@@ -5924,6 +5923,8 @@ function SubscriptionsSection({ patientId }: { patientId: number }) {
   const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem("fisiogest_token")}` });
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasFeature } = useAuth();
+  const subscriptionsEnabled = hasFeature("module.patient_subscriptions");
 
   const { data: subscriptions = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/financial/patients/${patientId}/subscriptions`],
@@ -5989,25 +5990,17 @@ function SubscriptionsSection({ patientId }: { patientId: number }) {
             <h4 className="text-base font-semibold text-slate-800">Assinaturas / Mensalidades</h4>
             <p className="text-xs text-slate-500">{subscriptions.length} assinatura(s) vinculada(s)</p>
           </div>
-          <FeatureGate
-            feature="module.patient_subscriptions"
-            fallback={<PlanBadge feature="module.patient_subscriptions" />}
-          >
-            {null}
-          </FeatureGate>
+          {!subscriptionsEnabled && <PlanBadge feature="module.patient_subscriptions" />}
         </div>
-        <FeatureGate
-          feature="module.patient_subscriptions"
-          fallback={
-            <Button size="sm" variant="outline" className="h-8 rounded-xl gap-2" disabled>
-              <Plus className="w-3.5 h-3.5" /> Indisponível no plano
-            </Button>
-          }
-        >
+        {subscriptionsEnabled ? (
           <Button size="sm" className="h-8 rounded-xl" onClick={() => setShowForm(!showForm)}>
             <Plus className="w-3.5 h-3.5 mr-1" />{showForm ? "Cancelar" : "Nova Assinatura"}
           </Button>
-        </FeatureGate>
+        ) : (
+          <Button size="sm" variant="outline" className="h-8 rounded-xl gap-2" disabled>
+            <Plus className="w-3.5 h-3.5" /> Indisponível no plano
+          </Button>
+        )}
       </div>
 
       {showForm && (

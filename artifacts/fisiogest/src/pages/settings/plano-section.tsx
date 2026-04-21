@@ -13,7 +13,7 @@ const api = (path: string) => `${API_BASE}/api${path}`;
 
 interface PublicPlan {
   id: number;
-  name: PlanTier;
+  name: string;
   displayName: string;
   description: string;
   price: string;
@@ -21,8 +21,17 @@ interface PublicPlan {
   maxPatients: number | null;
   maxUsers: number | null;
   trialDays: number;
-  features: string[];
+  features: unknown;
   sortOrder: number;
+}
+
+function normalizeFeatures(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((f): f is string => typeof f === "string");
+}
+
+function isKnownTier(name: string): name is PlanTier {
+  return name === "essencial" || name === "profissional" || name === "premium";
 }
 
 const TIER_ORDER: Record<PlanTier, number> = { essencial: 0, profissional: 1, premium: 2 };
@@ -70,11 +79,12 @@ export function PlanoSection() {
     staleTime: 10 * 60 * 1000,
   });
 
-  const sortedPlans = [...plans].sort(
-    (a, b) => (TIER_ORDER[a.name] ?? 99) - (TIER_ORDER[b.name] ?? 99),
-  );
+  const tierIdxOf = (name: string): number =>
+    isKnownTier(name) ? TIER_ORDER[name] : 99;
 
-  const currentTierIdx = currentPlanName ? TIER_ORDER[currentPlanName] ?? -1 : -1;
+  const sortedPlans = [...plans].sort((a, b) => tierIdxOf(a.name) - tierIdxOf(b.name));
+
+  const currentTierIdx = currentPlanName ? TIER_ORDER[currentPlanName] : -1;
 
   return (
     <div className="space-y-6">
@@ -116,12 +126,13 @@ export function PlanoSection() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {sortedPlans.map((plan) => {
-          const visual = TIER_VISUAL[plan.name] ?? TIER_VISUAL.essencial;
+          const visual = isKnownTier(plan.name) ? TIER_VISUAL[plan.name] : TIER_VISUAL.essencial;
           const Icon = visual.icon;
           const isCurrent = plan.name === currentPlanName;
-          const tierIdx = TIER_ORDER[plan.name] ?? 99;
+          const tierIdx = tierIdxOf(plan.name);
           const isUpgrade = currentTierIdx >= 0 && tierIdx > currentTierIdx;
           const isDowngrade = currentTierIdx >= 0 && tierIdx < currentTierIdx;
+          const planFeatures = normalizeFeatures(plan.features);
 
           return (
             <Card
@@ -151,12 +162,18 @@ export function PlanoSection() {
                 </div>
 
                 <ul className="space-y-2 text-sm">
-                  {plan.features.map((feat, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                      <span className="text-foreground/80">{feat}</span>
+                  {planFeatures.length === 0 ? (
+                    <li className="text-xs text-muted-foreground italic">
+                      Detalhes do plano em breve.
                     </li>
-                  ))}
+                  ) : (
+                    planFeatures.map((feat, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                        <span className="text-foreground/80">{feat}</span>
+                      </li>
+                    ))
+                  )}
                 </ul>
 
                 {isCurrent ? (
