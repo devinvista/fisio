@@ -47,6 +47,18 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts / archives
+*.zip
+*.tar.gz
+
+# Scratch / staging area
+attached_assets/
 /.vs/fisio/CopilotIndices/17.14.1601.40145/CodeChunks.db-shm
 /.vs/fisio/CopilotIndices/17.14.1601.40145/CodeChunks.db-wal
 /.vs/fisio/CopilotIndices/17.14.1601.40145/SemanticSymbols.db

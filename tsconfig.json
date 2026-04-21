@@ -19,7 +19,6 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@assets/*": ["attached_assets/*"]
     }
   },
   "include": ["src", "vite.config.ts"]
